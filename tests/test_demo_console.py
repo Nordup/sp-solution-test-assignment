@@ -342,3 +342,74 @@ def test_console_shutdown_preserves_driver_tasks_for_runner_cleanup(tmp_path):
         http(server, app, "POST", "/start", {"task": "Inspect"})
         assert started.wait(2)
     assert driver_cleaned.is_set()
+
+
+@pytest.mark.parametrize(
+    "width,height",
+    [(640, None), (None, 620), (319, 620), (3841, 620), (640, 239), (640, 2161)],
+)
+def test_recording_viewport_rejects_incomplete_or_unbounded_size(width, height):
+    from browser_agent.browser import BrowserSession
+    from scripts.demo_console import recording_browser_factory
+
+    with pytest.raises(ValueError, match="both width"):
+        recording_browser_factory(BrowserSession, width, height)
+
+
+def test_recording_viewport_default_preserves_existing_factory():
+    from browser_agent.browser import BrowserSession
+    from scripts.demo_console import recording_browser_factory
+
+    assert recording_browser_factory(BrowserSession) is BrowserSession
+
+
+async def test_recording_viewport_resizes_actual_initial_page_preserving_fixture_isolation(
+    tmp_path,
+):
+    from playwright.async_api import Error
+
+    from evals.fixtures import FixtureServer
+    from evals.run import fixture_browser_factory
+    from scripts.demo_console import recording_browser_factory
+
+    with FixtureServer("food_previous_order", 102) as fixture:
+        base = fixture_browser_factory(fixture)
+        factory = recording_browser_factory(base, 640, 620)
+        browser = factory(tmp_path / "profile", headless=True)
+        try:
+            await browser.start(fixture.url)
+            assert browser.page.viewport_size == {"width": 640, "height": 620}
+            assert await browser.page.evaluate("[innerWidth, innerHeight]") == [
+                640,
+                620,
+            ]
+            assert browser.page.url == fixture.url
+            observation = await browser.observe()
+            assert observation["text"]
+            await browser.page.reload(wait_until="domcontentloaded")
+            assert browser.page.viewport_size == {"width": 640, "height": 620}
+            with pytest.raises(Error):
+                await browser.page.goto("https://recording-isolation.invalid/")
+            assert fixture.state["blocked_external_requests"] == [
+                "https://recording-isolation.invalid/"
+            ]
+        finally:
+            await browser.close()
+
+
+def test_console_wraps_selected_factory_and_reports_recording_viewport(tmp_path):
+    from browser_agent.browser import BrowserSession
+
+    app = DemoApp(
+        Settings(artifact_dir=tmp_path),
+        url="http://127.0.0.1:9999/start",
+        profile="demo-synthetic",
+        release_session="existing-release",
+        viewport_width=640,
+        viewport_height=620,
+    )
+    try:
+        assert issubclass(app.browser_factory, BrowserSession)
+        assert app.state()["viewport"] == {"width": 640, "height": 620}
+    finally:
+        app.close()

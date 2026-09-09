@@ -36,7 +36,7 @@ h1{font-size:25px;margin-bottom:8px}p{color:#bdc8d8}textarea{width:96%;padding:1
 const $=id=>document.getElementById(id);const token=location.hash.slice(1);history.replaceState(null,'',location.pathname);
 let csrf='',pending=null,busy=false;
 async function request(path,body){const options={headers:{Authorization:'Bearer '+token}};if(body!==undefined){options.method='POST';options.headers['Content-Type']='application/json';options.headers['X-CSRF-Token']=csrf;options.body=JSON.stringify(body)}const response=await fetch(path,options);const value=await response.json();if(!response.ok)throw Error(value.error||'Request rejected');return value}
-async function refresh(){try{const state=await request('/state');csrf=state.csrf;pending=state.pending;$('mode').textContent=state.label+' | Model '+state.model+' | $'+state.budget+' maximum per task | Profile '+state.profile;$('status').textContent=state.active?'Running / waiting':'Idle';$('start').disabled=state.active||busy;$('task').readOnly=state.active;if(state.active)$('task').value=state.task;
+async function refresh(){try{const state=await request('/state');csrf=state.csrf;pending=state.pending;$('mode').textContent=state.label+' | Model '+state.model+' | $'+state.budget+' maximum per task | Profile '+state.profile+(state.viewport?' | Initial viewport '+state.viewport.width+'×'+state.viewport.height:'');$('status').textContent=state.active?'Running / waiting':'Idle';$('start').disabled=state.active||busy;$('task').readOnly=state.active;if(state.active)$('task').value=state.task;
 const output=$('output');const bottom=output.scrollHeight-output.scrollTop-output.clientHeight<80;output.textContent=state.output;if(bottom)output.scrollTop=output.scrollHeight;
 $('question').classList.toggle('hidden',!pending);if(pending){$('details').textContent=JSON.stringify(pending.question,null,2);const approval=pending.question.kind==='approval';$('approval').classList.toggle('hidden',!approval);$('clarification').classList.toggle('hidden',approval)}$('result').classList.toggle('hidden',!state.result);if(state.result)$('result').textContent=JSON.stringify(state.result,null,2);
 }catch(e){$('error').textContent=e.message}}
@@ -46,6 +46,32 @@ function answer(value){if(!pending||busy)return;send('/answer',{question_id:pend
 $('approve').onclick=()=>answer({request_id:pending.question.request_id,approved:true});$('deny').onclick=()=>answer({request_id:pending.question.request_id,approved:false});$('reply').onclick=()=>answer({answer:$('answer').value});$('pause').onclick=()=>answer({pause:true});
 refresh();setInterval(refresh,700);
 </script></html>"""
+
+
+def recording_browser_factory(browser_factory, width=None, height=None):
+    """Resize only the initial page after the original browser startup/isolation."""
+    if width is None and height is None:
+        return browser_factory
+    if (
+        type(width) is not int
+        or type(height) is not int
+        or not 320 <= width <= 3840
+        or not 240 <= height <= 2160
+    ):
+        raise ValueError(
+            "Recording viewport requires both width (320–3840) and height (240–2160)."
+        )
+
+    class RecordingBrowser(browser_factory):
+        async def start(self, url=None):
+            await super().start(url)
+            try:
+                await self.page.set_viewport_size({"width": width, "height": height})
+            except BaseException:
+                await self.close()
+                raise
+
+    return RecordingBrowser
 
 
 class AdmissionError(ValueError):
@@ -81,11 +107,20 @@ class DemoApp:
         synthetic=False,
         runner=run_agent,
         browser_factory=BrowserSession,
+        viewport_width=None,
+        viewport_height=None,
     ):
         self.settings, self.url, self.profile = settings, url, safe_name(profile)
         self.release_session = safe_name(release_session)
         self.synthetic, self.runner = synthetic, runner
-        self.browser_factory = browser_factory
+        self.browser_factory = recording_browser_factory(
+            browser_factory, viewport_width, viewport_height
+        )
+        self.viewport = (
+            {"width": viewport_width, "height": viewport_height}
+            if viewport_width is not None
+            else None
+        )
         self.token, self.csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         self.lock = threading.RLock()
         self.output, self.result, self.pending = "", None, None
@@ -113,6 +148,7 @@ class DemoApp:
                 "budget": self.settings.budget_usd,
                 "model": self.settings.model,
                 "task": self.task,
+                "viewport": self.viewport,
                 "label": "Synthetic evaluation — local fixture"
                 if self.synthetic
                 else "Live account",
@@ -356,7 +392,23 @@ def main():
     parser.add_argument("--release-session", required=True)
     parser.add_argument("--budget-usd", type=float, default=5)
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument(
+        "--viewport-width",
+        type=int,
+        help="Initial page recording width, 320–3840; supply height too.",
+    )
+    parser.add_argument(
+        "--viewport-height",
+        type=int,
+        help="Initial page recording height, 240–2160; supply width too.",
+    )
     args = parser.parse_args()
+    try:
+        recording_browser_factory(
+            BrowserSession, args.viewport_width, args.viewport_height
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.url and urlsplit(args.url).scheme not in {"http", "https"}:
         parser.error("The starting URL must use HTTP or HTTPS.")
     settings = Settings.load(budget_usd=args.budget_usd)
@@ -377,6 +429,8 @@ def main():
             release_session=args.release_session,
             synthetic=bool(args.fixture),
             browser_factory=browser_factory,
+            viewport_width=args.viewport_width,
+            viewport_height=args.viewport_height,
         )
         stack.callback(app.close)
         server = create_server(app, args.port)

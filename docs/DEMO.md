@@ -32,6 +32,16 @@ uv run python scripts/demo_console.py --url https://eda.yandex.ru/ --profile dem
 
 Use the actual prepared service URL if it differs. This does not establish that the live account or runtime works: verify the current browser state. Previous read-only Yandex Eda checks showed authenticated order history from April 2025, without a visible challenge; they did not establish previous-week history or restart persistence. An adapted historical task must be labeled honestly. Automatic real-account LangSmith tracing remains disabled by the existing runner. Actual private account content can appear locally in the console and browser, so review and redact the recording before sharing.
 
+## Viewport for a tiled recording
+
+If the browser window is tiled to half the screen, its default Playwright viewport may be wider than the visible area. Supply both optional dimensions to size the initial agent page, for example:
+
+```bash
+uv run python scripts/demo_console.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate --viewport-width 640 --viewport-height 620
+```
+
+Width must be 320–3840 pixels and height 240–2160. Omitting both preserves the existing default. The console displays the selected initial viewport. The wrapper waits for the original browser startup and fixture isolation, then resizes the initial page before the runner proceeds; it does not change the safety gate, task, profile or budget. The setting remains on that page during navigation, but does not configure later tabs/popups or resize the native window. Arrange the native window separately and inspect that the whole page fits before recording. This option is for console-launched tasks; it does not alter native CLI resume behavior.
+
 ## Recording and interaction
 
 1. Open the console link, then arrange this browser console beside the agent’s headed browser. The latter opens after Start task. Start the screen recording before entering the task if possible, or explicitly identify any setup segment excluded from the recording.
@@ -53,4 +63,4 @@ uv run ruff check scripts/demo_console.py tests/test_demo_console.py
 uv run pytest tests/test_demo_console.py -q
 ```
 
-The tests exercise actual localhost HTTP admission, single-flight execution, exact approval/denial/replay rejection, clarification/pause delivery, exception-value redaction and cancellation using a fake runner. A real Playwright UI test checks authenticated polling, actual streamed output and approval-button binding without model calls. These tests verify the optional console; they do not substitute for the runtime acceptance suite, live compatibility or the final video review.
+The tests exercise actual localhost HTTP admission, single-flight execution, exact approval/denial/replay rejection, clarification/pause delivery, exception-value redaction and cancellation using a fake runner. A real Playwright UI test checks authenticated polling, actual streamed output and approval-button binding without model calls. An actual Playwright fixture test checks the selected initial viewport, reload persistence and continued external-request isolation; validation rejects incomplete/out-of-range dimensions and the default factory stays unchanged. These tests verify the optional console; they do not substitute for the runtime acceptance suite, live compatibility or the final video review.

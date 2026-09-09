@@ -239,3 +239,13 @@ These deterministic tests in [test_navigation_provenance.py](../tests/acceptance
 | `test_initial_url_is_groundable_clarification_source` | Exact initial-URL source quotes repair a redundant question; forged quotes cannot bypass manual clarification. |
 
 The same `test_initial_url_is_available_before_any_successful_browser_observation` regression checks the 3,000 UTF-8 byte initial-URL boundary without truncating its identity. The original task, starting URL and actual clarifications remain distinct from generated notes. Existing effect policy, approvals, denials and duplicate-action admission still apply after provenance validation.
+
+## Semantic judge domain evidence
+
+The stabilized [test_eval_reporting.py](../tests/test_eval_reporting.py) suite passed 64 tests in 22.77 seconds, with Ruff passing. Its repaired native-request checks remain separate from model quality:
+
+- `test_semantic_judge_native_input_contains_only_relevant_domain_scaffolding` checks mail, food, changed-layout food, jobs and event request packets through the actual quality-review wrapper with a capturing synthetic gateway. Each packet keeps the exact original result, relevant state/facts and case/family context.
+- `test_semantic_evidence_preserves_ambiguous_and_explicitly_wrong_claims_verbatim` preserves the Russian mail-Trash claim and deliberately false claims without correcting their wording or fabricating scores.
+- `test_semantic_evidence_never_hides_unexpected_cross_domain_activity` retains unexpected nonempty cart/payment data and actual effects in a mail case.
+
+The separate native-judge calibration accepted one correct mail-Trash report and rejected explicit false shopping-cart and five-deletion reports (3/3 expected outcomes, $0.003264). It is not a real actor task pass or a retrospective regrade. Mail 13 remains FAIL in the retained attempt table; fresh ordered model evaluations are required after evidence preparation changes.
