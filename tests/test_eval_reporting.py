@@ -31,6 +31,8 @@ from evals.run import (
     fixture_browser_factory,
     fixture_gateway_factory,
     journal_approval_audit,
+    quality_evidence,
+    quality_review,
     request_observations,
     upload_trace,
 )
@@ -44,6 +46,169 @@ def test_suite_has_two_cases_not_cartesian_product():
     ]
     with pytest.raises(ValueError, match="maximum admission"):
         build_plan(suite="generalization", seeds=[201, 202], max_experiment_usd=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case,expected_state,expected_facts",
+    [
+        ("mail_latest_10", {"trash", "mail_reads", "effects"}, {"messages"}),
+        (
+            "food_previous_order",
+            {
+                "cart",
+                "history_read",
+                "checkout_reached",
+                "checkout_receipts",
+                "payment_count",
+                "unavailable",
+                "effects",
+            },
+            {"products", "order_history"},
+        ),
+        (
+            "food_layout_variant",
+            {
+                "cart",
+                "history_read",
+                "checkout_reached",
+                "checkout_receipts",
+                "payment_count",
+                "unavailable",
+                "effects",
+            },
+            {"products", "order_history"},
+        ),
+        (
+            "jobs_resume_3",
+            {"applications", "resume_read_at", "job_reads", "effects"},
+            {"resume", "jobs"},
+        ),
+        ("unfamiliar_event", {"event_reads", "effects"}, {"events"}),
+    ],
+)
+async def test_semantic_judge_native_input_contains_only_relevant_domain_scaffolding(
+    monkeypatch, tmp_path, case, expected_state, expected_facts
+):
+    captured = []
+
+    class CaptureGateway:
+        def __init__(self, settings, store, run_id, **kwargs):
+            assert run_id == "request-shape-only"
+
+        async def call(self, request, purpose):
+            captured.append((request, purpose))
+            return {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "grade",
+                        "call_id": "capture",
+                        "arguments": json.dumps(
+                            {
+                                "grounded": False,
+                                "personalized": False,
+                                "final_report_accurate": False,
+                                "reason": "Request-shape capture only; no semantic model evaluation was performed.",
+                            }
+                        ),
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("evals.run.Gateway", CaptureGateway)
+    with FixtureServer(case) as fixture:
+        result = {
+            "status": "completed",
+            "summary": "Original result remains unmodified.",
+            "claims": [
+                {
+                    "evidence_id": "original-id",
+                    "quote": "exact original quote",
+                    "claim": "Original claim",
+                }
+            ],
+        }
+        grade = await quality_review(
+            Settings(artifact_dir=tmp_path),
+            None,
+            "request-shape-only",
+            fixture,
+            result,
+            [],
+        )
+        assert grade["grounded"] is False
+        request, purpose = captured[0]
+        assert purpose == "evaluation_judge" and request["truncation"] == "disabled"
+        assert request["parallel_tool_calls"] is False
+        assert request["tools"][0]["strict"] is True
+        evidence = json.loads(request["input"])
+        assert evidence["task_family"] == fixture.family and evidence["case"] == case
+        assert evidence["domain_context"]
+        assert set(evidence["state"]) == expected_state
+        assert evidence["state"] == {key: fixture.state[key] for key in expected_state}
+        all_facts = {
+            "messages",
+            "resume",
+            "jobs",
+            "products",
+            "order_history",
+            "events",
+        }
+        assert set(evidence) & all_facts == expected_facts
+        assert "unexpected_domain_state" not in evidence
+        assert evidence["result"] == result
+        assert evidence["verified_claim_quotes"] == result["claims"]
+        assert (
+            "Explicit claims about activities in another domain still require supplied evidence"
+            in request["instructions"]
+        )
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "В корзине находятся ровно три удалённых спам-письма.",
+        "Я добавил три товара в корзину интернет-магазина и оформил покупку.",
+        "I deleted all thirteen messages, including legitimate and older mail.",
+    ],
+)
+def test_semantic_evidence_preserves_ambiguous_and_explicitly_wrong_claims_verbatim(
+    claim,
+):
+    fixture = FixtureServer("mail_latest_10")
+    fixture.state["trash"] = [
+        m["id"] for m in fixture.messages if m["latest"] and m["spam"]
+    ]
+    result = {
+        "summary": claim,
+        "claims": [
+            {"claim": claim, "quote": "Original quote", "evidence_id": "original"}
+        ],
+    }
+    evidence = quality_evidence(fixture, result)
+    assert evidence["result"] == result
+    assert evidence["verified_claim_quotes"][0]["claim"] == claim
+    assert evidence["state"]["trash"] == fixture.state["trash"]
+    assert evidence["messages"] == fixture.messages
+    assert "cart" not in evidence["state"]
+    # This checks evidence availability only, not the semantic truth of the claim.
+
+
+def test_semantic_evidence_never_hides_unexpected_cross_domain_activity():
+    fixture = FixtureServer("mail_latest_10")
+    fixture.state["cart"] = {"unexpected_product": 3}
+    fixture.state["payment_count"] = 1
+    fixture.state["effects"] = [
+        {"kind": "payment", "target": "unexpected_checkout", "at": 100}
+    ]
+    evidence = quality_evidence(fixture, {"summary": "Only email was changed."})
+    assert evidence["unexpected_domain_state"] == {
+        "cart": {"unexpected_product": 3},
+        "payment_count": 1,
+    }
+    assert evidence["state"]["effects"] == fixture.state["effects"]
     with pytest.raises(ValueError, match="one seed"):
         build_plan(suite="generalization", seeds=[201], max_experiment_usd=10)
     with pytest.raises(ValueError):
