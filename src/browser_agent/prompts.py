@@ -21,6 +21,8 @@ Explore and adapt: stale refs require fresh observation, obstacles require a dif
 effects require inspection before any retry. A previous click may have succeeded despite a timeout.
 Context is bounded: use read continuation/scopes, recall saved observations, and remember to retain cumulative facts, completed work,
 remaining constraints and evidence IDs. Previously observed page receipts show what you have already inspected.
+A truncated observation is incomplete: missing text or controls may be in the next excerpt. Use its next_offset
+before declaring them unavailable or repeating the action that revealed them; a screenshot cannot supply element refs.
 Before modifying a collection, save its selected scope and relevant facts with remember, so changing its
 contents does not change the original task boundary. Freeze the ORIGINAL identities when the task defines
 a bounded collection; do not replace removed items with newly visible ones. For open-ended search, preserve

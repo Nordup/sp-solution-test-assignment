@@ -94,6 +94,8 @@ class BrowserSession:
     ACTION_TIMEOUT_MS = 5000
     OBSERVATION_TIMEOUT_SECONDS = 10
     OBSERVATION_BATCH_SIZE = 16
+    OBSERVATION_MAX_ATTEMPTS = 3
+    CLASSIFICATION_TIMEOUT_MS = 250
 
     def __init__(
         self, profile: Path, headless: bool = False, artifact_dir: Path | None = None
@@ -321,7 +323,25 @@ class BrowserSession:
         # Cancellation releases the lock; no partial or stale registry is usable.
         try:
             async with asyncio.timeout(self.OBSERVATION_TIMEOUT_SECONDS):
-                return await self._observe(offset, scope)
+                for attempt in range(self.OBSERVATION_MAX_ATTEMPTS):
+                    try:
+                        return await self._observe(offset, scope)
+                    except BrowserError as exc:
+                        # A DOM change after snapshot can invalidate a protected
+                        # control classification. Start a completely fresh read,
+                        # never return guessed/redacted partial content. Scoped
+                        # reads and continuations must preserve their requested
+                        # identity/offset instead of silently restarting.
+                        if (
+                            exc.code != "stale_observation"
+                            or scope is not None
+                            or offset != 0
+                            or attempt + 1 == self.OBSERVATION_MAX_ATTEMPTS
+                        ):
+                            raise
+                        self._registry = {}
+                        self._observation = None
+                        self._snapshot_text = ""
         except (TimeoutError, BrowserError, asyncio.CancelledError) as exc:
             self._registry = {}
             self._observation = None
@@ -368,7 +388,8 @@ class BrowserSession:
                     kinds = await asyncio.gather(
                         *(
                             self.page.locator("aria-ref=" + ref).evaluate(
-                                "el => el.type === 'password'"
+                                "el => el.isConnected ? el.type === 'password' : null",
+                                timeout=self.CLASSIFICATION_TIMEOUT_MS,
                             )
                             for ref in batch
                         ),

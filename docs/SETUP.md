@@ -26,7 +26,7 @@ Do not print the file, send its content to LangSmith, or include values in excep
 
 ## Model and spending decision
 
-The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Luna's capability on the three tasks remains to be evaluated; a successful connectivity check is not a task-quality benchmark.
+The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Retained Luna runs have passed the three core fixtures on earlier fingerprints; current-candidate release checks remain incomplete. See VALIDATION.md for exact attempts. A successful connectivity check is not a task-quality benchmark.
 
 The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Runtime admission now enforces persisted task and aggregate ledgers; configuration values alone never establish a pass. Budget and privacy boundary evidence is mapped in TEST-COVERAGE.md.
 
@@ -96,7 +96,7 @@ Run the supplied history-dependent BBQ-burger and fries task if the account hist
 
 Verified through Computer Use in the existing Chrome for Testing window: the home page loads, the profile menu shows an authenticated account and Log out, and Orders opens a populated history with delivered and canceled orders. No CAPTCHA or security challenge appeared during this short check. No cart changes or order submissions were made.
 
-Visible order dates were April 2025; a previous-week order was not verified. Use an accurately dated history-based prompt for an adapted live demo if necessary, label the adaptation, and retain the exact source task in fixture evaluations. Do not claim the literal previous-week requirement passed. Login persistence after browser restart and the final Playwright actor remain untested. An initial accessibility read during navigation was empty; the subsequent screenshot showed the loaded history, reinforcing the need for readiness waits and observation fallback. Private addresses, order IDs and screenshots are not included in the public documentation.
+Visible order dates were April 2025; a previous-week order was not verified. Use an accurately dated history-based prompt for an adapted live demo if necessary, label the adaptation, and retain the exact source task in fixture evaluations. Do not claim the literal previous-week requirement passed. At that setup-only check, login persistence after browser restart and the final actor were untested; the subsequent actual-actor attempts below establish narrower authenticated access, not task success. An initial accessibility read during navigation was empty; the subsequent screenshot showed the loaded history, reinforcing the need for readiness waits and observation fallback. Private addresses, order IDs and screenshots are not included in the public documentation.
 
 ### Subsequent existing-session check — 2026-09-09
 
@@ -125,3 +125,15 @@ The example has no audio and a two-minute limit; change the duration deliberatel
 Run `9ad93502-a357-41e0-b888-b92413f295a5` reopened the prepared profile through the actual runner; a private actor screenshot confirmed authenticated Yandex Eda access. A native location prompt was declined manually. This goes beyond the earlier Computer Use-only checks, but it did not complete a task: an observation stalled for about 217 seconds and later invalid human-readable read scopes produced `unknown_ref` and manual handover. The console was stopped normally at 15:26:54 UTC, with no unresolved action recorded. No cart/order change or final video resulted.
 
 The authenticated screenshot remains private in that run's evidence directory. Do not publish account details or infer that historical order/product requirements passed. The implementation now bounds whole observations to 10 seconds and describes exact-ref/null read scopes. Twenty-six focused browser/runner tests passed; full new staged/live evidence remains separate. Timeout asks for manual recovery, without automated reload or effect replay. Use the current validation record before retrying the live task.
+
+### Same live run resumed — 2026-09-09
+
+The saved logical run `9ad93502` was resumed on the same profile and spending ledger. The operator supplied the original URL again when the actor stopped at about:blank, dismissed a native restore-pages notice and confirmed the notice was gone. No order-history answer or site-navigation procedure was supplied. Transient DOM changes caused two stale-observation handovers; the operator explicitly paused with `/pause` (terminal exit 2). Combined spend was $0.064967, with no outstanding or unknown reservation. No cart, order, payment or external-message effect occurred.
+
+The private `artifacts/final/live-yandex-check.json` is the actual assistance/evidence record. Bounded fresh-snapshot recovery and clarification admission have since passed focused tests, but this paused live task and final video still require completion or an honest blocker report; the fixes do not turn the saved attempt into a success.
+
+### Third resume and navigation repair — 2026-09-09
+
+The same live logical run resumed at 15:46:58 UTC. Its actor attempted the previously supplied URL, but the navigation guard rejected that destination three times because it relied on overwritten feedback. The operator paused with `/pause` (terminal exit 2), without a new browser effect. Cumulative settled spend is $0.071890, with zero reserved/unknown amount; the same $5 ledger remains in force. No cart/order/payment/message effect or final consequential approval occurred.
+
+The repaired guard now retains original-task, actual-user-clarification and initial-URL provenance across resume. The initial URL is also visible to the actor before observation and groundable in clarification review. Fifty-nine targeted tests and Ruff passed, but current-fingerprint staged/model checks and a completed live demonstration remain required. Reuse the prepared profile and saved run deliberately; do not describe these repairs as a successful live task or create duplicate credentials. The private live-check JSON retains all three attempts.

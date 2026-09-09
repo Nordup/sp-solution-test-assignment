@@ -53,6 +53,7 @@ async def run_agent(
     if resuming:
         saved = json.loads(config_path.read_text())
         task, profile = saved["task"], saved["profile"]
+        initial_url = saved.get("initial_url")
         if saved["model"] != settings.model:
             raise ValueError("Resume must use the saved model.")
         settings = settings.model_copy(update={"budget_usd": saved["budget_usd"]})
@@ -62,10 +63,12 @@ async def run_agent(
         if not task:
             raise ValueError("A task is required.")
         safe_name(profile)
+        initial_url = url
         config_path.write_text(
             json.dumps(
                 {
                     "task": task,
+                    "initial_url": initial_url,
                     "profile": profile,
                     "model": settings.model,
                     "budget_usd": settings.budget_usd,
@@ -120,6 +123,7 @@ async def run_agent(
                 value = {
                     "run_id": run_id,
                     "task": task,
+                    "initial_url": initial_url,
                     "status": "running",
                     "steps": 0,
                     "history": [],

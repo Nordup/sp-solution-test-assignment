@@ -15,7 +15,7 @@ Test names below link to their source file. Read the assertions before extending
 | P03 | Valid native structured call and protocol pairing | [`test_p03_native_call_roundtrip`](../tests/acceptance/test_protocol.py) | Mapped.  |
 | P04 | Bound page/label/history context and retain task constraints | [`test_p04_context_bounds_and_protocol_groups`](../tests/acceptance/test_protocol.py); [`test_bounded_observation_pagination_and_ref_membership`](../tests/acceptance/test_browser.py); [`test_utf8_budget_and_scoped_read`](../tests/acceptance/test_browser.py); [`test_count_failure_and_overflow_prevent_generation`](../tests/acceptance/test_provider.py) | Mapped. Huge rendered node/page text and history; exact task text retained. Adapter limit is UTF-8 bytes, provider request limit is counted tokens. |
 | P05 | Admission before provider dispatch; budget-exhausted result | [`test_p05_insufficient_reservation_never_dispatches`](../tests/acceptance/test_provider.py); [`test_p05_next_reservation_refused_before_dispatch`](../tests/acceptance/test_context_budget.py); [`test_p05_f11_budget_stop_uses_saved_facts_without_final_paid_call`](../tests/acceptance/test_runtime_contracts.py) | Mapped.  |
-| P06 | Actor/reviewer/retry/judge share task ledger | [`test_p06_actual_reviewer_and_completion_wrappers_share_actor_ledger`](../tests/acceptance/test_provider.py); [`test_p06_completion_helper_cannot_bypass_remaining_actor_cap`](../tests/acceptance/test_provider.py); [`test_p13_retry_fail_twice_then_succeed_accounts_every_attempt`](../tests/acceptance/test_provider.py) | Mapped. Real Gateway actor, risk-review and completion-review wrappers use one durable ledger; completion helper is refused before transport when the remaining task cap is insufficient. Wire responses are synthetic. |
+| P06 | Actor/reviewer/retry/judge share task ledger | [`test_p06_actual_reviewer_and_completion_wrappers_share_actor_ledger`](../tests/acceptance/test_provider.py); [`test_p06_completion_helper_cannot_bypass_remaining_actor_cap`](../tests/acceptance/test_provider.py); [`test_p06_native_clarification_reviewer_uses_actor_ledger_and_cap`](../tests/acceptance/test_clarification_admission.py); [`test_p13_retry_fail_twice_then_succeed_accounts_every_attempt`](../tests/acceptance/test_provider.py) | Mapped. Real Gateway actor, risk-review, completion-review and clarification-review wrappers use one durable ledger; completion helper is refused before transport when the remaining task cap is insufficient. Wire responses are synthetic. |
 | P07 | Unknown billing survives restart/checkpoint rewind | [`test_p07_unknown_timeout_retains_reservation_across_restart`](../tests/acceptance/test_provider.py); [`test_p07_timeout_restart_checkpoint_cannot_refund`](../tests/acceptance/test_context_budget.py); [`test_p12_historical_checkpoint_does_not_rewind_money`](../tests/acceptance/test_runtime_contracts.py) | Mapped.  |
 | P08 | Exact approval executes once; denial has no effect | [`test_p08_approved_exact_action_executes_once_then_denial_blocks`](../tests/acceptance/test_action_safety.py); [`test_approval_is_pure_and_resume_dispatches_once`](../tests/acceptance/test_graph_resume.py); [`test_denied_or_mismatched_request_never_dispatches`](../tests/acceptance/test_graph_resume.py) | Mapped.  |
 | P09 | Changed recipient/amount/letter/selection/target invalidates approval | [`test_p09_changed_concrete_effect_invalidates_approval`](../tests/acceptance/test_action_safety.py); [`test_manual_letter_change_requires_new_approval`](../tests/acceptance/test_graph_resume.py); [`test_changed_amount_outside_form_and_selection_changes_fingerprint`](../tests/acceptance/test_browser_failures.py); [`test_replaced_target_and_changed_form_rejected_before_dispatch`](../tests/acceptance/test_browser_failures.py); [`test_iframe_action_binds_outer_effect_context`](../tests/acceptance/test_browser_failures.py) | Mapped. Recipient variants use actual Store/Policy with supplied context; actual DOM variants cover letter, selection, amount, target and iframe context. |
@@ -192,11 +192,30 @@ This is deterministic enforcement, not a claim of autonomous model resistance to
 
 The 26-test focused browser/runner run includes [test_observation_deadline.py](../tests/acceptance/test_observation_deadline.py):
 
-- `test_detached_snapshot_refs_cannot_accumulate_per_ref_timeouts` checks that stale/detached refs cannot accumulate serial per-ref waits into an unbounded observation.
+- `test_detached_snapshot_refs_are_discarded_before_fresh_read` checks that stale/detached refs discard partial state before a bounded fresh snapshot.
 - `test_busy_renderer_whole_observation_has_deadline` reproduces a blocked actual Chromium renderer, bounds the whole observation, rejects old refs and recovers through fresh observation without reloading or repeating the preceding effect.
 - `test_deadline_covers_metadata_and_cancels_batched_reads` covers stalled metadata work, cancellation and registry/lock cleanup.
 
 The production limit is 10 seconds with at most 16 concurrent ref reads per batch. The existing graph reports a manual browser handover on `observation_timeout`; these assertions must not be described as automatic retry or guaranteed recovery of every unresponsive live page. Stage 4 includes this module. The previous 150/24 staged reports predate these changes and remain historical until rerun.
+
+## Transient DOM churn and clarification admission
+
+The updated observation suite now has eight focused cases within a 31-test passing browser/runner selection. `test_transient_dom_churn_retries_fresh_snapshot_without_password_leak` verifies a real changed control resolves through the second fresh snapshot without exposing a password canary. Parameterized `test_persistent_dom_churn_has_attempt_and_shared_time_bounds` enforces at most three full snapshots and one shared deadline. `test_stale_scoped_or_continuation_read_never_restarts_as_whole_page` verifies scoped and paginated identity is preserved; such failures are not silently widened. These are actual local browser tests in [test_observation_deadline.py](../tests/acceptance/test_observation_deadline.py); no general live-site reliability or automatic action retry is inferred.
+
+The new [test_clarification_admission.py](../tests/acceptance/test_clarification_admission.py) is included explicitly in stage 3. Its focused graph/provider/protocol selection passed 73 tests:
+
+| Test | Concrete assertion |
+| --- | --- |
+| `test_approval_question_repairs_to_exact_host_approval_before_effect` | A conversational permission question is redirected to a concrete proposal, but the actual host approval still precedes the single effect. |
+| `test_genuine_ambiguity_passes_to_human_without_reviewer_replay` | A real missing choice reaches the human; resuming the pure interrupt does not replay paid review. |
+| `test_clarification_repairs_are_bounded_before_truthful_handover` | Repeated repair stops after two opportunities and yields manual handover. |
+| `test_authentication_and_challenge_bypass_clarification_review` | Login/security handovers are not intercepted or polled by the reviewer. |
+| `test_clarification_review_failure_or_budget_hands_over_without_answer` | Review/schema/provider/budget failure cannot manufacture an answer or approve an effect. |
+| `test_already_available_fact_requires_actual_source_quote` | Only exact quotes from supplied user/page evidence support already-known classification; forged support causes handover. |
+| `test_clarification_repair_cannot_override_prior_effect_denial` | The clarification path cannot reopen a previously denied effect. |
+| `test_p06_native_clarification_reviewer_uses_actor_ledger_and_cap` | The actual native review wrapper uses the actor's persisted ledger and cap; wire replies are synthetic. |
+
+These tests use the actual graph/policy and synthetic model decisions; they do not retroactively pass mail 11 or establish that the new reviewer classifies every real question correctly. Existing effect approval and all original outcome graders remain unchanged. Fresh full-stage/current-fingerprint evidence is required.
 
 ## Live and submission evidence
 
@@ -205,3 +224,18 @@ The production limit is 10 seconds with at most 16 concurrent ref reads per batc
 - The actual live attempt `9ad93502` showed authenticated profile reuse in an actor screenshot, then stalled during observation and failed on invalid read scopes; it did not complete a real task or modify a cart/order. Its private screenshot must not be embedded in public docs.
 - The required shareable video must show both terminal and real browser performing a complex task, preserve the actual stopping boundary, play correctly, and be reviewed for private data. Browser viewport recording alone is insufficient.
 - Current setup, repository/main-only state, exact tested runtime fingerprint, docs accuracy, credential exclusion, experiment links, and video review need final release sign-off. This coverage map cannot certify those manual artifacts.
+
+## Navigation provenance and starting-URL retention
+
+These deterministic tests in [test_navigation_provenance.py](../tests/acceptance/test_navigation_provenance.py) supplement universal-navigation and resume requirements. They do not establish live-site task completion. The latest affected provenance/context/clarification bundle passed 59 tests; full staged checks must match the new runtime fingerprint.
+
+| Test | Concrete scope |
+| --- | --- |
+| `test_navigation_requires_exact_conservative_url_identity` | Complete URL identity permits scheme/host case, root/default-port canonicalization but rejects prefix/same-origin broadening and distinct path/query/fragment destinations. |
+| `test_untrusted_model_or_tool_text_never_grants_navigation` | Generated feedback, notes and tool/model text cannot authorize a destination; admission is enforced by the actual graph with synthetic model responses. |
+| `test_current_browser_urls_remain_observed_sources` | Current page URL, tab URLs and observed absolute URLs remain valid provenance. |
+| `test_user_url_survives_two_sqlite_reopens_and_feedback_replacement` | Multiple genuine clarification answers survive two actual SQLite reopens; replacing ordinary feedback does not discard URL authority. |
+| `test_initial_url_is_available_before_any_successful_browser_observation` | Actor receives the persisted starting URL before useful browser state exists. |
+| `test_initial_url_is_groundable_clarification_source` | Exact initial-URL source quotes repair a redundant question; forged quotes cannot bypass manual clarification. |
+
+The same `test_initial_url_is_available_before_any_successful_browser_observation` regression checks the 3,000 UTF-8 byte initial-URL boundary without truncating its identity. The original task, starting URL and actual clarifications remain distinct from generated notes. Existing effect policy, approvals, denials and duplicate-action admission still apply after provenance validation.

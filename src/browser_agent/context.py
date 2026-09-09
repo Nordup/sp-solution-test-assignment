@@ -6,6 +6,21 @@ from .prompts import ACTOR, MEMORY
 
 HISTORY_GROUPS = 6
 MEMORY_INTERVAL = 4
+INITIAL_URL_BYTES = 3000
+
+
+def initial_url_source(state: dict) -> str | None:
+    """Preserve the exact user input, or fail rather than truncate its identity."""
+    value = state.get("initial_url")
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value.encode("utf-8")) > INITIAL_URL_BYTES:
+        raise ContextOverflow(
+            "User-supplied starting URL exceeds its 3000-byte context bound or is invalid; no URL was truncated."
+        )
+    return value
+
+
 COMPLETION_EVIDENCE_BYTES = 32_000
 
 
@@ -56,6 +71,14 @@ def build_input(state: dict) -> list[dict]:
             "User clarification history exceeds context cap; no essential instruction was silently discarded."
         )
     messages = [{"role": "user", "content": task}]
+    initial_url = initial_url_source(state)
+    if initial_url:
+        messages.append(
+            {
+                "role": "user",
+                "content": "User-supplied starting URL:\n" + initial_url,
+            }
+        )
     if clarifications:
         messages.append(
             {

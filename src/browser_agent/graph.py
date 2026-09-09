@@ -11,6 +11,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import TypedDict
+from urllib.parse import urlsplit, urlunsplit
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
@@ -20,6 +21,7 @@ from .context import (
     COMPLETION_EVIDENCE_BYTES,
     HISTORY_GROUPS,
     ContextOverflow,
+    initial_url_source,
     memory_due,
     request,
     task_context,
@@ -33,6 +35,7 @@ from .tools import CollectionScope, ProtocolError, parse_call, protocol_pair, to
 class State(TypedDict, total=False):
     run_id: str
     task: str
+    initial_url: str | None
     status: str
     observation: dict
     history: list
@@ -60,6 +63,7 @@ class State(TypedDict, total=False):
     repairs: int
     completion_repairs: int
     completion_feedback: dict | None
+    clarification_repairs: int
     failures: int
     repetitions: dict
     evidence_ids: list
@@ -67,6 +71,69 @@ class State(TypedDict, total=False):
     active_seconds: float
     route: str
     screenshot_path: str | None
+
+
+def canonical_navigation_url(value):
+    """Conservative URL identity; never broaden a path into origin permission."""
+    if not isinstance(value, str) or any(
+        ord(c) <= 32 or ord(c) == 127 or c == "\\" for c in value
+    ):
+        return None
+    try:
+        parts = urlsplit(value)
+        if (
+            parts.scheme.lower() not in {"http", "https"}
+            or not parts.hostname
+            or not parts.netloc.isascii()
+            or parts.username is not None
+            or parts.password is not None
+        ):
+            return None
+        host = parts.hostname.lower()
+        if ":" in host:
+            host = "[" + host + "]"
+        port = parts.port  # Also rejects malformed/out-of-range ports.
+        if (
+            port is not None
+            and port != {"http": 80, "https": 443}[parts.scheme.lower()]
+        ):
+            host += ":" + str(port)
+        return urlunsplit(
+            (parts.scheme.lower(), host, parts.path or "/", parts.query, parts.fragment)
+        )
+    except ValueError:
+        return None
+
+
+def navigation_destination_known(url, state):
+    """Grant provenance only from actual user input or current browser evidence.
+
+    Extract complete URL tokens rather than authorizing arbitrary substrings.
+    Parentheses/quotes delimit prose and Markdown; ambiguous raw URLs must be
+    provided unambiguously/encoded. This is not model-response JSON parsing.
+    """
+    wanted = canonical_navigation_url(url)
+    if wanted is None:
+        return False
+    observed = state.get("observation", {})
+    texts = [
+        state.get("task", ""),
+        *state.get("clarifications", []),
+        observed.get("text", ""),
+    ]
+    candidates = [state.get("initial_url"), observed.get("url")]
+    candidates.extend(tab.get("url") for tab in observed.get("tabs", []))
+    for text in texts:
+        candidates.extend(
+            re.findall(
+                r"""(?<![\w:/])https?://[^\s<>"'`\[\](){}]+""",
+                text,
+                flags=re.IGNORECASE,
+            )
+        )
+    return any(
+        canonical_navigation_url(candidate) == wanted for candidate in candidates
+    )
 
 
 def challenge(observation):
@@ -513,7 +580,7 @@ class AgentGraph:
                 },
             )
             if call["name"] == "ask_user":
-                return update | {"route": "ask", "question": call["arguments"]}
+                return update | await self.admit_clarification(state | update)
             if call["name"] == "finish":
                 return update | {"route": "finalize", "result": call["arguments"]}
             if call["name"] == "recall":
@@ -689,13 +756,7 @@ class AgentGraph:
             action = state["action"]
             if action["tool"] == "navigate":
                 url = action["args"]["url"]
-                observed = state["observation"]
-                supplied = url in state["task"] or url in state.get("feedback", "")
-                visible = url in observed.get("text", "") or url == observed.get("url")
-                known_tab = any(
-                    url == tab.get("url") for tab in observed.get("tabs", [])
-                )
-                if not (supplied or visible or known_tab):
+                if not navigation_destination_known(url, state):
                     raise BrowserError(
                         "unobserved_destination",
                         "Destination must come from the user or the current page. Follow an observed link ref instead of guessing a URL.",
@@ -1012,6 +1073,93 @@ class AgentGraph:
                 },
             }
         return {"route": "observe"}
+
+    async def admit_clarification(self, state):
+        """Review actor questions before the pure interrupt, never during resume."""
+        question = state["call"]["arguments"]
+        if question["kind"] != "clarification":
+            return {"route": "ask", "question": question}
+
+        def handover(reason):
+            self.emit("clarification_handover", {"reason": reason})
+            return {
+                "route": "ask",
+                "question": question
+                | {
+                    "question": f"{reason} Manual handover: {question['question']} This question does not approve a browser action; exact effect approval remains required."
+                },
+            }
+
+        repairs = state.get("clarification_repairs", 0)
+        if repairs >= 2:
+            return handover("The agent exhausted two clarification repairs.")
+        if (
+            state.get("steps", 0) >= self.settings.max_decisions
+            or state.get("active_seconds", 0) >= self.settings.active_seconds
+        ):
+            return handover(
+                "The decision or active-time limit prevents further clarification review."
+            )
+        try:
+            evidence, manifest = self.completion_packet(
+                state, {"claims": [{"evidence_id": state["observation"]["id"]}]}
+            )
+            user_sources = {"user_task": state["task"]} | {
+                f"user_answer:{index}": answer
+                for index, answer in enumerate(state.get("clarifications", []))
+            }
+            initial_url = initial_url_source(state)
+            if initial_url:
+                user_sources["user_initial_url"] = initial_url
+            review = await self.gateway.review_clarification(
+                state["task"],
+                question,
+                {
+                    "task_context": task_context(state),
+                    "user_sources": user_sources,
+                    "evidence_manifest": manifest,
+                },
+                evidence,
+            )
+            self.emit("clarification_review", review)
+            classification = review["classification"]
+            if classification in {"missing_information", "uncertain"}:
+                return {"route": "ask", "question": question}
+            if classification == "already_available":
+                sources = evidence | user_sources
+                if not review["evidence"] or any(
+                    item["source_id"] not in sources
+                    or item["quote"] not in sources[item["source_id"]]
+                    for item in review["evidence"]
+                ):
+                    return handover(
+                        "The reviewer could not ground the claimed existing answer in actual supplied sources."
+                    )
+            elif classification != "action_approval":
+                return handover(
+                    "The clarification reviewer returned an unsupported classification."
+                )
+            feedback = {
+                "question_admitted": False,
+                "classification": classification,
+                "reason": review["reason"],
+                "evidence": review["evidence"]
+                if classification == "already_available"
+                else [],
+                "repair_attempt": repairs + 1,
+                "repair_limit": 2,
+                "instruction": "No human answer or approval was supplied. For an action approval request, propose the concrete browser action through its native tool; the host still resolves/reviews the actual effect and requests exact approval before dispatch. Existing denials remain binding. For an already available fact, inspect the cited source and continue from that evidence. Ask a human only for genuinely missing facts, choices or manual authentication.",
+            }
+            self.emit("clarification_repair", feedback)
+            return self.outcome(
+                state, feedback, clarification_repairs=repairs + 1, route="decide"
+            )
+        except (ProviderFailure, BudgetExceeded, ProtocolError, ContextOverflow) as exc:
+            # Provider/schema exceptions may contain untrusted response content;
+            # expose only the controlled failure class at the human boundary.
+            return handover(
+                f"Clarification review unavailable ({type(exc).__name__}); no valid semantic review was admitted or completed."
+            )
 
     async def ask(self, state):
         # Pure interrupt: the caller may leave this saved indefinitely without polling.

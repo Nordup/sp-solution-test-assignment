@@ -28,7 +28,7 @@ uv run browser-agent resume '<run-id>'
 
 Log in manually in the opened browser, then press Enter in the terminal to close and save it. Only one process may own a profile. The prepared real-site profile is `demo`; close any previous launcher before reuse. Password controls are redacted and unavailable to the agent.
 
-The terminal displays actual proposed tools, arguments, results and spending. A consequential action shows its destination, selected content and submitted values. Type `yes` to approve that exact action; anything else denies it. Denial ends the run as partial. At a clarification prompt, `/pause` saves and exits. Browser verification challenges pause automation and model calls until explicit continuation.
+The terminal displays actual proposed tools, arguments, results and spending. A consequential action shows its destination, selected content and submitted values. Type `yes` to approve that exact action; anything else denies it. Denial ends the run as partial. At a clarification prompt, `/pause` saves and exits. Browser verification challenges pause automation and model calls until explicit continuation. Genuine missing facts still reach the user. A nonacting clarification reviewer redirects pure action-permission questions to the existing exact approval path, or grounded already-known questions back to the actor, at most twice under the same task budget; it never fabricates a user answer.
 
 ## Optional browser console for recording
 
@@ -58,9 +58,9 @@ flowchart LR
   F -->|verified or bounded stop| Z[Result]
 ```
 
-The browser adapter exposes current accessibility references, bounded reading, screenshots, form controls, navigation and tabs. The model receives no arbitrary JavaScript, shell, cookies, site selectors or hidden fixture state. Routes and controls must be discovered from observations or supplied by the user.
+The browser adapter exposes current accessibility references, bounded reading, screenshots, form controls, navigation and tabs. The model receives no arbitrary JavaScript, shell, cookies, site selectors or hidden fixture state. Routes and controls must be discovered from observations or supplied by the user. The original task, accumulated user clarifications and starting URL retain their navigation authority across resume. Generated feedback cannot authorize new destinations; URL identity preserves path, query and fragment.
 
-Observations are paginated at 18 KB of UTF-8 text. The gateway counts the exact request, including tools and any current screenshot, and refuses inputs above 20,000 tokens. Six complete tool/result groups and bounded working notes are retained. User constraints remain separate from page data. The initial limits are 60 decisions, 2,048 output tokens per call and 20 minutes of active execution.
+Observations are paginated at 18 KB of UTF-8 text. Whole reads share a 10-second deadline; transient DOM changes can trigger at most three fresh full snapshots inside that deadline, with no effect replay. Scoped/continuation reads never silently reset, and exhausted reads hand control back to the user. The gateway counts the exact request, including tools and any current screenshot, and refuses inputs above 20,000 tokens. Six complete tool/result groups and bounded working notes are retained. User constraints remain separate from page data. The initial limits are 60 decisions, 2,048 output tokens per call and 20 minutes of active execution.
 
 Structured memory runs before the first consequential effect and every four decisions. Original collection membership is frozen from observed evidence; durable notes and action receipts survive checkpoint rewind. Rejected completion returns precise feedback for up to two correction attempts under the same limits and approval rules. If verification still fails, the result explicitly says completion is unverified. An explicitly requested stopping point defines task completion; deliberately excluded later actions are not unfinished work. The host never silently changes a partial result to completed.
 
