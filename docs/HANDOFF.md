@@ -4,6 +4,8 @@ Prepared 2026-09-09. This repository contains source material and planning conte
 
 ## Read first
 
+[FINAL-TEST.md](FINAL-TEST.md) is the ordered final acceptance runbook, including exact task prompts, expected results, failure injections and sign-off. It is not yet executed.
+
 The current implementation contract is [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), with requirement IDs, implementation/failure/test mappings, graph and data contracts, terminal UX, evaluations and release gates. It supersedes conflicting proposed details in earlier research.
 
 1. [Assignment in Russian](assignment.ru.md): complete retained task text, expanded requirements, ideal-solution description, and all three nested example tasks.

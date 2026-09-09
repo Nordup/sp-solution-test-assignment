@@ -4,6 +4,8 @@ Preparation repository for an autonomous browser agent. Implementation has not s
 
 Start with the [complete system design](docs/SYSTEM-DESIGN.md): every requirement mapped to implementation, failure handling and acceptance tests, plus graph/data contracts, safety, terminal UX and delivery gates.
 
+Use [FINAL-TEST.md](docs/FINAL-TEST.md) as the ordered final acceptance runbook: setup, safety tests, three tasks, interruptions/recovery, live demo and sign-off. Commands are specifications until implementation exists.
+
 For a single copy-paste document, use [complete context](docs/CONTEXT.md).
 
 Start with [the implementation handoff](docs/HANDOFF.md), [the Russian assignment](docs/assignment.ru.md), and [HR's evaluation criteria](docs/hr-requirements.ru.md). Original reference images and captured page evidence are in `docs/`.

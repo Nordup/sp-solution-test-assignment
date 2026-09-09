@@ -8,4 +8,5 @@
 - Use Playwright for browser automation (user decision). Runtime models must satisfy the assignment's Claude/OpenAI requirement; coding-assistant recommendations are a separate matter.
 - Build a universal agent: no site-specific workflows, hardcoded site selectors, or hidden task-specific navigation hints. Evaluation expectations must not be fed to the runtime as scripts.
 - Keep browser profiles, credentials, private chat evidence, and private account data out of Git. `docs/private/` is local-only.
+- Implement and pass the ordered acceptance runbook `docs/FINAL-TEST.md` before final submission. Its proposed commands must become real tested commands; missing/skipped tests are not passes.
 - Document actual implemented behavior, validation results, limitations, and architecture decisions. Do not claim unrun evaluations passed.

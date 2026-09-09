@@ -355,6 +355,8 @@ Passing this is evidence of some generalization, not proof that the agent can so
 
 ## 12. Evaluation, release gates and implementation order
 
+Execute [FINAL-TEST.md](FINAL-TEST.md) as the concrete final acceptance sequence. Implement its proposed commands before marking the release ready; report employer requirements and derived failure tests separately.
+
 Test layers:
 
 1. **Deterministic unit/contract tests:** no paid models; protocol, approvals, ledger, retry, graph resume and completion rules.
