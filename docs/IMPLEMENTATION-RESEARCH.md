@@ -1,5 +1,7 @@
 # Implementation research and architecture recommendation
 
+**Updated recommendation:** use a small LangGraph StateGraph around the native OpenAI/Playwright components. Read [the focused LangGraph research](LANGGRAPH-RESEARCH.md) first; it supersedes the initial orchestration/persistence choice below.
+
 Research date: 2026-09-09. This is a design document, not a claim that the agent or evaluations already exist. Read the [original assignment](assignment.ru.md), [HR clarification](hr-requirements.ru.md), and [reference images](assets/ideal-solution-01.jpg) alongside it. The [execution plan](IMPLEMENTATION-PLAN.md) turns this analysis into work for the next agent.
 
 ## 1. Recommendation and decision status

@@ -18,7 +18,7 @@ Source: user instructions, 2026-09-09; two-day turnaround also confirmed in the 
 - Browser automation: **Playwright**.
 - Communicate in English; source documents may remain Russian.
 - Confirmed in the research discussion: **Python**, **OpenAI API keys available**, **LangSmith evaluations**, **$5 per logical run**. The cap includes helper/retry/evaluator model calls, and persists across pauses/resume.
-- Recommended baseline: native OpenAI Responses SDK, Pydantic, Playwright, explicit agent loop, independent risk review, Rich/Typer CLI. See the research for model pricing and tradeoffs. These are recommendations, not claims of an implemented system.
+- Recommended baseline: LangGraph StateGraph with local SQLite checkpoints, native OpenAI Responses SDK, Pydantic, Playwright, explicit agent loop, independent risk review, Rich/Typer CLI. See [focused LangGraph research](LANGGRAPH-RESEARCH.md) for the latest orchestration recommendation and the original research for model pricing. These are recommendations, not claims of an implemented system.
 - Reported employer turnaround: two days; Friday, 2026-09-11, about 17:00. Deadline timezone is unconfirmed.
 - User's target: finish Thursday, 2026-09-10, by end of day. User's current local timezone is Asia/Ho_Chi_Minh; this does not establish the employer's deadline timezone.
 - Deliver a repository link and a short video of the agent actually solving one complex task. The assignment does not specify repository visibility; public visibility is the user's choice.
