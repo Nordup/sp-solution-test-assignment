@@ -1,0 +1,405 @@
+"""Actual graph/browser boundary tests; only model judgements are scripted.
+
+These prove durability and enforcement, not autonomous model ambiguity detection.
+"""
+
+import json
+
+import pytest
+from langgraph.types import Command
+from test_graph_resume import approval_answer, click, graph_case, pending
+
+from browser_agent.context import build_input
+from browser_agent.tools import ProtocolError
+
+PAGE = """<h1>Two possible destinations</h1>
+<p id="choices">North and South both match. The owner must choose before sending.</p>
+<a href="#detail" onclick="document.querySelector('#choices').remove()">Explore North</a>
+<form action="https://fixture.test/send" method="post" onsubmit="event.preventDefault();window.effects=(window.effects||0)+1;document.querySelector('output').textContent='Delivery recorded'">
+<input aria-label="Destination" value="North"><button>Send record</button></form><output></output>"""
+AMBIGUITY = "North and South both match. The owner must choose before sending."
+
+
+def review(*, ordinary=False, uncertain=False, new=(), resolved=(), unaffected=()):
+    return {
+        "classification": "ordinary" if ordinary else "consequential",
+        "scope_status": "uncertain" if uncertain else "in_scope",
+        "effect_summary": "Explore a candidate"
+        if ordinary
+        else "Send the record to North",
+        "reason": AMBIGUITY if uncertain else "Current destination is North",
+        "new_obligations": list(new),
+        "scope_resolutions": list(resolved),
+        "unaffected_obligation_ids": list(unaffected),
+    }
+
+
+def install_reviewer(
+    gateway, *, answer=False, unaffected=False, legacy_uncertain=False
+):
+    async def risk(task, action, metadata):
+        context = metadata["task_context"]
+        obligations = context["scope_obligations"]
+        if metadata.get("tag") == "a":
+            source_id = next(
+                key
+                for key, value in metadata["scope_sources"].items()
+                if key.startswith("obs-") and AMBIGUITY in value
+            )
+            if legacy_uncertain:
+                return review(ordinary=True, uncertain=True)
+            return review(
+                ordinary=True,
+                new=[
+                    {
+                        "description": AMBIGUITY,
+                        "affects_collection_selection": True,
+                        "evidence": [{"source_id": source_id, "quote": AMBIGUITY}],
+                    }
+                ],
+            )
+        resolutions = []
+        if answer and context["user_clarifications"] == ["Choose North."]:
+            resolutions = [
+                {
+                    "obligation_id": item["id"],
+                    "reason": "The actual owner selected North.",
+                    "evidence": [
+                        {"source_id": "user_answer:0", "quote": "Choose North."}
+                    ],
+                }
+                for item in obligations
+                if item["status"] == "open"
+            ]
+        return review(
+            resolved=resolutions,
+            unaffected=[item["id"] for item in obligations] if unaffected else [],
+        )
+
+    gateway.review = risk
+
+
+@pytest.mark.parametrize("legacy_uncertain", [False, True])
+async def test_uncertain_choice_survives_navigation_notes_and_old_checkpoint(
+    tmp_path, legacy_uncertain
+):
+    async with graph_case(
+        tmp_path, html=PAGE, script=[click("Explore North"), click("Send record")]
+    ) as (browser, gateway, store, runtime, graph, config, initial, events):
+        install_reviewer(gateway, legacy_uncertain=legacy_uncertain)
+        result = await graph.ainvoke(
+            initial | {"task": "Send a record to the matching destination."}, config
+        )
+        assert pending(result)["kind"] == "clarification"
+        assert AMBIGUITY in pending(result)["question"]
+        assert await browser.page.evaluate("window.effects||0") == 0
+        assert not any(event == "approval" for event, _ in events)
+        # The ambiguity survives a stale checkpoint and a misleading memory rewrite.
+        runtime.persist_memory(initial | {"notes": "North is selected.", "scope": None})
+        restored = runtime.restore_memory(initial | {"scope_obligations": []})
+        assert restored["scope_obligations"][0]["status"] == "open"
+        assert AMBIGUITY in json.dumps(build_input(restored))
+        assert store.unresolved_actions(initial["run_id"]) == []
+        # Ambiguous classification must not forbid preserving observed membership.
+        source = restored["scope_obligations"][0]["evidence"][0]["source_id"]
+        state = restored | {"evidence_ids": [source]}
+        scope = {
+            "boundary": "Original observed candidates",
+            "items": [{"identity": "North", "evidence_id": source, "quote": "North"}],
+        }
+        with pytest.raises(ProtocolError):
+            runtime.validate_scope(scope, state)
+        # Classification uncertainty about an already selected member is different.
+        state["scope_obligations"] = [
+            state["scope_obligations"][0] | {"affects_collection_selection": False}
+        ]
+        assert runtime.validate_scope(scope, state) == scope
+
+
+@pytest.mark.parametrize("approved", [False, True])
+async def test_actual_answer_resolves_choice_but_still_requires_exact_approval(
+    tmp_path,
+    approved,
+):
+    async with graph_case(
+        tmp_path,
+        html=PAGE,
+        script=[click("Explore North"), click("Send record"), click("Send record")],
+    ) as (browser, gateway, _store, runtime, graph, config, initial, _events):
+        install_reviewer(gateway, answer=True)
+        first = await graph.ainvoke(initial, config)
+        assert pending(first)["kind"] == "clarification"
+        second = await graph.ainvoke(
+            Command(resume={"answer": "Choose North."}), config
+        )
+        assert pending(second)["kind"] == "approval"
+        assert await browser.page.evaluate("window.effects||0") == 0
+        result = await graph.ainvoke(approval_answer(second, approved=approved), config)
+        assert "__interrupt__" not in result
+        assert await browser.page.evaluate("window.effects||0") == int(approved)
+        restored = runtime.restore_memory(initial)
+        assert restored["scope_obligations"][0]["status"] == "resolved"
+        assert (
+            restored["scope_obligations"][0]["resolution"]["evidence"][0]["source_id"]
+            == "user_answer:0"
+        )
+        # The actual journal includes the action and post-dispatch evidence, unlike notes.
+        records = runtime.action_journal(restored)["records"]
+        assert (
+            any(
+                record["approval_id"] and record["result_evidence_id"]
+                for record in records
+            )
+            == approved
+        )
+
+
+async def test_irrelevant_human_reply_does_not_clear_obligation(tmp_path):
+    async with graph_case(
+        tmp_path,
+        html=PAGE,
+        script=[click("Explore North"), click("Send record"), click("Send record")],
+    ) as (browser, gateway, _store, _runtime, graph, config, initial, _events):
+        install_reviewer(gateway, answer=True)
+        await graph.ainvoke(initial, config)
+        result = await graph.ainvoke(Command(resume={"answer": "Continue."}), config)
+        assert pending(result)["kind"] == "clarification"
+        assert await browser.page.evaluate("window.effects||0") == 0
+
+
+async def test_observed_resolution_quotes_validated_and_persisted(
+    tmp_path,
+):
+    async with graph_case(tmp_path, html=PAGE) as (
+        browser,
+        _gateway,
+        _store,
+        runtime,
+        _graph,
+        _config,
+        initial,
+        _events,
+    ):
+        state = initial | await runtime.observe(initial)
+        evidence_id = state["observation"]["id"]
+        open_review = review(
+            new=[
+                {
+                    "description": AMBIGUITY,
+                    "affects_collection_selection": True,
+                    "evidence": [{"source_id": evidence_id, "quote": AMBIGUITY}],
+                }
+            ]
+        )
+        obligations = runtime.update_obligations(
+            state, open_review, runtime.obligation_sources(state)
+        )
+        state |= {"scope_obligations": obligations}
+        resolution = {
+            "obligation_id": obligations[0]["id"],
+            "reason": "A claimed new observation rules out South.",
+            "evidence": [{"source_id": "forged", "quote": "South is unavailable."}],
+        }
+        with pytest.raises(ProtocolError):
+            runtime.update_obligations(
+                state, review(resolved=[resolution]), runtime.obligation_sources(state)
+            )
+        # Actual new observed facts can resolve without inventing a human answer.
+        await browser.page.set_content(
+            "<p>South is unavailable. North is the only matching destination.</p>"
+        )
+        update = await runtime.observe(state)
+        state |= update
+        resolution["evidence"] = [
+            {
+                "source_id": state["observation"]["id"],
+                "quote": "South is unavailable. North is the only matching destination.",
+            }
+        ]
+        resolved = runtime.update_obligations(
+            state, review(resolved=[resolution]), runtime.obligation_sources(state)
+        )
+        assert resolved[0]["status"] == "resolved"
+        assert runtime.restore_memory(initial)["scope_obligations"] == resolved
+
+
+async def test_final_review_gets_uncertainty_and_empty_authorship_then_repairs_report(
+    tmp_path,
+):
+    def proposal(obs):
+        return "finish", {
+            "status": "completed",
+            "summary": "I sent the record.",
+            "claims": [
+                {
+                    "claim": "Record is present.",
+                    "evidence_id": obs["id"],
+                    "quote": "Record already delivered.",
+                }
+            ],
+            "remaining": [],
+        }
+
+    def corrected(obs):
+        name, args = proposal(obs)
+        return name, args | {
+            "summary": "Record was already delivered before this run; no new delivery. North versus South remains uncertain and no further change was made."
+        }
+
+    html = (
+        "<p>Record already delivered.</p><p>North versus South remains uncertain.</p>"
+    )
+    async with graph_case(tmp_path, html=html, script=[proposal, corrected]) as (
+        _browser,
+        gateway,
+        _store,
+        runtime,
+        graph,
+        config,
+        initial,
+        _events,
+    ):
+        state = initial | await runtime.observe(initial)
+        source_id = state["observation"]["id"]
+        state["scope_obligations"] = runtime.update_obligations(
+            state,
+            review(
+                new=[
+                    {
+                        "description": "North versus South remains uncertain.",
+                        "affects_collection_selection": False,
+                        "evidence": [
+                            {
+                                "source_id": source_id,
+                                "quote": "North versus South remains uncertain.",
+                            }
+                        ],
+                    }
+                ]
+            ),
+            runtime.obligation_sources(state),
+        )
+        observed = []
+
+        async def verify(task, result, evidence):
+            observed.append(result)
+            assert result["action_journal"]["records"] == []
+            assert result["task_context"]["scope_obligations"][0]["status"] == "open"
+            assert "Record already delivered." in "\n".join(evidence.values())
+            return {
+                "supported": len(observed) == 2,
+                "reason": "Existing state does not prove this run sent anything; disclose retained uncertainty.",
+            }
+
+        gateway.verify_completion = verify
+        result = await graph.ainvoke(state, config)
+        assert result["result"]["status"] == "completed"
+        assert len(observed) == 2
+        assert result["result"]["unresolved_decisions"] == [
+            "North versus South remains uncertain."
+        ]
+        assert "already delivered before this run" in result["result"]["summary"]
+        assert not runtime.action_journal(runtime.restore_memory(result))["records"]
+
+
+async def test_independent_effect_can_proceed_while_another_choice_remains_open(
+    tmp_path,
+):
+    html = PAGE.replace('value="North"', 'value="West"')
+    async with graph_case(
+        tmp_path, html=html, script=[click("Explore North"), click("Send record")]
+    ) as (browser, gateway, _store, runtime, graph, config, initial, _events):
+        install_reviewer(gateway, unaffected=True)
+        result = await graph.ainvoke(
+            initial
+            | {
+                "task": "Send the record to West. Separately inspect North and South without choosing either."
+            },
+            config,
+        )
+        assert pending(result)["kind"] == "approval"
+        assert "West" in json.dumps(pending(result)["details"])
+        result = await graph.ainvoke(approval_answer(result), config)
+        assert await browser.page.evaluate("window.effects||0") == 1
+        assert (
+            runtime.restore_memory(initial)["scope_obligations"][0]["status"] == "open"
+        )
+        assert AMBIGUITY in result["result"]["summary"]
+
+
+async def test_opposite_user_choice_is_not_locked_out_by_forced_candidate_memory(
+    tmp_path,
+):
+    html = (
+        PAGE
+        + '<form action="https://fixture.test/south" method="post" onsubmit="event.preventDefault();window.effects=(window.effects||0)+1;window.chosen=\'South\'"><input aria-label="Destination" value="South"><button>Send South</button></form>'
+    )
+    async with graph_case(
+        tmp_path,
+        html=html,
+        script=[click("Explore North"), click("Send record"), click("Send South")],
+    ) as (browser, gateway, _store, runtime, graph, config, initial, _events):
+        install_reviewer(gateway)
+        original_call, original_review = gateway.call, gateway.review
+        attempted_freeze = False
+
+        async def actor(request, purpose="actor"):
+            nonlocal attempted_freeze
+            response = await original_call(request, purpose)
+            if purpose == "memory" and not attempted_freeze:
+                attempted_freeze = True
+                current = next(
+                    item["content"]
+                    for item in reversed(request["input"])
+                    if isinstance(item.get("content"), str)
+                    and item["content"].startswith("Current browser observation")
+                )
+                obs = json.loads(current.split("\n", 1)[1])
+                response["output"][0]["arguments"] = json.dumps(
+                    {
+                        "notes": "North candidate explored.",
+                        "scope": {
+                            "boundary": "Selected candidate",
+                            "items": [
+                                {
+                                    "identity": "North",
+                                    "evidence_id": obs["id"],
+                                    "quote": "North",
+                                }
+                            ],
+                        },
+                    }
+                )
+            return response
+
+        async def risk(task, action, metadata):
+            if metadata["task_context"]["user_clarifications"] == ["Choose South."]:
+                return review(
+                    resolved=[
+                        {
+                            "obligation_id": item["id"],
+                            "reason": "Actual owner selected South.",
+                            "evidence": [
+                                {"source_id": "user_answer:0", "quote": "Choose South."}
+                            ],
+                        }
+                        for item in metadata["task_context"]["scope_obligations"]
+                        if item["status"] == "open"
+                    ]
+                )
+            return await original_review(task, action, metadata)
+
+        gateway.call, gateway.review = actor, risk
+        result = await graph.ainvoke(initial, config)
+        assert pending(result)["kind"] == "clarification"
+        assert attempted_freeze and gateway.memory_calls >= 2
+        assert runtime.restore_memory(initial).get("scope") is None
+        result = await graph.ainvoke(
+            Command(resume={"answer": "Choose South."}), config
+        )
+        assert pending(result)["kind"] == "approval"
+        assert "South" in json.dumps(pending(result)["details"])
+        assert await browser.page.evaluate("window.effects||0") == 0
+        await graph.ainvoke(approval_answer(result), config)
+        assert await browser.page.evaluate("window.effects") == 1
+        assert await browser.page.evaluate("window.chosen") == "South"

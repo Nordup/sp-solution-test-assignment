@@ -224,6 +224,9 @@ async def test_p06_actual_reviewer_and_completion_wrappers_share_actor_ledger(tm
         {
             "classification": "ordinary",
             "scope_status": "in_scope",
+            "new_obligations": [],
+            "scope_resolutions": [],
+            "unaffected_obligation_ids": [],
             "effect_summary": "Read visible content",
             "reason": "Read operation",
         },
@@ -260,6 +263,9 @@ async def test_p06_completion_helper_cannot_bypass_remaining_actor_cap(tmp_path)
         {
             "classification": "ordinary",
             "scope_status": "in_scope",
+            "new_obligations": [],
+            "scope_resolutions": [],
+            "unaffected_obligation_ids": [],
             "effect_summary": "Read content",
             "reason": "Read operation",
         },

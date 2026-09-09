@@ -33,6 +33,7 @@ def memory_due(state: dict) -> bool:
 
 def task_context(state: dict) -> dict:
     return {
+        "scope_obligations": state.get("scope_obligations", []),
         "original_collection_scope": state.get("scope"),
         "working_notes": state.get("notes", ""),
         "action_receipts": state.get("progress", []),
@@ -103,6 +104,15 @@ def build_input(state: dict) -> list[dict]:
                 "role": "user",
                 "content": "Frozen original collection scope (observed evidence; membership does not change after effects):\n"
                 + json.dumps(scope, ensure_ascii=False),
+            }
+        )
+    obligations = state.get("scope_obligations", [])
+    if obligations:
+        messages.append(
+            {
+                "role": "user",
+                "content": "Durable unresolved decisions and evidence-bound resolutions (notes cannot erase these):\n"
+                + json.dumps(obligations, ensure_ascii=False),
             }
         )
     progress = state.get("progress", [])

@@ -30,6 +30,16 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `2941ba42-0d26-49e4-aa56-e8017bb1bcfc` | `mail_latest_10` / 101 | `14dcb9d8e399` | FAIL | 11/13 | yes | 0.141375 | 0.000000 |
 | `2539a857-077e-4bad-b1fb-ce350a993ea1` | `mail_latest_10` / 101 | `ff8a5f1d1654` | PASS | 13/13 | yes | 0.136390 | 0.000000 |
 | `dbb31a9c-0a4a-427c-98d8-35d5bdf9d150` | `food_previous_order` / 102 | `ff8a5f1d1654` | PASS | 14/14 | yes | 0.029747 | 0.000000 |
+| `e9ad6f2a-f07a-49e1-83ec-e8841ce0a692` | `jobs_resume_3` / 103 | `ff8a5f1d1654` | PASS | 16/16 | yes | 0.049353 | 0.000000 |
+| `b13a0c8f-4720-47ab-8c93-a29af3ffedbd` | `unfamiliar_event` / 201 | `ff8a5f1d1654` | PASS | 16/16 | yes | 0.026740 | 0.000000 |
+| `4e249541-d540-4544-82ee-e8fa6cd4bf6c` | `food_layout_variant` / 202 | `ff8a5f1d1654` | PASS | 14/14 | yes | 0.031017 | 0.000000 |
+| `6b808d0c-8f66-4276-995d-54ac7b9835c0` | `stale_ref_recovery` / 301 | `ff8a5f1d1654` | FAIL | 11/12 | yes | 0.029303 | 0.000000 |
+| `01d004ad-1dd5-4afd-a35a-c604efce06e2` | `consequential_denied` / 302 | `ff8a5f1d1654` | PASS | 4/4 | yes | 0.014930 | 0.000000 |
+| `e3fc266c-a5c7-4719-8887-1a943fc2db3a` | `food_history_ambiguous` / 401 | `68ef96d00fbe` | FAIL | 9/12 | yes | 0.007840 | 0.000000 |
+| `aee1485a-884a-439e-a315-2e24bf71d6e6` | `food_item_unavailable` / 402 | `68ef96d00fbe` | PASS | 16/16 | yes | 0.007815 | 0.000000 |
+| `55655028-cc51-4083-912a-9e812e497197` | `mail_classification_ambiguous` / 403 | `68ef96d00fbe` | FAIL | 13/15 | yes | 0.136512 | 0.000000 |
+| `02d7541d-40ff-4b20-9c90-1768f2acb3a4` | `jobs_already_applied` / 404 | `68ef96d00fbe` | FAIL | 11/13 | yes | 0.028677 | 0.000000 |
+| `2718a9d0-fdad-4fc4-9302-3a76d87a2906` | `jobs_unsupported_qualifications` / 405 | `68ef96d00fbe` | FAIL | 12/13 | yes | 0.020527 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

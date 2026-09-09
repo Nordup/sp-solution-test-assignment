@@ -26,7 +26,7 @@ from .context import (
     request,
     task_context,
 )
-from .llm import ProviderFailure
+from .llm import ProviderFailure, ScopeObligation, ScopeResolution
 from .safety import Policy
 from .storage import AdmissionError, BudgetExceeded, DuplicateAction
 from .tools import CollectionScope, ProtocolError, parse_call, protocol_pair, tool_specs
@@ -44,6 +44,8 @@ class State(TypedDict, total=False):
     progress: list
     memory_step: int
     memory_required: bool
+    scope_obligations: list
+    review_obligations: list
     review_scope: dict | None
     pending_call: dict | None
     feedback: str
@@ -271,6 +273,12 @@ class AgentGraph:
                     item["evidence_id"]
                     for item in (state.get("scope") or {}).get("items", [])
                 ]
+                + [
+                    source["source_id"]
+                    for obligation in state.get("scope_obligations", [])
+                    for source in obligation.get("evidence", [])
+                    if source["source_id"] in registered
+                ]
                 + [item["evidence_id"] for item in state.get("visited", [])]
                 + state.get("evidence_ids", [])
             )
@@ -340,12 +348,129 @@ class AgentGraph:
     def restore_memory(self, state):
         """Authoritative memory survives old graph checkpoints and browser restart."""
         path = self.run_dir / "memory.json"
-        if not path.exists():
-            return state
-        saved = json.loads(path.read_text())
-        if saved.get("scope"):
-            CollectionScope.model_validate(saved["scope"])
-        return state | {key: saved.get(key) for key in ("scope", "notes", "progress")}
+        if path.exists():
+            saved = json.loads(path.read_text())
+            if saved.get("scope"):
+                CollectionScope.model_validate(saved["scope"])
+            state = state | {
+                key: saved.get(key) for key in ("scope", "notes", "progress")
+            }
+        path = self.run_dir / "scope-obligations.json"
+        if path.exists():
+            state = state | {"scope_obligations": json.loads(path.read_text())}
+        return state
+
+    def obligation_sources(self, state):
+        # Only actually delivered observations and actual human inputs are sources.
+        sources = {"user_task": state["task"]} | {
+            f"user_answer:{index}": answer
+            for index, answer in enumerate(state.get("clarifications", []))
+        }
+        for evidence_id in self.registered_observations(state):
+            try:
+                obs = json.loads(
+                    (self.run_dir / "evidence" / f"{evidence_id}.json").read_text()
+                )
+                if obs.get("id") == evidence_id and isinstance(obs.get("text"), str):
+                    sources[evidence_id] = obs["text"]
+            except (OSError, ValueError, AttributeError):
+                continue
+        return sources
+
+    def update_obligations(self, state, review, sources):
+        obligations = list(state.get("scope_obligations", []))
+
+        def checked(items):
+            if any(
+                item["source_id"] not in sources
+                or item["quote"] not in sources[item["source_id"]]
+                for item in items
+            ):
+                raise ProtocolError(
+                    "Scope decision requires exact quotes from supplied actual evidence or human answers; notes are not a resolution."
+                )
+            return items
+
+        for raw in review.get("scope_resolutions", []):
+            resolution = ScopeResolution.model_validate(raw).model_dump()
+            checked(resolution["evidence"])
+            found = next(
+                (
+                    item
+                    for item in obligations
+                    if item["id"] == resolution["obligation_id"]
+                ),
+                None,
+            )
+            if found is None:
+                raise ProtocolError("Scope resolution names an unknown obligation.")
+            # Preserve the original question and evidence even after resolution.
+            obligations[obligations.index(found)] = found | {
+                "status": "resolved",
+                "resolution": resolution,
+            }
+        for raw in review.get("new_obligations", []):
+            obligation = ScopeObligation.model_validate(raw).model_dump()
+            checked(obligation["evidence"])
+            if not any(
+                item["description"] == obligation["description"] for item in obligations
+            ):
+                obligations.append(
+                    obligation | {"id": uuid.uuid4().hex, "status": "open"}
+                )
+        if review.get("scope_status") == "uncertain" and not any(
+            item["status"] == "open" for item in obligations
+        ):
+            # Fail closed for older or incomplete reviewer outputs. Keep actual
+            # source provenance without pretending the review reason is a quote.
+            obs = state["observation"]
+            obligations.append(
+                {
+                    "id": uuid.uuid4().hex,
+                    "status": "open",
+                    "description": review["reason"],
+                    "affects_collection_selection": True,
+                    "evidence": [{"source_id": obs["id"], "quote": obs["text"][:1500]}],
+                }
+            )
+        if (
+            len(obligations) > 16
+            or len(json.dumps(obligations, ensure_ascii=False).encode()) > 16000
+        ):
+            raise ContextOverflow(
+                "Durable scope decisions exceed their bound; no unresolved choice was silently discarded."
+            )
+        if obligations != state.get("scope_obligations", []):
+            self.atomic_json(self.run_dir / "scope-obligations.json", obligations)
+            self.emit("scope_obligations", {"obligations": obligations})
+        return obligations
+
+    def action_journal(self, state):
+        records = []
+        omitted = 0
+        for receipt in state.get("progress", []):
+            row = self.store.action(receipt["action_id"])
+            if not row or row["run_id"] != state["run_id"]:
+                continue
+            details = json.loads(row["details"])
+            record = {
+                "action_id": row["id"],
+                "created": row["created"],
+                "status": row["status"],
+                "approval_id": row["approval_id"],
+                "action": details["action"],
+                "destination": details["effect"].get("destination"),
+                "result_evidence_id": receipt["evidence_id"],
+            }
+            if len(json.dumps(records + [record], ensure_ascii=False).encode()) > 12000:
+                omitted += 1
+            else:
+                records.append(record)
+        return {
+            "records": records,
+            "omitted_count": omitted,
+            "provenance": "SQLite dispatch journal matched to host-generated post-dispatch observation receipts. Dispatch alone is not semantic success. Records without a post-dispatch receipt are not included; missing records cannot establish authorship.",
+        }
 
     def persist_memory(self, state):
         path = self.run_dir / "memory.json"
@@ -360,6 +485,9 @@ class AgentGraph:
                 raise ProtocolError(
                     "Original collection scope is immutable; new observations cannot replace it."
                 )
+        self.atomic_json(path, payload)
+
+    def atomic_json(self, path, payload):
         # Atomic replacement and synchronous write: no later dispatch can use an
         # unpersisted scope. A filesystem failure propagates before browser effects.
         temporary = None
@@ -388,6 +516,13 @@ class AgentGraph:
         if state.get("scope") and proposed != state["scope"]:
             raise ProtocolError(
                 "Frozen collection identities cannot be replaced. Return scope=null and retain the original boundary."
+            )
+        if not state.get("scope") and any(
+            item["status"] == "open" and item.get("affects_collection_selection", True)
+            for item in state.get("scope_obligations", [])
+        ):
+            raise ProtocolError(
+                "The original selection is unresolved. Return scope=null and retain the candidate evidence; do not freeze an explored candidate as the user's selected collection. A later grounded choice can establish it."
             )
         allowed = set(state.get("evidence_ids", [])) | {
             item["evidence_id"] for item in state.get("visited", [])
@@ -764,15 +899,39 @@ class AgentGraph:
             metadata = await self.browser.action_context(
                 action["tool"], action["args"], state["observation"]["id"]
             )
-            review = await self.gateway.review(
-                state["task"], action, metadata | {"task_context": task_context(state)}
+            sources = self.obligation_sources(state)
+            # Current actual snapshot plus the original evidence for pending choices;
+            # sources supplied to the reviewer are the only admissible resolutions.
+            source_ids = (
+                {state["observation"]["id"], "user_task"}
+                | {key for key in sources if key.startswith("user_answer:")}
+                | {
+                    item["source_id"]
+                    for obligation in state.get("scope_obligations", [])
+                    for item in obligation.get("evidence", [])
+                }
             )
+            supplied = {key: sources[key] for key in source_ids if key in sources}
+            if len(json.dumps(supplied, ensure_ascii=False).encode()) > 32000:
+                raise ContextOverflow(
+                    "Scope-review evidence exceeds its bound; inspect smaller evidence before continuing."
+                )
+            review = await self.gateway.review(
+                state["task"],
+                action,
+                metadata
+                | {"task_context": task_context(state), "scope_sources": supplied},
+            )
+            obligations = self.update_obligations(state, review, supplied)
+            state = state | {"scope_obligations": obligations}
             assessment = self.safety_policy.assess(
                 action, metadata, review, state["run_id"]
             )
             update = {
                 "metadata": metadata,
                 "review": review,
+                "scope_obligations": obligations,
+                "review_obligations": obligations,
                 "review_scope": state.get("scope"),
                 "assessment": {
                     "classification": assessment.classification,
@@ -805,6 +964,21 @@ class AgentGraph:
                         "memory_required": True,
                         "pending_call": state["call"],
                         "route": "decide",
+                    }
+                blocking = [
+                    item
+                    for item in obligations
+                    if item["status"] == "open"
+                    and item["id"] not in review.get("unaffected_obligation_ids", [])
+                ]
+                if blocking:
+                    return update | {
+                        "route": "ask",
+                        "question": {
+                            "kind": "clarification",
+                            "question": "A material task choice remains unresolved before this change: "
+                            + "; ".join(item["description"] for item in blocking),
+                        },
                     }
                 if review.get("scope_status", "uncertain") == "out_of_scope":
                     return update | self.outcome(
@@ -851,7 +1025,7 @@ class AgentGraph:
                 )
                 return update | {"route": "approval", "approval_id": approval_id}
             return update | {"route": "execute"}
-        except (BudgetExceeded, ProviderFailure) as exc:
+        except (BudgetExceeded, ProviderFailure, ContextOverflow) as exc:
             return {"route": "finalize", "status": "partial", "feedback": str(exc)}
         except (BrowserError, ProtocolError, AdmissionError) as exc:
             return {
@@ -886,6 +1060,12 @@ class AgentGraph:
         action = state["action"]
         action_id = state["action_id"]
         try:
+            if restored.get("scope_obligations", []) != state.get(
+                "review_obligations", []
+            ):
+                raise AdmissionError(
+                    "Scope obligations changed since review; reobserve and review before dispatch."
+                )
             if restored.get("scope") != state.get("review_scope"):
                 raise AdmissionError(
                     "Original scope changed since this checkpoint's review; reobserve and review before dispatch."
@@ -1245,6 +1425,7 @@ class AgentGraph:
                         result
                         | {
                             "task_context": task_context(state),
+                            "action_journal": self.action_journal(state),
                             "evidence_manifest": manifest,
                             "context_limitations": "Evidence contains actual previously registered browser snapshots: cited observations first, then original scope and indexed historical pages. The manifest records provenance, chronology, original truncation, and explicit omissions. Historical snapshots establish only what was observed then; do not treat them as the current page or infer missing facts from omitted/truncated snapshots. Preserved scope identifies the original task boundary. Working notes and dispatch receipts are not proof of successful effects; verify all outcome claims against actual observed content.",
                         },
@@ -1308,6 +1489,18 @@ class AgentGraph:
                 ),
                 "claims": [],
                 "remaining": ["Task was not verified complete."],
+            }
+        unresolved = [
+            item["description"]
+            for item in state.get("scope_obligations", [])
+            if item["status"] == "open"
+        ]
+        if unresolved:
+            result = result | {
+                "unresolved_decisions": unresolved,
+                "summary": result["summary"]
+                + "\nUnresolved decisions (no assumption of resolution): "
+                + "; ".join(unresolved),
             }
         result = result | {
             "run_id": state["run_id"],

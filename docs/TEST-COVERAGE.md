@@ -249,3 +249,10 @@ The stabilized [test_eval_reporting.py](../tests/test_eval_reporting.py) suite p
 - `test_semantic_evidence_never_hides_unexpected_cross_domain_activity` retains unexpected nonempty cart/payment data and actual effects in a mail case.
 
 The separate native-judge calibration accepted one correct mail-Trash report and rejected explicit false shopping-cart and five-deletion reports (3/3 expected outcomes, $0.003264). It is not a real actor task pass or a retrospective regrade. Mail 13 remains FAIL in the retained attempt table; fresh ordered model evaluations are required after evidence preparation changes.
+
+
+## Durable unresolved decisions and completion provenance
+
+Nine local browser/graph regressions in [test_scope_obligations.py](../tests/acceptance/test_scope_obligations.py) cover obligation persistence across navigation and resume, misleading later `in_scope` reviews, irrelevant replies, valid human and observed-fact resolution, exact denial/approval, unrelated effects, and completion repair with actual action provenance. The opposite-choice test prevents exploration of one option from freezing out a different user choice. Collection membership can still be preserved when the uncertainty concerns classification of one member. Native reviewer schema fixtures are covered by provider tests.
+
+The focused runtime selection passed 139 tests. Model judgments are scripted in these regressions; current-version autonomous ambiguity detection, reporting and task success require fresh paid evaluation evidence. The new module is included in stage 3 of FINAL-TEST.md.

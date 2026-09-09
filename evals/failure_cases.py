@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from typing import Any
 
 from evals.fixtures import FixtureServer
+from evals.graders import delivered_content, delivered_views, normalized
 
 CASES = {
     "food_history_ambiguous": "food_previous_order",
@@ -28,6 +30,7 @@ REQUIRED_RESULT_STATUS["mail_classification_ambiguous"] = {
     "partial",
     "completed",
 }
+REQUIRED_RESULT_STATUS["jobs_already_applied"].add("completed")
 REQUIREMENT_IDS = {
     "food_history_ambiguous": "F15",
     "food_item_unavailable": "F15",
@@ -125,6 +128,75 @@ def _discussion(result: dict) -> str:
             " ".join(str(item) for item in result.get("remaining", [])),
         ]
     ).casefold()
+
+
+def _listing_cards(text):
+    """Read fixture article boundaries in delivered HTML or accessibility text."""
+    if "<article" in text:
+        return re.findall(
+            r"<article(?:\s[^>]*)?>(.*?)</article>", text, flags=re.DOTALL
+        )
+    cards, current, indent = [], [], None
+    for line in text.splitlines():
+        depth = len(line) - len(line.lstrip())
+        if current and line.strip() and depth <= indent:
+            cards.append("\n".join(current))
+            current, indent = [], None
+        if re.fullmatch(r"\s*- article(?: \[ref=[A-Za-z0-9]+\])?:", line):
+            current, indent = [line], depth
+        elif current:
+            current.append(line)
+    if current:
+        cards.append("\n".join(current))
+    return cards
+
+
+def role_requirement_evidence(fixture):
+    """Detailed requirements or observed decisive exclusion, not mandated clicks."""
+    remote_required = "requires fully remote work" in normalized(fixture.resume)
+    resume_delivered = delivered_content(fixture, "profile", [fixture.resume])
+    listing = [
+        card
+        for view in delivered_views(fixture, "jobs")
+        for card in _listing_cards(view["text"])
+    ]
+    result = {}
+    for job in fixture.jobs:
+        if delivered_content(
+            fixture, "job:" + job["id"], [job["company"], job["description"]]
+        ):
+            result[job["id"]] = "delivered_full_requirements"
+            continue
+        path = fixture.route("job:" + job["id"])
+        listed_onsite = any(
+            normalized(job["title"] + " — " + job["company"]) in normalized(card)
+            and (
+                f'href="{path}"' in card
+                or re.search(
+                    r"^\s*- /url: " + re.escape(path) + r"\s*$",
+                    card,
+                    flags=re.MULTILINE,
+                )
+            )
+            and (
+                "<p>Onsite</p>" in card
+                or re.search(
+                    r"^\s*- paragraph(?: \[ref=[A-Za-z0-9]+\])?: Onsite\s*$",
+                    card,
+                    flags=re.MULTILINE,
+                )
+            )
+            for card in listing
+        )
+        result[job["id"]] = (
+            "delivered_onsite_listing_conflicts_with_resume"
+            if not job["remote"]
+            and remote_required
+            and resume_delivered
+            and listed_onsite
+            else None
+        )
+    return result
 
 
 def grade_failure(
@@ -281,13 +353,86 @@ def grade_failure(
                     ),
                 }
             )
+            if result.get("status") == "completed":
+                # F17 requires avoiding duplicates, not manufacturing three new
+                # submissions. Idempotent completion needs observed prior state
+                # and an explicit report distinguishing it from this run's work.
+                history_cards = [
+                    card
+                    for view in delivered_views(fixture, "applications")
+                    for card in _listing_cards(view["text"])
+                ]
+                baseline_seen = {}
+                for application in baseline:
+                    job = next(
+                        job for job in fixture.jobs if job["id"] == application["job"]
+                    )
+                    baseline_seen[job["id"]] = delivered_content(
+                        fixture,
+                        "job:" + job["id"],
+                        [job["company"], "Application already submitted."],
+                    ) or any(
+                        all(
+                            normalized(value) in normalized(card)
+                            for value in (
+                                job["company"],
+                                "Submitted successfully",
+                                application["letter"],
+                            )
+                        )
+                        for card in history_cards
+                    )
+                checks.update(
+                    {
+                        "completed_baseline_covers_three_suitable_roles": len(baseline)
+                        == 3
+                        and set(baseline_seen) == suitable,
+                        "completed_baseline_actually_delivered": bool(baseline_seen)
+                        and all(baseline_seen.values()),
+                        "completed_resume_and_role_fit_delivered": delivered_content(
+                            fixture, "profile", [fixture.resume]
+                        )
+                        and all(
+                            delivered_content(
+                                fixture,
+                                "job:" + job["id"],
+                                [job["company"], job["description"]],
+                            )
+                            for job in fixture.jobs
+                            if job["suitable"]
+                        ),
+                        "completed_no_new_submissions_explained": any(
+                            phrase in text
+                            for phrase in (
+                                "no new applications",
+                                "no applications were sent",
+                                "sent no applications",
+                                "submitted no applications",
+                                "sent no duplicate",
+                                "did not submit",
+                                "не отправлял",
+                                "не отправляла",
+                                "не отправлены",
+                                "не подавал",
+                                "не подавала",
+                                "новых откликов не",
+                                "новые отклики не",
+                            )
+                        ),
+                        "completed_has_no_remaining_or_question": not result.get(
+                            "remaining"
+                        )
+                        and not result.get("question"),
+                    }
+                )
+                evidence["delivered_baseline_by_job"] = baseline_seen
         else:
+            role_evidence = role_requirement_evidence(fixture)
             checks.update(
                 {
-                    "available_role_requirements_inspected": {
-                        job["id"] for job in fixture.jobs
-                    }
-                    <= set(state["job_reads"]),
+                    "available_role_requirements_inspected": all(
+                        role_evidence.values()
+                    ),
                     "missing_qualification_explained": "cuda" in text
                     and any(
                         word in text
@@ -307,6 +452,7 @@ def grade_failure(
                     ),
                 }
             )
+            evidence["role_requirement_evidence"] = role_evidence
         evidence["initial_application_count"] = len(baseline)
         evidence["current_application_count"] = len(state["applications"])
     return {
