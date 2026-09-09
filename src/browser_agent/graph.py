@@ -281,7 +281,8 @@ class AgentGraph:
         registered = self.registered_observations(state)
         candidates = list(
             dict.fromkeys(
-                [claim["evidence_id"] for claim in proposal.get("claims", [])]
+                ([state["observation"]["id"]] if state.get("observation") else [])
+                + [claim["evidence_id"] for claim in proposal.get("claims", [])]
                 + [
                     item["evidence_id"]
                     for item in (state.get("scope") or {}).get("items", [])
@@ -1622,6 +1623,7 @@ class AgentGraph:
                     "No whole observed snapshot fits the completion evidence packet; inspect smaller scoped evidence before claiming completion."
                 )
             proposal = result | {
+                "current_observation_id": state.get("observation", {}).get("id"),
                 "task_context": current_context,
                 "action_journal": journal,
                 "evidence_manifest": manifest,
@@ -1631,7 +1633,7 @@ class AgentGraph:
                 review = await self.gateway.verify_completion(
                     state["task"], proposal, evidence
                 )
-                return review, manifest
+                return review, evidence, manifest
             except ContextOverflow as exc:
                 # Gateway raises this only before reservation/generation. A
                 # semantic rejection or any paid/provider error never repacks.
@@ -1713,7 +1715,11 @@ class AgentGraph:
                     )
             if not problems:
                 try:
-                    review, manifest = await self.review_completion_with_admission(
+                    (
+                        review,
+                        evidence,
+                        manifest,
+                    ) = await self.review_completion_with_admission(
                         state, result, evidence, manifest, started
                     )
                     self.emit("completion_review", review)
@@ -1725,6 +1731,31 @@ class AgentGraph:
                             + review["boundary_status"]
                             + ": "
                             + review["reason"]
+                        )
+                    next_action = review["next_visible_action"]
+                    if review["boundary_status"] == "reached":
+                        if next_action["kind"] != "excluded_final_effect":
+                            problems.append(
+                                "Reached endpoint contradicts next visible action kind: "
+                                + next_action["kind"]
+                                + ". Complete permitted intermediate preparation or inspect the actual endpoint."
+                            )
+                        current_id = state.get("observation", {}).get("id")
+                        if not next_action["evidence"] or any(
+                            item["evidence_id"] != current_id
+                            or current_id not in evidence
+                            or item["quote"] not in evidence[current_id]
+                            for item in next_action["evidence"]
+                        ):
+                            problems.append(
+                                "Reached endpoint requires positive exact next-action evidence from the current observation admitted to this review. Historical pages, fabricated quotes and absence of commitment are insufficient."
+                            )
+                    elif (
+                        review["boundary_status"] == "not_applicable"
+                        and next_action["kind"] != "not_applicable"
+                    ):
+                        problems.append(
+                            "Boundary not_applicable contradicts the supplied next-action classification; reassess the original requested outcome."
                         )
                     if review["remaining_permitted_steps"]:
                         problems.append(

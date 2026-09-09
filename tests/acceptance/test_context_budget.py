@@ -447,6 +447,11 @@ def completion_transport(runtime, run_id, counts, *, outcome=None, delay=0):
         "completion_review",
         {
             "supported": True,
+            "next_visible_action": {
+                "kind": "not_applicable",
+                "effect": "No explicit stop-before effect in this synthetic goal.",
+                "evidence": [],
+            },
             "boundary_status": "not_applicable",
             "remaining_permitted_steps": [],
             "reason": "Synthetic source-supported completed outcome.",
@@ -683,6 +688,11 @@ async def test_completion_semantic_or_provider_failure_does_not_repack(
                 "completion_review",
                 {
                     "supported": False,
+                    "next_visible_action": {
+                        "kind": "not_applicable",
+                        "effect": "No explicit stop-before effect in this synthetic goal.",
+                        "evidence": [],
+                    },
                     "boundary_status": "not_applicable",
                     "remaining_permitted_steps": [],
                     "reason": "More actual task evidence is required.",

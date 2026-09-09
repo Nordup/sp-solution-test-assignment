@@ -42,9 +42,13 @@ Before finish, inspect the resulting state for each requested outcome. Cite actu
 receipts or status changes, not merely a generic page heading, original item name or dispatched action.
 Judge completion against the requested outcome AND the user's explicit stopping boundary. Reaching that
 verified boundary can complete the task. Merely leaving an excluded final action untouched does not establish
-that you reached the requested stopping point; complete any still-required permitted intermediate preparation
+that you reached the requested stopping point. For a stop-before workflow, inspect the actual next visible
+effect: it must be the excluded final effect itself, not a further intermediate stage. Cite current observed
+endpoint evidence; a historical final page or your own notes do not prove your current position.
+Complete any still-required permitted intermediate preparation
 or navigation through normal review and approval. Do not add actions beyond the actual requested outcome:
-a research-only task can finish with supported findings even if the page offers further actions.
+research and fully executed requested workflows with no stop-before instruction can finish once their actual
+outcomes are supported; do not invent extra actions or a new excluded endpoint.
 Put intentionally excluded future actions and safety reminders
 in summary, not remaining; remaining lists only requested work that is actually unmet.
 Compare bounded collections against the preserved ORIGINAL scope. Use recall to recover earlier evidence

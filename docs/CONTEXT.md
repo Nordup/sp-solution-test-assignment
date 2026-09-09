@@ -610,6 +610,11 @@ Reporting tests verify that real delivered browser text supplements compact fixt
 
 Context-budget tests exercise actual Gateway admission with controlled wire counts: remove only receipt entries matched by both action and evidence IDs to included journal records; retain unmatched receipts and every protected constraint; reduce whole historical snapshots only on the final bounded attempt; preserve explicit source omissions; stop on repeated overflow or active-time exhaustion. Semantic/provider failures never trigger repacking, and over-limit count attempts cannot reserve or dispatch generation. Native count-only evidence and actual task outcomes remain separate in VALIDATION.md.
 
+
+## Current endpoint proof
+
+Completion-boundary tests now require a structured next-visible-action assessment. A reached endpoint must cite the current observation admitted to that review and classify its next effect as the explicitly excluded final effect. Tests reject authentic historical endpoint text, fabricated quote/ID, missing proof and a permitted intermediate step mislabeled as reached. Research and fully performed workflows without stop-before instructions remain valid without inventing extra actions. The bounded repair path still requires ordinary action approval. Native calibration and fresh autonomous task results remain separate evidence.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -620,7 +625,7 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-The latest completed candidate, `54cb4d2ed673` (commit `ff5f64e`), passed **223 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail run completed the intended browser changes but failed final verification because the exact request exceeded the 20,000-token cap by 206 tokens. The run remains **FAIL**. A bounded completion-packing repair is being verified; the remaining ordered task/failure stages and final video are not complete.
+Current candidate `af54bf739c82` (commit `bfbbd1b`) passed **229 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its ordered task evaluations are running. The prior candidate's mail task completed the browser changes but could not fit its completion request; that failed result is retained below. The repair fits the exact saved request at 17,754 tokens while preserving all 19 evidence sources. The remaining ordered task/failure stages and final video are not complete.
 
 Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
 
@@ -749,6 +754,18 @@ The saved completion packet duplicated 6,464 bytes of action receipts alongside 
 
 The native count-only reconstruction of that exact saved request now passes admission after exact receipt deduplication: **20,206 → 17,754 tokens**, with **all 19 whole browser snapshots retained**. It called only the input-count endpoint, made no generation calls, and verified that historical run files were unchanged. The final attempt has at most three admission variants; semantic/provider/budget failures do not trigger this packing loop. This establishes the request-size repair, not an autonomous task pass.
 
+
+### Current packing candidate task results
+
+On `af54bf739c82`, mail (`3b23a07d-8c6f-43c8-80e8-49e3ea6a188d`) **passed every check**, including exact browser state, prior approval, factual grading and verified trace; $0.182371 settled, no reserved/unknown amount. Its completion request fit the first admission variant; the separate native count-only retained-request probe establishes the deduplication path.
+
+The following food task (`17553c89-e37a-49a6-b8be-e15715f5a56a`) remains **FAIL**, $0.036035 settled, verified trace and no unresolved reservation. Items, quantities, total, approvals and no-order/payment checks passed, but it stopped on intermediate Checkout before entering payment review. The medium-effort completion reviewer incorrectly classified that early stop as the required boundary. Only checkout_boundary_reached failed; independent factual grading did not run after the deterministic failure. The ordered pipeline stopped before jobs. The earlier positive calibration and three-trial endpoint success did not establish reliable completion.
+
+A stronger generic endpoint-evidence contract is now implemented. The reviewer first identifies the next visible effect and its current observation evidence, then classifies the boundary. Host acceptance of reached requires the excluded-final-effect classification and exact quotes from the current observation actually admitted to review. Historical pages, fabricated quotes, absent evidence and contradictory intermediate-step classification cannot pass. Tasks without an explicit stop-before instruction—including completed mail/jobs workflows and research—use not_applicable without extra actions. No task/site routes or control labels are hardcoded. New validation remains pending; no failed attempt is relabeled.
+
+
+Candidate `b7bc710bca37` passed **175 focused tests** and a **7/7 native endpoint-proof calibration** (`cc549dbe-dc8e-4a0a-b0a5-ac63ce563090`). The actual finalization path rejected both retained intermediate-checkout failures and a false endpoint assertion, while accepting the actual final checkout, research-only result, completed mail workflow and completed job applications. Inputs ran in scratch copies with historical file hashes checked; no actor/browser actions or historical regrades occurred. Calibration cost was $0.021948 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. Fresh ordered evidence is pending; this small calibration is not a reliability estimate.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -808,6 +825,8 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `1b9885bc-37b8-4d41-b16f-33c2e9d0b58c` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.042631 | 0.000000 |
 | `a92bd894-df4c-45d6-b651-6c384fd54409` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.041991 | 0.000000 |
 | `d1478859-89c4-4f2f-b4bd-0114bbc47a2b` | `mail_latest_10` / 101 | `54cb4d2ed673` | FAIL | 8/10 | yes | 0.221003 | 0.000000 |
+| `3b23a07d-8c6f-43c8-80e8-49e3ea6a188d` | `mail_latest_10` / 101 | `af54bf739c82` | PASS | 13/13 | yes | 0.182371 | 0.000000 |
+| `17553c89-e37a-49a6-b8be-e15715f5a56a` | `food_previous_order` / 102 | `af54bf739c82` | FAIL | 10/11 | yes | 0.036035 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

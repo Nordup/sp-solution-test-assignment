@@ -271,3 +271,8 @@ Reporting tests verify that real delivered browser text supplements compact fixt
 ## Completion request admission recovery
 
 Context-budget tests exercise actual Gateway admission with controlled wire counts: remove only receipt entries matched by both action and evidence IDs to included journal records; retain unmatched receipts and every protected constraint; reduce whole historical snapshots only on the final bounded attempt; preserve explicit source omissions; stop on repeated overflow or active-time exhaustion. Semantic/provider failures never trigger repacking, and over-limit count attempts cannot reserve or dispatch generation. Native count-only evidence and actual task outcomes remain separate in VALIDATION.md.
+
+
+## Current endpoint proof
+
+Completion-boundary tests now require a structured next-visible-action assessment. A reached endpoint must cite the current observation admitted to that review and classify its next effect as the explicitly excluded final effect. Tests reject authentic historical endpoint text, fabricated quote/ID, missing proof and a permitted intermediate step mislabeled as reached. Research and fully performed workflows without stop-before instructions remain valid without inventing extra actions. The bounded repair path still requires ordinary action approval. Native calibration and fresh autonomous task results remain separate evidence.

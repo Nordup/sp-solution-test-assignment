@@ -398,6 +398,11 @@ def rejecting_completion(gateway, *, once=False, error=None):
         if error:
             raise error
         return {
+            "next_visible_action": {
+                "kind": "not_applicable",
+                "effect": "No explicit stop-before effect in this synthetic goal.",
+                "evidence": [],
+            },
             "boundary_status": "not_applicable",
             "remaining_permitted_steps": [],
             "supported": once and gateway.completion_reviews > 1,
@@ -597,6 +602,11 @@ async def test_completion_packet_recovers_prior_contents_after_compaction(tmp_pa
         async def review(task, proposal, evidence):
             reviewed.append((proposal, evidence))
             return {
+                "next_visible_action": {
+                    "kind": "not_applicable",
+                    "effect": "No explicit stop-before effect in this synthetic goal.",
+                    "evidence": [],
+                },
                 "boundary_status": "not_applicable",
                 "remaining_permitted_steps": [],
                 "supported": all(
@@ -640,6 +650,11 @@ async def test_completion_packet_rejects_missing_content_despite_memory_claims(
         async def review(task, proposal, evidence):
             reviewed.append(evidence)
             return {
+                "next_visible_action": {
+                    "kind": "not_applicable",
+                    "effect": "No explicit stop-before effect in this synthetic goal.",
+                    "evidence": [],
+                },
                 "boundary_status": "not_applicable",
                 "remaining_permitted_steps": [],
                 "supported": any(
@@ -884,6 +899,16 @@ async def test_completion_repair_respects_explicit_stop_boundary_without_effect(
                 and await browser.page.evaluate("window.effects || 0") == 0
             )
             return {
+                "next_visible_action": {
+                    "kind": "excluded_final_effect",
+                    "effect": "Send the prepared application.",
+                    "evidence": [
+                        {
+                            "evidence_id": proposal["current_observation_id"],
+                            "quote": "Send application",
+                        }
+                    ],
+                },
                 "boundary_status": "reached" if supported else "uncertain",
                 "remaining_permitted_steps": [],
                 "supported": supported,

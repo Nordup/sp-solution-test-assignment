@@ -235,6 +235,11 @@ async def test_p06_actual_reviewer_and_completion_wrappers_share_actor_ledger(tm
         "completion_review",
         {
             "supported": True,
+            "next_visible_action": {
+                "kind": "not_applicable",
+                "effect": "No explicit stop-before effect in this synthetic goal.",
+                "evidence": [],
+            },
             "boundary_status": "not_applicable",
             "remaining_permitted_steps": [],
             "reason": "Observed matching state",

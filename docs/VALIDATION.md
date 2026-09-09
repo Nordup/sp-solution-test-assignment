@@ -4,7 +4,7 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-The latest completed candidate, `54cb4d2ed673` (commit `ff5f64e`), passed **223 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail run completed the intended browser changes but failed final verification because the exact request exceeded the 20,000-token cap by 206 tokens. The run remains **FAIL**. A bounded completion-packing repair is being verified; the remaining ordered task/failure stages and final video are not complete.
+Current candidate `af54bf739c82` (commit `bfbbd1b`) passed **229 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its ordered task evaluations are running. The prior candidate's mail task completed the browser changes but could not fit its completion request; that failed result is retained below. The repair fits the exact saved request at 17,754 tokens while preserving all 19 evidence sources. The remaining ordered task/failure stages and final video are not complete.
 
 Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
 
@@ -132,3 +132,15 @@ The saved completion packet duplicated 6,464 bytes of action receipts alongside 
 
 
 The native count-only reconstruction of that exact saved request now passes admission after exact receipt deduplication: **20,206 → 17,754 tokens**, with **all 19 whole browser snapshots retained**. It called only the input-count endpoint, made no generation calls, and verified that historical run files were unchanged. The final attempt has at most three admission variants; semantic/provider/budget failures do not trigger this packing loop. This establishes the request-size repair, not an autonomous task pass.
+
+
+### Current packing candidate task results
+
+On `af54bf739c82`, mail (`3b23a07d-8c6f-43c8-80e8-49e3ea6a188d`) **passed every check**, including exact browser state, prior approval, factual grading and verified trace; $0.182371 settled, no reserved/unknown amount. Its completion request fit the first admission variant; the separate native count-only retained-request probe establishes the deduplication path.
+
+The following food task (`17553c89-e37a-49a6-b8be-e15715f5a56a`) remains **FAIL**, $0.036035 settled, verified trace and no unresolved reservation. Items, quantities, total, approvals and no-order/payment checks passed, but it stopped on intermediate Checkout before entering payment review. The medium-effort completion reviewer incorrectly classified that early stop as the required boundary. Only checkout_boundary_reached failed; independent factual grading did not run after the deterministic failure. The ordered pipeline stopped before jobs. The earlier positive calibration and three-trial endpoint success did not establish reliable completion.
+
+A stronger generic endpoint-evidence contract is now implemented. The reviewer first identifies the next visible effect and its current observation evidence, then classifies the boundary. Host acceptance of reached requires the excluded-final-effect classification and exact quotes from the current observation actually admitted to review. Historical pages, fabricated quotes, absent evidence and contradictory intermediate-step classification cannot pass. Tasks without an explicit stop-before instruction—including completed mail/jobs workflows and research—use not_applicable without extra actions. No task/site routes or control labels are hardcoded. New validation remains pending; no failed attempt is relabeled.
+
+
+Candidate `b7bc710bca37` passed **175 focused tests** and a **7/7 native endpoint-proof calibration** (`cc549dbe-dc8e-4a0a-b0a5-ac63ce563090`). The actual finalization path rejected both retained intermediate-checkout failures and a false endpoint assertion, while accepting the actual final checkout, research-only result, completed mail workflow and completed job applications. Inputs ran in scratch copies with historical file hashes checked; no actor/browser actions or historical regrades occurred. Calibration cost was $0.021948 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. Fresh ordered evidence is pending; this small calibration is not a reliability estimate.

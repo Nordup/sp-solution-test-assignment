@@ -105,6 +105,11 @@ class ScriptedGateway:
         self.completion_reviews += 1
         return {
             "supported": True,
+            "next_visible_action": {
+                "kind": "not_applicable",
+                "effect": "No explicit stop-before effect in this synthetic goal.",
+                "evidence": [],
+            },
             "boundary_status": "not_applicable",
             "remaining_permitted_steps": [],
             "reason": "Synthetic completion review",

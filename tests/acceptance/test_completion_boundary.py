@@ -59,6 +59,22 @@ async def test_premature_truthful_finish_repairs_to_requested_endpoint_under_exa
             # reject inconsistent supported=True plus not_reached/remaining work.
             return {
                 "supported": True,
+                "next_visible_action": {
+                    "kind": "excluded_final_effect"
+                    if reached
+                    else "permitted_preparation",
+                    "effect": "Sign and publish."
+                    if reached
+                    else "Open another review stage.",
+                    "evidence": [
+                        {
+                            "evidence_id": proposal["current_observation_id"],
+                            "quote": "Sign and publish"
+                            if reached
+                            else "Open final review",
+                        }
+                    ],
+                },
                 "boundary_status": "reached" if reached else "not_reached",
                 "remaining_permitted_steps": []
                 if reached
@@ -99,6 +115,11 @@ async def test_boundary_review_exhaustion_stays_truthfully_partial(
             calls += 1
             return {
                 "supported": True,
+                "next_visible_action": {
+                    "kind": "not_applicable",
+                    "effect": "No explicit stop-before effect in this synthetic goal.",
+                    "evidence": [],
+                },
                 "boundary_status": "reached"
                 if assessment == "remaining"
                 else assessment,
@@ -135,6 +156,11 @@ async def test_read_only_goal_does_not_require_visible_workflow_actions(tmp_path
             )
             return {
                 "supported": True,
+                "next_visible_action": {
+                    "kind": "not_applicable",
+                    "effect": "No explicit stop-before effect in this synthetic goal.",
+                    "evidence": [],
+                },
                 "boundary_status": "not_applicable",
                 "remaining_permitted_steps": [],
                 "reason": "The requested finding is observed; additional workflow actions are outside this read-only goal.",
@@ -152,3 +178,93 @@ async def test_read_only_goal_does_not_require_visible_workflow_actions(tmp_path
         assert not result.get("completion_repairs")
         assert await browser.page.evaluate("window.preparations||0") == 0
         assert await browser.page.evaluate("window.commitments||0") == 0
+
+
+@pytest.mark.parametrize(
+    "bad_proof",
+    ["historical", "fabricated_quote", "fabricated_id", "missing", "intermediate_kind"],
+)
+async def test_reached_endpoint_requires_consistent_positive_current_source_proof(
+    tmp_path, bad_proof
+):
+    async with graph_case(
+        tmp_path, html=PAGE, script=[finish("Draft prepared")] * 3
+    ) as (browser, gateway, _store, runtime, graph, config, initial, _events):
+        state = initial | {"task": TASK}
+        await browser.page.evaluate(
+            "document.querySelector('#draft').hidden=true;document.querySelector('#final').hidden=false"
+        )
+        state |= await runtime.observe(state)
+        historical_id = state["observation"]["id"]
+        assert "Sign and publish" in state["observation"]["text"]
+        await browser.page.set_content(PAGE)
+        reviews = 0
+
+        async def verify(task, proposal, evidence):
+            nonlocal reviews
+            reviews += 1
+            current_id = proposal["current_observation_id"]
+            assert (
+                current_id != historical_id and "Draft prepared" in evidence[current_id]
+            )
+            source_id = (
+                historical_id
+                if bad_proof == "historical"
+                else "fabricated"
+                if bad_proof == "fabricated_id"
+                else current_id
+            )
+            quote = (
+                "Open final review"
+                if bad_proof == "intermediate_kind"
+                else "Sign and publish"
+            )
+            if bad_proof == "historical":
+                assert quote in evidence[historical_id]  # Authentic, but stale.
+            return {
+                "next_visible_action": {
+                    "effect": "Alleged excluded final effect.",
+                    "kind": "permitted_preparation"
+                    if bad_proof == "intermediate_kind"
+                    else "excluded_final_effect",
+                    "evidence": []
+                    if bad_proof == "missing"
+                    else [{"evidence_id": source_id, "quote": quote}],
+                },
+                "boundary_status": "reached",
+                "remaining_permitted_steps": [],
+                "supported": True,
+                "reason": "Synthetic overconfident endpoint assessment.",
+            }
+
+        gateway.verify_completion = verify
+        result = await graph.ainvoke(state, config)
+        assert result["result"]["status"] == "partial"
+        assert result["completion_repairs"] == 2 and reviews == 3
+        assert await browser.page.evaluate("window.preparations||0") == 0
+        assert await browser.page.evaluate("window.commitments||0") == 0
+        assert result["result"]["summary"].startswith("Completion was not verified:")
+
+
+async def test_completed_requested_effect_without_stop_before_needs_no_extra_endpoint(
+    tmp_path,
+):
+    from test_graph_resume import FORM
+
+    async with graph_case(
+        tmp_path,
+        html=FORM,
+        script=[click("Send application"), finish("Application recorded")],
+    ) as (browser, _gateway, _store, _runtime, graph, config, initial, events):
+        waiting = await graph.ainvoke(
+            initial
+            | {"task": "Send my prepared application to Acme and report the outcome."},
+            config,
+        )
+        assert pending(waiting)["kind"] == "approval"
+        result = await graph.ainvoke(approval_answer(waiting), config)
+        assert result["result"]["status"] == "completed"
+        assert await browser.page.evaluate("window.effects") == 1
+        review = next(data for name, data in events if name == "completion_review")
+        assert review["boundary_status"] == "not_applicable"
+        assert review["next_visible_action"]["kind"] == "not_applicable"
