@@ -52,6 +52,9 @@ class State(TypedDict, total=False):
     progress: list
     memory_step: int
     memory_required: bool
+    recalled_evidence_ids: list
+    scope_question_reviews: int
+    scope_evidence_feedback: dict | None
     scope_review_repairs: int
     scope_obligations: list
     review_obligations: list
@@ -219,6 +222,7 @@ class AgentGraph:
             "policy",
             lambda s: s["route"],
             {
+                "policy": "policy",
                 "approval": "approval",
                 "decide": "decide",
                 "execute": "execute",
@@ -469,6 +473,59 @@ class AgentGraph:
             self.atomic_json(self.run_dir / "scope-obligations.json", obligations)
             self.emit("scope_obligations", {"obligations": obligations})
         return obligations
+
+    def scope_packet(self, state, max_bytes=32000):
+        """Action review shares actual archives, not just the current page."""
+        user_sources = {"user_task": state["task"]} | {
+            f"user_answer:{index}": answer
+            for index, answer in enumerate(state.get("clarifications", []))
+        }
+        priority = [state["observation"]["id"]] + list(
+            reversed(state.get("recalled_evidence_ids", []))
+        )
+        priority += [
+            item["source_id"]
+            for item in (state.get("scope_evidence_feedback") or {}).get("evidence", [])
+            if item["source_id"] not in user_sources
+        ]
+        priority += [
+            item["evidence_id"] for item in (state.get("scope") or {}).get("items", [])
+        ]
+        priority += [
+            source["source_id"]
+            for obligation in state.get("scope_obligations", [])
+            for source in obligation.get("evidence", [])
+            + obligation.get("resolution", {}).get("evidence", [])
+            if source["source_id"] not in user_sources
+        ]
+        priority += list(reversed(state.get("evidence_ids", [])))
+        user_bytes = len(json.dumps(user_sources, ensure_ascii=False).encode())
+        if user_bytes + 1000 >= max_bytes:
+            raise ContextOverflow(
+                "Actual user inputs exceed scope-evidence packet capacity; no user constraint was silently truncated."
+            )
+        evidence, manifest = self.completion_packet(
+            state,
+            {"claims": [{"evidence_id": key} for key in dict.fromkeys(priority)]},
+            max_bytes=max_bytes - user_bytes - 1000,
+        )
+        sources = evidence | user_sources
+        manifest = manifest | {
+            "byte_limit": max_bytes,
+            "user_source_ids": list(user_sources),
+        }
+        if (
+            len(
+                json.dumps(
+                    {"sources": sources, "manifest": manifest}, ensure_ascii=False
+                ).encode()
+            )
+            > max_bytes
+        ):
+            raise ContextOverflow(
+                "Scope-evidence packet exceeds its bound; no snapshot was silently clipped."
+            )
+        return sources, manifest
 
     @staticmethod
     def scope_quote_candidates(sources):
@@ -809,6 +866,9 @@ class AgentGraph:
                         "historical_text": excerpt,
                         "next_offset": end if end < len(historic) else None,
                     },
+                    recalled_evidence_ids=(
+                        state.get("recalled_evidence_ids", []) + [evidence_id]
+                    )[-8:],
                     route="decide",
                 )
             if call["name"] == "reconcile":
@@ -956,30 +1016,12 @@ class AgentGraph:
             metadata = await self.browser.action_context(
                 action["tool"], action["args"], state["observation"]["id"]
             )
-            sources = self.obligation_sources(state)
-            # Current actual snapshot plus the original evidence for pending choices;
-            # sources supplied to the reviewer are the only admissible resolutions.
-            source_ids = (
-                {state["observation"]["id"], "user_task"}
-                | {key for key in sources if key.startswith("user_answer:")}
-                | {
-                    item["source_id"]
-                    for obligation in state.get("scope_obligations", [])
-                    for item in obligation.get("evidence", [])
-                }
-            )
-            # Stable order prioritizes current visible facts in the copy aid.
-            ordered_ids = [state["observation"]["id"]] + sorted(
-                source_ids - {state["observation"]["id"]}
-            )
-            supplied = {key: sources[key] for key in ordered_ids if key in sources}
-            if len(json.dumps(supplied, ensure_ascii=False).encode()) > 32000:
-                raise ContextOverflow(
-                    "Scope-review evidence exceeds its bound; inspect smaller evidence before continuing."
-                )
+            supplied, scope_manifest = self.scope_packet(state)
             review_metadata = metadata | {
                 "task_context": task_context(state),
                 "scope_sources": supplied,
+                "scope_evidence_manifest": scope_manifest,
+                "scope_evidence_feedback": state.get("scope_evidence_feedback"),
                 "scope_quote_candidates": self.scope_quote_candidates(supplied),
             }
             while True:
@@ -1077,14 +1119,21 @@ class AgentGraph:
                     and item["id"] not in review.get("unaffected_obligation_ids", [])
                 ]
                 if blocking:
-                    return update | {
-                        "route": "ask",
-                        "question": {
-                            "kind": "clarification",
-                            "question": "A material task choice remains unresolved before this change: "
-                            + "; ".join(item["description"] for item in blocking),
-                        },
+                    question = {
+                        "kind": "clarification",
+                        "question": "A material task choice remains unresolved before this change: "
+                        + "; ".join(item["description"] for item in blocking),
                     }
+                    return update | await self.admit_scope_question(
+                        state
+                        | update
+                        | {
+                            "active_seconds": state.get("active_seconds", 0)
+                            + time.monotonic()
+                            - started
+                        },
+                        question,
+                    )
                 if review.get("scope_status", "uncertain") == "out_of_scope":
                     return update | self.outcome(
                         state,
@@ -1363,6 +1412,70 @@ class AgentGraph:
                 },
             }
         return {"route": "observe"}
+
+    async def admit_scope_question(self, state, question):
+        """Check proposed policy handover without inventing an actor tool call."""
+        reviews = state.get("scope_question_reviews", 0)
+        fallback = {
+            "route": "ask",
+            "question": question,
+            "scope_question_reviews": reviews,
+        }
+        if (
+            reviews >= 2
+            or state.get("steps", 0) >= self.settings.max_decisions
+            or state.get("active_seconds", 0) >= self.settings.active_seconds
+        ):
+            return fallback
+        try:
+            sources, manifest = self.scope_packet(state)
+            user_sources = {key: sources[key] for key in manifest["user_source_ids"]}
+            evidence = {
+                key: value for key, value in sources.items() if key not in user_sources
+            }
+            review = await self.gateway.review_clarification(
+                state["task"],
+                question,
+                {
+                    "task_context": task_context(state),
+                    "user_sources": user_sources,
+                    "evidence_manifest": manifest,
+                },
+                evidence,
+            )
+            reviews += 1
+            self.emit(
+                "scope_question_review",
+                review | {"review_count": reviews, "review_limit": 2},
+            )
+            if (
+                review["classification"] == "already_available"
+                and review["evidence"]
+                and all(
+                    item["source_id"] in sources
+                    and item["quote"] in sources[item["source_id"]]
+                    for item in review["evidence"]
+                )
+            ):
+                return {
+                    "route": "policy",
+                    "scope_question_reviews": reviews,
+                    "scope_evidence_feedback": {
+                        "reason": review["reason"],
+                        "evidence": review["evidence"],
+                        "instruction": "Independent clarification admission located relevant actual evidence. Reassess the proposed action and open obligations against these exact sources. This is neither a human answer nor an approval and does not itself resolve a choice. Keep any genuine remaining ambiguity open.",
+                    },
+                }
+            return fallback | {"scope_question_reviews": reviews}
+        except (ProviderFailure, BudgetExceeded, ProtocolError, ContextOverflow) as exc:
+            return fallback | {
+                "scope_question_reviews": reviews,
+                "question": question
+                | {
+                    "question": f"Scope clarification check unavailable ({type(exc).__name__}); manual review is needed. "
+                    + question["question"]
+                },
+            }
 
     async def admit_clarification(self, state):
         """Review actor questions before the pure interrupt, never during resume."""

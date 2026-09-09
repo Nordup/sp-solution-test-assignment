@@ -94,6 +94,13 @@ class ScriptedGateway:
             "reason": "Deterministic risk classification for testing the real policy.",
         }
 
+    async def review_clarification(self, task, question, context, evidence):
+        return {
+            "classification": "missing_information",
+            "reason": "Synthetic genuine choice; no human answer is invented.",
+            "evidence": [],
+        }
+
     async def verify_completion(self, task, result, evidence):
         self.completion_reviews += 1
         return {"supported": True, "reason": "Synthetic completion review"}

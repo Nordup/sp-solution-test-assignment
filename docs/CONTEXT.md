@@ -610,6 +610,9 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 - Candidate `a27f70512cbe` passed 199 ordered contract tests, 32 browser tests and native provider/LangSmith preflight. Fresh mail 15 (`194d7fcc`) passed all checks with verified tracing at $0.144409. Food 6 (`2d241ea6`) failed after three independent reviewer source/quote validation errors; its settled cost was $0.012875, with no cart/checkout/order/payment effect. Rejected reviewer output was not retained at that time, so the exact bad citation cannot be reconstructed. The pipeline stopped before jobs and later stages.
 - The repair now returns precise citation errors and a bounded exact-copy aid to the independent reviewer, rather than asking the actor to fix a hidden reviewer response. At most two semantic citation repairs are admitted per logical task, through the same native Gateway and budget; rejected reviews cannot authorize dispatch. Fourteen focused scope tests passed, including invalid source IDs, paraphrases, successful exact approval after correction, exhausted retries and budget failure. The full staged suite must be rerun on this changed runtime.
 
+- Candidate `e2817aa4e8d5` passed 204 contract tests, 32 browser tests and preflight. Targeted normal food (`35e48992`, $0.033321) and ambiguous history (`821a8224`, $0.007931) passed with verified traces; the latter explicitly asked the user to choose between the two actual qualifying restaurants without proposing a cart change. Full mail 16 (`877ad3e6`, $0.155042) also passed. The repeated full food run (`fb797a41`, $0.012231) then failed: the actor had read the decisive history, but the risk reviewer received only the current menu and asked for the already-observed restaurant identity. No cart/checkout/order/payment effect occurred. This failure remains retained; a single successful diagnostic did not establish reliable completion.
+- The archive-sharing repair passed 150 targeted runtime tests, including 20 scope cases. Risk review receives current, recalled, original-scope and obligation/resolution snapshots plus recent delivered evidence within a 32KB packet with provenance and explicit omissions. Up to two scope-related clarification checks can return exact already-known facts to normal risk review; those checks cannot resolve obligations or approve actions themselves. Tests cover history after navigation/forced memory, known facts, stubborn disagreement, genuine choice, invalid evidence, budget failure and source prioritization/whole-snapshot bounds. Fresh ordered stages and three normal-food diagnostic repetitions are required before final sign-off.
+
 ## Retained evidence and implementation history
 
 - Native function registry, strict Pydantic argument validation, bounded repairs and actual OpenAI token admission are implemented.
@@ -740,6 +743,10 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `2718a9d0-fdad-4fc4-9302-3a76d87a2906` | `jobs_unsupported_qualifications` / 405 | `68ef96d00fbe` | FAIL | 12/13 | yes | 0.020527 | 0.000000 |
 | `194d7fcc-a977-4e2a-8996-3013cbbf416c` | `mail_latest_10` / 101 | `a27f70512cbe` | PASS | 13/13 | yes | 0.144409 | 0.000000 |
 | `2d241ea6-96e3-43e3-84e6-591a17254500` | `food_previous_order` / 102 | `a27f70512cbe` | FAIL | 6/11 | yes | 0.012875 | 0.000000 |
+| `35e48992-3b81-4769-a785-abcc096f7b27` | `food_previous_order` / 102 | `e2817aa4e8d5` | PASS | 14/14 | yes | 0.033321 | 0.000000 |
+| `821a8224-e48a-4c46-968a-1c4fc85b1a58` | `food_history_ambiguous` / 401 | `e2817aa4e8d5` | PASS | 15/15 | yes | 0.007931 | 0.000000 |
+| `877ad3e6-bd1e-4973-9a71-ce1f294e4882` | `mail_latest_10` / 101 | `e2817aa4e8d5` | PASS | 13/13 | yes | 0.155042 | 0.000000 |
+| `fb797a41-e1c4-4e3c-8a4b-0d21deba5f58` | `food_previous_order` / 102 | `e2817aa4e8d5` | FAIL | 6/11 | yes | 0.012231 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

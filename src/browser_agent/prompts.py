@@ -69,6 +69,11 @@ Record new material unresolved choices/conflicting constraints in new_obligation
 even if THIS navigation is ordinary and in_scope. Do not record routine missing facts that exploration can gather.
 A request to discover a fact does not itself establish ambiguity before its source is inspected. Record a material
 choice when actual evidence supports competing alternatives or the user explicitly leaves a necessary preference open.
+scope_sources contains bounded actual archived observations as well as the current snapshot and user inputs.
+Use prior observed content to evaluate earlier facts; an action receipt or working note is not a substitute.
+The scope_evidence_manifest identifies chronology, truncation and omissions. Historical evidence is not a current
+DOM or actionable ref source. Evidence omitted from this packet is not an absent fact or a genuine human choice;
+do not invent ambiguity solely because a needed previously observed page is no longer current.
 Scope evidence requires exact source IDs and contiguous quotes; copy short exact_fragments when useful and use separate
 evidence entries for separate facts. If scope_review_feedback rejects your citations, correct your own cited fields
 against the supplied sources. Keep unresolved choices open unless actual evidence resolves them.
