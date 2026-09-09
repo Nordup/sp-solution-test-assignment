@@ -462,6 +462,13 @@ def completion_transport(runtime, run_id, counts, *, outcome=None, delay=0):
     runtime.gateway = Gateway(
         runtime.settings, runtime.store, run_id, client=transport, emit=runtime.emit
     )
+
+    # These tests isolate endpoint request repacking; factual Gateway admission
+    # and failure/ledger behavior have their own native transport regressions.
+    async def report_pass(*_args):
+        return {"issues": [], "supported": True, "reason": "Synthetic factual check."}
+
+    runtime.gateway.verify_report = report_pass
     return transport
 
 

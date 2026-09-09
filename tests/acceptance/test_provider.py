@@ -314,13 +314,14 @@ async def test_p06_native_completion_requires_explicit_boundary_assessment(tmp_p
     "purpose,expected_effort",
     [
         ("completion_reviewer", "medium"),
+        ("report_reviewer", "medium"),
         ("actor", "low"),
         ("risk_reviewer", "low"),
         ("clarification_reviewer", "low"),
         ("memory", "low"),
     ],
 )
-async def test_host_selects_completion_only_effort_for_count_generation_and_retry(
+async def test_host_selects_final_review_effort_for_count_generation_and_retry(
     tmp_path, purpose, expected_effort
 ):
     client, store, transport, _sleeps, events = gateway(tmp_path, [error(), success()])
@@ -347,19 +348,24 @@ async def test_host_selects_completion_only_effort_for_count_generation_and_retr
         expected_effort,
         expected_effort,
     ]
+    assert [data["purpose"] for data in admissions] == [purpose, purpose]
     assert store.budget("run")["unknown"] == admissions[0]["reserved_microusd"]
     assert store.budget("run")["settled"] == 37
 
 
-async def test_completion_effort_is_explicit_validated_host_configuration(tmp_path):
+@pytest.mark.parametrize("purpose", ["completion_reviewer", "report_reviewer"])
+async def test_final_review_effort_is_explicit_validated_host_configuration(tmp_path, purpose):
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         Settings(completion_reasoning="unsupported")
-    client, _store, transport, _sleeps, _events = gateway(tmp_path, [success()])
+    client, _store, transport, _sleeps, events = gateway(tmp_path, [error(), success()])
     client.settings = Settings(max_output_tokens=128, completion_reasoning="low")
     await client.call(
         {"input": "Synthetic review", "reasoning": {"effort": "medium"}},
-        purpose="completion_reviewer",
+        purpose=purpose,
     )
-    assert transport.create_calls[0]["reasoning"] == {"effort": "low"}
+    assert len(transport.count_calls) == 1 and len(transport.create_calls) == 2
+    assert all(item["reasoning"] == {"effort": "low"} for item in transport.count_calls + transport.create_calls)
+    admissions = [data for event, data in events if event == "model_admitted"]
+    assert [(data["purpose"], data["reasoning_effort"]) for data in admissions] == [(purpose, "low")] * 2

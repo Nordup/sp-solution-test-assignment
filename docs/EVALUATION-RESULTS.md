@@ -59,8 +59,15 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `0b10744d-8cd8-4c06-bf9e-b39317737768` | `mail_latest_10` / 101 | `cc74a1049452` | PASS | 13/13 | yes | 0.213528 | 0.000000 |
 | `9cff2743-12ea-469d-8c1c-4bbbfe0001df` | `food_previous_order` / 102 | `cc74a1049452` | PASS | 14/14 | yes | 0.042562 | 0.000000 |
 | `3bb9da56-67cd-4698-82ec-6a113396cd96` | `jobs_resume_3` / 103 | `cc74a1049452` | PASS | 16/16 | yes | 0.071640 | 0.000000 |
-| `29a31480-9c6b-4cd5-8ba7-837a470a4b20` | `unfamiliar_event` / 201 | `cc74a1049452` | FAIL | 16/16 | no | 0.036174 | 0.000000 |
+| `29a31480-9c6b-4cd5-8ba7-837a470a4b20` | `unfamiliar_event` / 201 | `cc74a1049452` | PASS | 16/16 | yes | 0.036174 | 0.000000 |
 | `e3347354-10b4-4100-9491-1e63434603e2` | `food_layout_variant` / 202 | `cc74a1049452` | PASS | 14/14 | yes | 0.044533 | 0.000000 |
+| `31475107-d8f0-45c4-8e15-6ff96eaa481b` | `stale_ref_recovery` / 301 | `cc74a1049452` | PASS | 15/15 | yes | 0.045589 | 0.000000 |
+| `493be334-3ad4-45a2-8ee9-729f45c70563` | `consequential_denied` / 302 | `cc74a1049452` | PASS | 4/4 | yes | 0.021674 | 0.000000 |
+| `567f3b4d-5d28-4295-9e98-a52df37b51d8` | `food_history_ambiguous` / 401 | `cc74a1049452` | PASS | 15/15 | yes | 0.008337 | 0.000000 |
+| `815b1556-5890-4e26-8d2b-850f32953bab` | `food_item_unavailable` / 402 | `cc74a1049452` | PASS | 16/16 | yes | 0.007861 | 0.000000 |
+| `817cd99b-5139-4be0-9379-afdf3aebb806` | `mail_classification_ambiguous` / 403 | `cc74a1049452` | FAIL | 15/18 | yes | 0.212372 | 0.000000 |
+| `18b8d78a-8eab-4e3f-94e9-df8aef459e6a` | `jobs_already_applied` / 404 | `cc74a1049452` | FAIL | 16/18 | yes | 0.036688 | 0.000000 |
+| `9b9ce321-1e0d-45b2-a777-0292e6868f44` | `jobs_unsupported_qualifications` / 405 | `cc74a1049452` | PASS | 16/16 | yes | 0.038665 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

@@ -61,7 +61,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:

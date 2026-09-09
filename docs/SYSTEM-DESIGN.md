@@ -130,6 +130,8 @@ Each paid call in `decide`, `assess risk`, or optional compaction uses the same 
 
 Read-only tools also go through validation and the dispatcher, but do not require human approval. Only the executor has browser mutation capability. The reviewer and compactor cannot call it. A graph node is an application function, not necessarily a separate LLM request.
 
+Completed results now also undergo a separate factual-report audit after the endpoint review succeeds. This nonacting native call uses Luna at medium effort and checks the unchanged summary and every claim against archived observations and the complete bounded current-run dispatch inventory. Host source/result links and timestamps distinguish actions in this run from preexisting state; a dispatch alone never proves success. Actor working notes are excluded from this factual packet. Missing provenance and omitted observations remain explicit. Factual rejection shares the existing two completion repairs; unavailable or malformed review produces a partial result. This repair is undergoing validation; see VALIDATION.md for actual results.
+
 ## 5. Data contracts and persistence
 
 Use Pydantic at untrusted boundaries and serializable typed graph state. Fields below define intent; the implementer may refine names without weakening invariants.

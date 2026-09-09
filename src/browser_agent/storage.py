@@ -484,6 +484,17 @@ class Store:
             ).fetchone()
             return dict(row) if row else None
 
+    def actions_for_run(self, run_id: str) -> list[dict]:
+        """Bounded complete-run lookup; the extra row exposes overflow to callers."""
+        with self._connection() as db:
+            return [
+                dict(row)
+                for row in db.execute(
+                    "SELECT * FROM actions WHERE run_id=? ORDER BY created,id LIMIT 241",
+                    (run_id,),
+                )
+            ]
+
     def unresolved_actions(self, run_id: str) -> list[dict]:
         with self._connection() as db:
             return [

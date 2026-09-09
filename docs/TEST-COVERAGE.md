@@ -281,3 +281,10 @@ Completion-boundary tests now require a structured next-visible-action assessmen
 ## Progress-aware loop guard
 
 Runtime-contract tests distinguish legitimate revisits after new page evidence from repeated no-op actions and cycles among known pages. They exercise real browser observations, exact approval before one effect, checkpoint restoration through a new SQLite connection, reference/focus and actor-note churn, and saturation of the fixed 240-hash memory without eviction. Passing these deterministic cases establishes guard behavior; actual model task outcomes remain separately recorded in VALIDATION.md.
+
+
+## Factual report attribution after endpoint verification
+
+The 20 cases in [test_report_review.py](../tests/acceptance/test_report_review.py) exercise actual graph/browser/SQLite boundaries with scripted factual verdicts. They cover current-run versus preexisting effects, unchanged summary delivery, exact source/result/approval/time provenance, correction without repeating a mutation, endpoint-rejection short circuit, the existing two-repair bound, missing/malformed/unavailable verdicts, complete ledger overflow, ambiguous legacy source links, corrupted stored action details, exact combined packet size, and native transport retry/budget/schema accounting at the configured completion effort. These tests establish enforcement and packet behavior, not Luna semantic accuracy. The broader graph/resume selection passed 152 tests; the final packet/context selection passed 44. Retained-input native calibration and current ordered actor runs are recorded separately in VALIDATION.md.
+
+A generic page-diversity regression additionally retains ten distinct observed document bodies, original scope and current result within a 10KB test packet despite repeated intermediate pages. All dispatch records and omitted result IDs remain present. The follow-up report/context/endpoint/provider selection passed 77 tests; reviewer semantic quality remains separately calibrated.

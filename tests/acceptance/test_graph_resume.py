@@ -50,6 +50,7 @@ class ScriptedGateway:
         self.requests = []
         self.reviews = 0
         self.completion_reviews = 0
+        self.report_reviews = 0
         self.memory_calls = 0
 
     async def call(self, req, purpose="actor"):
@@ -113,6 +114,14 @@ class ScriptedGateway:
             "boundary_status": "not_applicable",
             "remaining_permitted_steps": [],
             "reason": "Synthetic completion review",
+        }
+
+    async def verify_report(self, task, proposal, evidence):
+        self.report_reviews += 1
+        return {
+            "issues": [],
+            "supported": True,
+            "reason": "Synthetic factual report review",
         }
 
 

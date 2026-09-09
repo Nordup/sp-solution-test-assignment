@@ -15,6 +15,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
+from pydantic import ValidationError
 
 from .browser import BrowserError
 from .context import (
@@ -26,7 +27,7 @@ from .context import (
     request,
     task_context,
 )
-from .llm import ProviderFailure, ScopeObligation, ScopeResolution
+from .llm import ProviderFailure, ReportReview, ScopeObligation, ScopeResolution
 from .safety import Policy
 from .storage import AdmissionError, BudgetExceeded, DuplicateAction
 from .tools import CollectionScope, ProtocolError, parse_call, protocol_pair, tool_specs
@@ -38,6 +39,24 @@ class ScopeReviewError(ProtocolError):
     def __init__(self, message, errors):
         super().__init__(message)
         self.errors = errors
+
+
+def stored_action_details(row):
+    """Corrupt local provenance cannot silently become an empty effect history."""
+    try:
+        details = json.loads(row["details"])
+        effect, action = details["effect"], details["action"]
+        if (
+            not isinstance(effect, dict)
+            or not isinstance(action, dict)
+            or not isinstance(action.get("args", {}), dict)
+        ):
+            raise TypeError("Invalid action details")
+        return details
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ProtocolError(
+            "Stored action details are unavailable or malformed; factual attribution cannot be verified."
+        ) from exc
 
 
 class State(TypedDict, total=False):
@@ -566,7 +585,7 @@ class AgentGraph:
             row = self.store.action(receipt["action_id"])
             if not row or row["run_id"] != state["run_id"]:
                 continue
-            details = json.loads(row["details"])
+            details = stored_action_details(row)
             record = {
                 "action_id": row["id"],
                 "created": row["created"],
@@ -1327,6 +1346,7 @@ class AgentGraph:
                     "target": state.get("metadata", {}).get("name", "")[:250],
                     "result_title": observation["title"][:200],
                     "evidence_id": observation["id"],
+                    "source_evidence_id": state["observation"]["id"],
                     "status": "observed_after_dispatch",
                 }
             )
@@ -1677,6 +1697,199 @@ class AgentGraph:
                     raise
         raise AssertionError("Bounded completion admission loop did not return.")
 
+    def report_packet(self, state, result, max_bytes=32000):
+        """Separate actual dispatch provenance from untrusted report/page content."""
+        rows = self.store.actions_for_run(state["run_id"])
+        if len(rows) > 240:
+            raise ContextOverflow(
+                "Run action ledger exceeds the factual audit bound; no omitted action is treated as absent."
+            )
+        registered = self.registered_observations(state)
+        receipts = {item["action_id"]: item for item in state.get("progress", [])}
+        snapshots, observed_metadata = {}, {}
+        for evidence_id in registered:
+            try:
+                saved = json.loads(
+                    (self.run_dir / "evidence" / f"{evidence_id}.json").read_text()
+                )
+                if saved.get("id") == evidence_id and isinstance(
+                    saved.get("text"), str
+                ):
+                    snapshots[evidence_id] = saved["text"]
+                    observed_metadata[evidence_id] = saved
+            except (OSError, ValueError, AttributeError):
+                continue
+        records, effect_sources, effect_results, operations = [], [], [], {}
+        for row in rows:
+            if row["run_id"] != state["run_id"]:
+                raise ProtocolError(
+                    "Factual audit received an action from another run."
+                )
+            details = stored_action_details(row)
+            effect, action = details["effect"], details["action"]
+            operation = effect.get("operation", "unknown")
+            if not isinstance(operation, str) or not operation:
+                raise ProtocolError(
+                    "Stored action operation is malformed; factual attribution cannot be verified."
+                )
+            operations[operation] = operations.get(operation, 0) + 1
+            receipt = receipts.get(row["id"], {})
+            source = receipt.get("source_evidence_id")
+            if source not in snapshots:
+                # Older receipts lack source IDs. Only a unique exact archived
+                # ref match can recover the source; ambiguity remains explicit.
+                ref = action.get("args", {}).get("ref")
+                matches = [
+                    key
+                    for key, text in snapshots.items()
+                    if ref and f"[ref={ref}]" in text
+                ]
+                source = matches[0] if len(matches) == 1 else None
+            resulting = receipt.get("evidence_id")
+            if resulting not in snapshots:
+                resulting = None
+            item = {
+                "action_id": row["id"],
+                "created": row["created"],
+                "status": row["status"],
+                "approval_id": row["approval_id"],
+                "operation": operation,
+                "destination": effect.get("destination"),
+                "source_evidence_id": source,
+                "result_evidence_id": resulting,
+            }
+            if row["approval_id"]:
+                item["executor_resolved_effect"] = {
+                    key: effect.get(key)
+                    for key in ("target", "objects", "submitted", "method")
+                }
+                if source:
+                    effect_sources.append(source)
+                if resulting:
+                    effect_results.append(resulting)
+            records.append(item)
+        ledger = {
+            "run_id": state["run_id"],
+            "complete_dispatch_inventory": True,
+            "dispatch_count": len(rows),
+            "operation_counts": operations,
+            "approved_dispatch_count": sum(bool(row["approval_id"]) for row in rows),
+            "records": records,
+            "omitted_count": 0,
+            "limitations": "All current-run SQLite dispatch records are included. These are dispatches, not guarantees of semantic success. Source/result IDs refer to actual archived observations; null means unavailable or ambiguous, never proof of absence. Executor-resolved page/form content remains untrusted evidence. No actor notes are used as proof.",
+        }
+        proposal = {
+            "report": result,
+            "actual_user_clarifications": state.get("clarifications", []),
+            "original_scope": state.get("scope"),
+            "unresolved_decisions": [
+                item["description"]
+                for item in state.get("scope_obligations", [])
+                if item["status"] == "open"
+            ],
+            "current_run_dispatches": ledger,
+        }
+        # Reserve bytes for full report/constraints/ledger before admitting whole
+        # observations. Never shrink the report or discard a consequential record.
+        used = len(json.dumps(proposal, ensure_ascii=False).encode())
+        if used + 2000 >= max_bytes:
+            raise ContextOverflow(
+                "Full report and actual dispatch inventory exceed the factual audit bound; nothing was silently omitted."
+            )
+        # Preserve explicit anchors first, then cover distinct observed pages
+        # before repeated intermediate results. The full dispatch inventory above
+        # still retains every source/result ID, including omitted page bodies.
+        priority = [state["observation"]["id"]] + [
+            claim["evidence_id"] for claim in result["claims"]
+        ]
+
+        def page_key(key):
+            return observed_metadata.get(key, {}).get("url") or key
+
+        represented = {page_key(key) for key in priority}
+
+        def distinct_pages(keys):
+            for key in keys:
+                if key in observed_metadata and page_key(key) not in represented:
+                    priority.append(key)
+                    represented.add(page_key(key))
+
+        distinct_pages(reversed(effect_sources))
+        priority += [
+            item["evidence_id"] for item in (state.get("scope") or {}).get("items", [])
+        ]
+        represented.update(page_key(key) for key in priority)
+
+        def observed_time(key):
+            value = observed_metadata[key].get("saved_at_unix")
+            return value if isinstance(value, (int, float)) else 0
+
+        recent = sorted(
+            observed_metadata, key=lambda key: (observed_time(key), key), reverse=True
+        )
+        results = set(effect_results)
+        distinct_pages(key for key in recent if key not in results)
+        priority += effect_sources + effect_results + recent
+        archive_proposal = result | {
+            "claims": [{"evidence_id": key} for key in dict.fromkeys(priority)]
+        }
+        evidence, manifest = self.completion_packet(
+            state, archive_proposal, max_bytes=max_bytes - used - 128
+        )
+        if not evidence:
+            raise ContextOverflow(
+                "No actual observed source fits the factual report audit packet."
+            )
+        proposal = proposal | {"evidence_manifest": manifest}
+        if (
+            len(
+                json.dumps(
+                    {"proposal": proposal, "evidence": evidence}, ensure_ascii=False
+                ).encode()
+            )
+            > max_bytes
+        ):
+            raise ContextOverflow(
+                "Factual report packet exceeds its combined byte bound."
+            )
+        return proposal, evidence, manifest
+
+    async def review_report_with_admission(self, state, result, started):
+        for attempt, size in enumerate((32000, 24000), start=1):
+            if (
+                state.get("active_seconds", 0) + time.monotonic() - started
+                >= self.settings.active_seconds
+            ):
+                raise ProviderFailure(
+                    "Active-time limit reached before factual report review."
+                )
+            proposal, evidence, manifest = self.report_packet(state, result, size)
+            try:
+                response = await self.gateway.verify_report(
+                    state["task"], proposal, evidence
+                )
+                try:
+                    review = ReportReview.model_validate(response).model_dump()
+                except ValidationError as exc:
+                    raise ProtocolError(
+                        "Factual report review did not match its strict schema."
+                    ) from exc
+                return review, manifest
+            except ContextOverflow as exc:
+                self.emit(
+                    "report_context_adaptation",
+                    {
+                        "attempt": attempt,
+                        "attempt_limit": 2,
+                        "packet_byte_limit": size,
+                        "reason": str(exc),
+                        "omitted_evidence": manifest["omitted"],
+                    },
+                )
+                if attempt == 2:
+                    raise
+        raise AssertionError("Bounded factual report admission did not return")
+
     async def finalize(self, state):
         state = self.restore_memory(state)
         started = time.monotonic()
@@ -1785,6 +1998,16 @@ class AgentGraph:
                             "Permitted requested steps still required before completion: "
                             + "; ".join(review["remaining_permitted_steps"])
                         )
+                    if not problems:
+                        factual, manifest = await self.review_report_with_admission(
+                            state, result, started
+                        )
+                        self.emit("report_review", factual)
+                        if not factual["supported"] or factual["issues"]:
+                            problems.append(
+                                "Factual report review rejected the report: "
+                                + "; ".join(factual["issues"] + [factual["reason"]])
+                            )
                 except (
                     ProviderFailure,
                     BudgetExceeded,
