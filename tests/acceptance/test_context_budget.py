@@ -425,3 +425,274 @@ async def test_first_uncertain_consequence_records_memory_before_asking_for_scop
         assert outcome["memory_required"]
         assert outcome["pending_call"] == call
         assert not outcome.get("approval_id")
+
+
+def completion_transport(runtime, run_id, counts, *, outcome=None, delay=0):
+    """Actual native Gateway, deterministic token-count/response transport."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from test_provider import Transport, native_success
+
+    from browser_agent.llm import Gateway
+
+    class CountingTransport(Transport):
+        async def count(self, **kwargs):
+            self.count_calls.append(kwargs)
+            if delay:
+                await asyncio.sleep(delay)
+            return SimpleNamespace(input_tokens=next(self.scripted_counts))
+
+    response = outcome or native_success(
+        "completion_review",
+        {
+            "supported": True,
+            "boundary_status": "not_applicable",
+            "remaining_permitted_steps": [],
+            "reason": "Synthetic source-supported completed outcome.",
+        },
+    )
+    transport = CountingTransport([response])
+    transport.scripted_counts = iter(counts)
+    runtime.gateway = Gateway(
+        runtime.settings, runtime.store, run_id, client=transport, emit=runtime.emit
+    )
+    return transport
+
+
+def completed_state(initial, observed, quote="Observed result"):
+    proposal = {
+        "status": "completed",
+        "summary": "Requested result observed.",
+        "claims": [
+            {
+                "claim": "The requested result is visible.",
+                "evidence_id": observed["observation"]["id"],
+                "quote": quote,
+            }
+        ],
+        "remaining": [],
+    }
+    return (
+        initial
+        | observed
+        | {
+            "result": proposal,
+            "call": {
+                "name": "finish",
+                "arguments": proposal,
+                "call_id": "synthetic-completion-call",
+            },
+        }
+    )
+
+
+async def test_completion_overflow_deduplicates_only_exact_included_journal_pairs(
+    tmp_path,
+):
+    from test_graph_resume import approval_answer, click, graph_case
+
+    async with graph_case(tmp_path, script=[click("Send application")]) as (
+        browser,
+        _gateway,
+        store,
+        runtime,
+        graph,
+        config,
+        initial,
+        events,
+    ):
+        waiting = await graph.ainvoke(initial, config)
+        state = await graph.ainvoke(approval_answer(waiting), config)
+        state = runtime.restore_memory(state)
+        journal = runtime.action_journal(state)
+        matched = state["progress"][0]
+        unmatched = [
+            matched | {"action_id": "not-in-included-journal"},
+            matched | {"evidence_id": state["evidence_ids"][0]},
+        ]
+        state |= {
+            "progress": state["progress"] + unmatched,
+            "notes": "Keep all original notes intact.",
+            "clarifications": ["Do not send a second time."],
+            "scope_obligations": [
+                {
+                    "id": "preserved-choice",
+                    "status": "resolved",
+                    "description": "The originally selected recipient remains Acme.",
+                }
+            ],
+        }
+        runtime.persist_memory(state)
+        # Simulate records excluded from the bounded journal; unmatched receipts
+        # must survive even when only one of their identifying fields matches.
+        runtime.action_journal = lambda _state: journal | {"omitted_count": 2}
+        state = completed_state(
+            state, {"observation": state["observation"]}, "Application recorded"
+        )
+        transport = completion_transport(runtime, initial["run_id"], [20206, 19500])
+        result = await runtime.finalize(state)
+        assert result["result"]["status"] == "completed"
+        assert len(transport.count_calls) == 2 and len(transport.create_calls) == 1
+        before, after = [json.loads(item["input"]) for item in transport.count_calls]
+        assert before["task"] == after["task"] == state["task"]
+        for key, value in state["result"].items():
+            assert before["proposal"][key] == after["proposal"][key] == value
+        for key, value in before["proposal"]["task_context"].items():
+            if key != "action_receipts":
+                assert after["proposal"]["task_context"][key] == value
+        assert after["proposal"]["task_context"]["action_receipts"] == unmatched
+        assert (
+            before["proposal"]["action_journal"] == after["proposal"]["action_journal"]
+        )
+        assert (
+            before["proposal"]["evidence_manifest"]
+            == after["proposal"]["evidence_manifest"]
+        )
+        assert before["evidence"] == after["evidence"]
+        assert transport.create_calls[0]["input"] == transport.count_calls[-1]["input"]
+        assert store.budget(initial["run_id"])["settled"] == 37
+        assert store.budget(initial["run_id"])["unknown"] == 0
+        assert await browser.page.evaluate("window.effects") == 1
+        assert (
+            len([name for name, _ in events if name == "completion_context_adaptation"])
+            == 1
+        )
+
+
+async def test_completion_third_admission_reduces_whole_sources_with_explicit_omissions(
+    tmp_path,
+):
+    from test_graph_resume import graph_case
+
+    async with graph_case(tmp_path, html="<p>Observed result</p>") as (
+        browser,
+        _gateway,
+        _store,
+        runtime,
+        _graph,
+        _config,
+        initial,
+        _events,
+    ):
+        state = initial | await runtime.observe(initial)
+        result_source = state["observation"]
+        for index in range(6):
+            await browser.page.set_content(
+                f"<p>Supporting page {index}: " + "actual evidence " * 330 + "</p>"
+            )
+            state |= await runtime.observe(state)
+        state = completed_state(state, {"observation": result_source})
+        transport = completion_transport(
+            runtime, initial["run_id"], [22000, 21000, 19000]
+        )
+        result = await runtime.finalize(state)
+        assert result["result"]["status"] == "completed"
+        assert len(transport.count_calls) == 3 and len(transport.create_calls) == 1
+        packets = [json.loads(item["input"]) for item in transport.count_calls]
+        assert packets[0]["evidence"] == packets[1]["evidence"]
+        last = packets[-1]
+        assert last["proposal"]["evidence_manifest"]["byte_limit"] == 24000
+        assert last["proposal"]["evidence_manifest"]["omitted"]
+        assert len(last["evidence"]) < len(packets[1]["evidence"])
+        assert result_source["id"] in last["evidence"]
+        assert all(
+            text
+            == json.loads((runtime.run_dir / "evidence" / f"{key}.json").read_text())[
+                "text"
+            ]
+            for key, text in last["evidence"].items()
+        )
+        assert all(
+            packet["proposal"]["claims"] == state["result"]["claims"]
+            for packet in packets
+        )
+        assert transport.create_calls[0]["input"] == transport.count_calls[-1]["input"]
+
+
+async def test_completion_admission_exhaustion_never_generates_or_spends(tmp_path):
+    from test_graph_resume import graph_case
+
+    async with graph_case(tmp_path, html="<p>Observed result</p>") as (
+        _browser,
+        _gateway,
+        store,
+        runtime,
+        _graph,
+        _config,
+        initial,
+        _events,
+    ):
+        state = completed_state(initial, await runtime.observe(initial))
+        transport = completion_transport(runtime, initial["run_id"], [20001] * 3)
+        result = await runtime.finalize(state)
+        assert result["result"]["status"] == "partial"
+        assert len(transport.count_calls) == 3 and not transport.create_calls
+        assert store.budget(initial["run_id"])["settled"] == 0
+        assert store.budget(initial["run_id"])["reserved"] == 0
+        assert result["result"]["summary"].startswith("Completion was not verified:")
+
+
+async def test_completion_recount_checks_active_time_before_next_attempt(tmp_path):
+    from test_graph_resume import graph_case
+
+    async with graph_case(tmp_path, html="<p>Observed result</p>") as (
+        _browser,
+        _gateway,
+        store,
+        runtime,
+        _graph,
+        _config,
+        initial,
+        _events,
+    ):
+        state = completed_state(initial, await runtime.observe(initial))
+        runtime.settings.active_seconds = 1
+        transport = completion_transport(
+            runtime, initial["run_id"], [20206, 19500], delay=1.05
+        )
+        result = await runtime.finalize(state)
+        assert result["result"]["status"] == "partial"
+        assert len(transport.count_calls) == 1 and not transport.create_calls
+        assert "Active-time limit" in result["result"]["summary"]
+        assert store.budget(initial["run_id"])["settled"] == 0
+
+
+@pytest.mark.parametrize("failure", ["semantic", "provider"])
+async def test_completion_semantic_or_provider_failure_does_not_repack(
+    tmp_path, failure
+):
+    from test_graph_resume import graph_case
+    from test_provider import error, native_success
+
+    async with graph_case(tmp_path, html="<p>Observed result</p>") as (
+        _browser,
+        _gateway,
+        _store,
+        runtime,
+        _graph,
+        _config,
+        initial,
+        events,
+    ):
+        state = completed_state(initial, await runtime.observe(initial))
+        response = (
+            error(401)
+            if failure == "provider"
+            else native_success(
+                "completion_review",
+                {
+                    "supported": False,
+                    "boundary_status": "not_applicable",
+                    "remaining_permitted_steps": [],
+                    "reason": "More actual task evidence is required.",
+                },
+            )
+        )
+        transport = completion_transport(
+            runtime, initial["run_id"], [19500], outcome=response
+        )
+        result = await runtime.finalize(state)
+        assert len(transport.count_calls) == len(transport.create_calls) == 1
+        assert not any(name == "completion_context_adaptation" for name, _ in events)
+        assert result["route"] == ("done" if failure == "provider" else "decide")

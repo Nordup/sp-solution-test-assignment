@@ -4,9 +4,11 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-The acting runtime at `32f8b740a27c` (commit `f4eb417`) passed **223 contract tests**, **32 browser tests**, and the native provider/LangSmith preflight. Completion verification now uses medium reasoning; actor/risk/clarification remain low on Luna. The configured native completion calibration also produced 3/3 expected decisions ($0.007207, no unresolved reservation). Fresh task evaluations and the final recorded demonstration are in progress. The evaluation-only citation correction below changes the full candidate fingerprint and requires fresh ordered evidence. No current-candidate release pass is claimed.
+The latest completed candidate, `54cb4d2ed673` (commit `ff5f64e`), passed **223 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail run completed the intended browser changes but failed final verification because the exact request exceeded the 20,000-token cap by 206 tokens. The run remains **FAIL**. A bounded completion-packing repair is being verified; the remaining ordered task/failure stages and final video are not complete.
 
-The live Yandex run remains paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount. It has not completed the food task. Earlier successes below demonstrate narrower controlled behavior and do not certify this candidate or arbitrary live sites.
+Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
+
+The live Yandex run remains paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount. It has not completed the food task. Earlier successes below demonstrate narrower controlled behavior and do not certify the current candidate or arbitrary live sites.
 
 ## Earlier candidates and repairs
 
@@ -120,3 +122,13 @@ The evaluator now supplies source-verified browser excerpts with provenance, alo
 
 
 The native citation-evidence calibration (`edfeb6c5-79b6-4c53-a375-c8ad941c698e`) passed **4/4 expected decisions** on the retained first-trial result: accept observed free delivery; reject a contradictory fee, a fabricated fee quote, and a false paid/placed summary. It spent $0.005143 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. This is judge calibration, not an actor rerun or historical regrade. Candidate `54cb4d2ed673` is frozen for the fresh ordered acceptance sequence.
+
+
+### Completion context overflow
+
+Candidate `54cb4d2ed673` passed 223 contract tests, 32 browser tests and preflight, then stopped at mail 17 (`d1478859-89c4-4f2f-b4bd-0114bbc47a2b`). The actual browser outcome and approval checks passed, but completion verification required **20,206 tokens**, above the hard 20,000-token cap. Generation was refused before dispatch and the run ended truthfully partial: **FAIL**, with verified trace and $0.221003 settled, zero reserved/unknown. No later stage in that pipeline ran.
+
+The saved completion packet duplicated 6,464 bytes of action receipts alongside an 8,795-byte provenance journal. The repair preserves original task/claims, all user answers, scope and unresolved choices, and tries exact deduplication before reducing historical evidence. The 20,000-token cap is unchanged. Bounded admission adaptation and fresh ordered validation are pending; the saved failure remains unchanged.
+
+
+The native count-only reconstruction of that exact saved request now passes admission after exact receipt deduplication: **20,206 → 17,754 tokens**, with **all 19 whole browser snapshots retained**. It called only the input-count endpoint, made no generation calls, and verified that historical run files were unchanged. The final attempt has at most three admission variants; semantic/provider/budget failures do not trigger this packing loop. This establishes the request-size repair, not an autonomous task pass.

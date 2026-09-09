@@ -1582,6 +1582,76 @@ class AgentGraph:
             )
         return update
 
+    async def review_completion_with_admission(
+        self, state, result, evidence, manifest, started
+    ):
+        """Repack only after exact pre-generation token admission rejects input."""
+        context = task_context(state)
+        journal = self.action_journal(state)
+        matched = {
+            (item["action_id"], item["result_evidence_id"])
+            for item in journal["records"]
+        }
+        receipts = context["action_receipts"]
+        unique_receipts = [
+            item
+            for item in receipts
+            if (item.get("action_id"), item.get("evidence_id")) not in matched
+        ]
+        limitation = "Evidence contains actual previously registered browser snapshots: cited observations first, then original scope and indexed historical pages. The manifest records provenance, chronology, original truncation, and explicit omissions. Historical snapshots establish only what was observed then; do not treat them as the current page or infer missing facts from omitted/truncated snapshots. Preserved scope identifies the original task boundary. Working notes and dispatch receipts are not proof of successful effects; verify all outcome claims against actual observed content."
+        for attempt in range(3):
+            if (
+                state.get("active_seconds", 0) + time.monotonic() - started
+                >= self.settings.active_seconds
+            ):
+                raise ProviderFailure(
+                    "Active-time limit reached before completion admission; no further generation dispatched."
+                )
+            current_context = context
+            current_limitation = limitation
+            if attempt:
+                current_context = context | {"action_receipts": unique_receipts}
+                current_limitation += f" Exact token admission required removing {len(receipts) - len(unique_receipts)} duplicated action receipts whose action_id and evidence_id match included SQLite journal action_id and result_evidence_id. Unmatched receipts, all working notes, original scope, obligations, actual user constraints, claims and the full journal remain unchanged."
+            if attempt == 2:
+                evidence, manifest = self.completion_packet(
+                    state, result, max_bytes=24000
+                )
+                current_limitation += " The whole-snapshot evidence packet is reduced to 24KB; omitted sources are listed explicitly and their absence does not establish missing facts."
+            if not evidence:
+                raise ProtocolError(
+                    "No whole observed snapshot fits the completion evidence packet; inspect smaller scoped evidence before claiming completion."
+                )
+            proposal = result | {
+                "task_context": current_context,
+                "action_journal": journal,
+                "evidence_manifest": manifest,
+                "context_limitations": current_limitation,
+            }
+            try:
+                review = await self.gateway.verify_completion(
+                    state["task"], proposal, evidence
+                )
+                return review, manifest
+            except ContextOverflow as exc:
+                # Gateway raises this only before reservation/generation. A
+                # semantic rejection or any paid/provider error never repacks.
+                self.emit(
+                    "completion_context_adaptation",
+                    {
+                        "attempt": attempt + 1,
+                        "attempt_limit": 3,
+                        "reason": str(exc),
+                        "deduplicated_receipts": len(receipts) - len(unique_receipts)
+                        if attempt
+                        else 0,
+                        "evidence_byte_limit": manifest["byte_limit"],
+                        "omitted_evidence": manifest["omitted"],
+                    },
+                )
+                if attempt == 2:
+                    raise
+        raise AssertionError("Bounded completion admission loop did not return.")
+
     async def finalize(self, state):
         state = self.restore_memory(state)
         started = time.monotonic()
@@ -1643,16 +1713,8 @@ class AgentGraph:
                     )
             if not problems:
                 try:
-                    review = await self.gateway.verify_completion(
-                        state["task"],
-                        result
-                        | {
-                            "task_context": task_context(state),
-                            "action_journal": self.action_journal(state),
-                            "evidence_manifest": manifest,
-                            "context_limitations": "Evidence contains actual previously registered browser snapshots: cited observations first, then original scope and indexed historical pages. The manifest records provenance, chronology, original truncation, and explicit omissions. Historical snapshots establish only what was observed then; do not treat them as the current page or infer missing facts from omitted/truncated snapshots. Preserved scope identifies the original task boundary. Working notes and dispatch receipts are not proof of successful effects; verify all outcome claims against actual observed content.",
-                        },
-                        evidence,
+                    review, manifest = await self.review_completion_with_admission(
+                        state, result, evidence, manifest, started
                     )
                     self.emit("completion_review", review)
                     if not review["supported"]:

@@ -266,3 +266,8 @@ Six real-browser/graph tests in [test_completion_boundary.py](../tests/acceptanc
 ## Independent semantic evidence provenance
 
 Reporting tests verify that real delivered browser text supplements compact fixture state for factual grading. The evaluator supplies exact bounded excerpts, validates citation IDs and substrings, preserves source chronology/truncation limits and retains unmatched or contradictory claims for rejection. Tests cover valid delivery facts from an actual fixture page, fabricated/mismatched/undelivered citations, cropped recall variants without joining text, and multilingual byte bounds. Actor behavior and server-effect authority are unchanged. Native calibration and fresh task outcomes are recorded separately in VALIDATION.md.
+
+
+## Completion request admission recovery
+
+Context-budget tests exercise actual Gateway admission with controlled wire counts: remove only receipt entries matched by both action and evidence IDs to included journal records; retain unmatched receipts and every protected constraint; reduce whole historical snapshots only on the final bounded attempt; preserve explicit source omissions; stop on repeated overflow or active-time exhaustion. Semantic/provider failures never trigger repacking, and over-limit count attempts cannot reserve or dispatch generation. Native count-only evidence and actual task outcomes remain separate in VALIDATION.md.

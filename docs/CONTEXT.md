@@ -605,6 +605,11 @@ Six real-browser/graph tests in [test_completion_boundary.py](../tests/acceptanc
 
 Reporting tests verify that real delivered browser text supplements compact fixture state for factual grading. The evaluator supplies exact bounded excerpts, validates citation IDs and substrings, preserves source chronology/truncation limits and retains unmatched or contradictory claims for rejection. Tests cover valid delivery facts from an actual fixture page, fabricated/mismatched/undelivered citations, cropped recall variants without joining text, and multilingual byte bounds. Actor behavior and server-effect authority are unchanged. Native calibration and fresh task outcomes are recorded separately in VALIDATION.md.
 
+
+## Completion request admission recovery
+
+Context-budget tests exercise actual Gateway admission with controlled wire counts: remove only receipt entries matched by both action and evidence IDs to included journal records; retain unmatched receipts and every protected constraint; reduce whole historical snapshots only on the final bounded attempt; preserve explicit source omissions; stop on repeated overflow or active-time exhaustion. Semantic/provider failures never trigger repacking, and over-limit count attempts cannot reserve or dispatch generation. Native count-only evidence and actual task outcomes remain separate in VALIDATION.md.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -615,9 +620,11 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-The acting runtime at `32f8b740a27c` (commit `f4eb417`) passed **223 contract tests**, **32 browser tests**, and the native provider/LangSmith preflight. Completion verification now uses medium reasoning; actor/risk/clarification remain low on Luna. The configured native completion calibration also produced 3/3 expected decisions ($0.007207, no unresolved reservation). Fresh task evaluations and the final recorded demonstration are in progress. The evaluation-only citation correction below changes the full candidate fingerprint and requires fresh ordered evidence. No current-candidate release pass is claimed.
+The latest completed candidate, `54cb4d2ed673` (commit `ff5f64e`), passed **223 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail run completed the intended browser changes but failed final verification because the exact request exceeded the 20,000-token cap by 206 tokens. The run remains **FAIL**. A bounded completion-packing repair is being verified; the remaining ordered task/failure stages and final video are not complete.
 
-The live Yandex run remains paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount. It has not completed the food task. Earlier successes below demonstrate narrower controlled behavior and do not certify this candidate or arbitrary live sites.
+Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
+
+The live Yandex run remains paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount. It has not completed the food task. Earlier successes below demonstrate narrower controlled behavior and do not certify the current candidate or arbitrary live sites.
 
 ## Earlier candidates and repairs
 
@@ -732,6 +739,16 @@ The evaluator now supplies source-verified browser excerpts with provenance, alo
 
 The native citation-evidence calibration (`edfeb6c5-79b6-4c53-a375-c8ad941c698e`) passed **4/4 expected decisions** on the retained first-trial result: accept observed free delivery; reject a contradictory fee, a fabricated fee quote, and a false paid/placed summary. It spent $0.005143 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. This is judge calibration, not an actor rerun or historical regrade. Candidate `54cb4d2ed673` is frozen for the fresh ordered acceptance sequence.
 
+
+### Completion context overflow
+
+Candidate `54cb4d2ed673` passed 223 contract tests, 32 browser tests and preflight, then stopped at mail 17 (`d1478859-89c4-4f2f-b4bd-0114bbc47a2b`). The actual browser outcome and approval checks passed, but completion verification required **20,206 tokens**, above the hard 20,000-token cap. Generation was refused before dispatch and the run ended truthfully partial: **FAIL**, with verified trace and $0.221003 settled, zero reserved/unknown. No later stage in that pipeline ran.
+
+The saved completion packet duplicated 6,464 bytes of action receipts alongside an 8,795-byte provenance journal. The repair preserves original task/claims, all user answers, scope and unresolved choices, and tries exact deduplication before reducing historical evidence. The 20,000-token cap is unchanged. Bounded admission adaptation and fresh ordered validation are pending; the saved failure remains unchanged.
+
+
+The native count-only reconstruction of that exact saved request now passes admission after exact receipt deduplication: **20,206 → 17,754 tokens**, with **all 19 whole browser snapshots retained**. It called only the input-count endpoint, made no generation calls, and verified that historical run files were unchanged. The final attempt has at most three admission variants; semantic/provider/budget failures do not trigger this packing loop. This establishes the request-size repair, not an autonomous task pass.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -790,6 +807,7 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `a3f807c7-16e7-45a6-937e-c4be36bdefb1` | `food_previous_order` / 102 | `32f8b740a27c` | FAIL | 12/14 | yes | 0.045317 | 0.000000 |
 | `1b9885bc-37b8-4d41-b16f-33c2e9d0b58c` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.042631 | 0.000000 |
 | `a92bd894-df4c-45d6-b651-6c384fd54409` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.041991 | 0.000000 |
+| `d1478859-89c4-4f2f-b4bd-0114bbc47a2b` | `mail_latest_10` / 101 | `54cb4d2ed673` | FAIL | 8/10 | yes | 0.221003 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
