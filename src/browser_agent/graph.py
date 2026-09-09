@@ -80,6 +80,7 @@ class State(TypedDict, total=False):
     clarification_repairs: int
     failures: int
     repetitions: dict
+    loop_seen_states: list[str]
     evidence_ids: list
     visited: list
     active_seconds: float
@@ -1361,6 +1362,7 @@ class AgentGraph:
             )
 
         semantic_text = semantic_snapshot(observation["text"])
+        source_text = semantic_snapshot(state["observation"]["text"])
         action = state.get("action", {})
         target = state.get("metadata", {})
         signature = json.dumps(
@@ -1369,7 +1371,7 @@ class AgentGraph:
                 "args": {k: v for k, v in action.get("args", {}).items() if k != "ref"},
                 "target": target.get("name"),
                 "source_url": state["observation"]["url"],
-                "source_text": semantic_snapshot(state["observation"]["text"]),
+                "source_text": source_text,
                 "url": observation["url"],
                 "text": semantic_text,
             },
@@ -1378,6 +1380,27 @@ class AgentGraph:
         repetitions = dict(state.get("repetitions", {}))
         import hashlib
 
+        # Count repeated transitions since the last newly observed page state,
+        # not across the whole task. Returning to a known page after inspecting
+        # new pages is legitimate; oscillating among known pages is still a loop.
+        # Keep a fixed, checkpointed memory bound without eviction: once full,
+        # untracked pages cannot repeatedly pretend to be new progress. Neither
+        # actor notes nor receipt/reference churn can reset this epoch.
+        seen_states = list(state.get("loop_seen_states", []))
+        new_progress = False
+        for url, text in (
+            (state["observation"]["url"], source_text),
+            (observation["url"], semantic_text),
+        ):
+            page_key = hashlib.sha256(
+                json.dumps([url, text], ensure_ascii=False).encode()
+            ).hexdigest()
+            if page_key not in seen_states and len(seen_states) < 240:
+                seen_states.append(page_key)
+                new_progress = True
+        if new_progress:
+            repetitions = {}
+        update["loop_seen_states"] = seen_states
         key = hashlib.sha256(signature.encode()).hexdigest()
         repetitions[key] = repetitions.get(key, 0) + 1
         if len(repetitions) > 60:

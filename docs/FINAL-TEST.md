@@ -136,6 +136,8 @@ The evaluation runner starts/resets the selected fixture, creates its isolated p
 
 The source prompts below are preserved verbatim. For local fixtures, record both `source_prompt` and `effective_prompt`: replace service/domain references with the supplied local fixture URL/name, preserving all task semantics. This substitution belongs in evaluation input preparation, never in runtime navigation code. Do not ask the actor to visit a real service while grading a local fixture.
 
+The same three cases may run as one sequential experiment with `uv run python -m evals.run --suite core --seeds 101,102,103 --repetitions 1 --headed --max-experiment-usd 15 --release-session final-candidate`. It preserves mail → food → jobs order and records every case, even if an earlier case fails. Stage 6 passes only when all three pass; later stages remain gated on that result.
+
 ### 6.1 Mail first
 
 ```bash

@@ -4,7 +4,7 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-Current candidate `af54bf739c82` (commit `bfbbd1b`) passed **229 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its ordered task evaluations are running. The prior candidate's mail task completed the browser changes but could not fit its completion request; that failed result is retained below. The repair fits the exact saved request at 17,754 tokens while preserving all 19 evidence sources. The remaining ordered task/failure stages and final video are not complete.
+Candidate `b7bc710bca37` (commit `bf93f5e`) passed **235 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail evaluation failed because the no-progress guard counted a legitimate revisit after new pages as a lifetime repetition. The browser read the original ten messages but deleted none. The guard repair and a fresh ordered sequence are pending; later task/failure stages and the final video remain incomplete.
 
 Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
 
@@ -144,3 +144,10 @@ A stronger generic endpoint-evidence contract is now implemented. The reviewer f
 
 
 Candidate `b7bc710bca37` passed **175 focused tests** and a **7/7 native endpoint-proof calibration** (`cc549dbe-dc8e-4a0a-b0a5-ac63ce563090`). The actual finalization path rejected both retained intermediate-checkout failures and a false endpoint assertion, while accepting the actual final checkout, research-only result, completed mail workflow and completed job applications. Inputs ran in scratch copies with historical file hashes checked; no actor/browser actions or historical regrades occurred. Calibration cost was $0.021948 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. Fresh ordered evidence is pending; this small calibration is not a reliability estimate.
+
+
+### Loop guard counted legitimate revisits
+
+Mail 19 (`b854a161-74ec-4e0a-89ce-b5f81fbd9c6c`) on `b7bc710bca37` remains **FAIL**, with verified trace, $0.182255 settled and no reserved/unknown amount. It read all ten original messages, then paused before deletion on a third visit to the same message. Ten distinct pages intervened between the first and final visit; the guard retained lifetime transition counts rather than counting repetition since actual new page evidence. No messages were deleted. The ordered pipeline stopped before food/jobs and later stages. All 50 actual attempts remain in the public metadata table.
+
+The bounded repair retains host-observed semantic page identities across checkpoints and reset repetition counts only when genuinely new page evidence is observed. Known-page cycles, unchanged actions, and reference/focus churn must still stop. Actor notes cannot reset the guard. The focused runtime-contract/failure regression selection passed **47 tests** in 29.66 seconds, including six added cases. Candidate `cc74a1049452` is frozen for fresh ordered validation; these guard tests are not an autonomous task pass.

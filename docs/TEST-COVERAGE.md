@@ -276,3 +276,8 @@ Context-budget tests exercise actual Gateway admission with controlled wire coun
 ## Current endpoint proof
 
 Completion-boundary tests now require a structured next-visible-action assessment. A reached endpoint must cite the current observation admitted to that review and classify its next effect as the explicitly excluded final effect. Tests reject authentic historical endpoint text, fabricated quote/ID, missing proof and a permitted intermediate step mislabeled as reached. Research and fully performed workflows without stop-before instructions remain valid without inventing extra actions. The bounded repair path still requires ordinary action approval. Native calibration and fresh autonomous task results remain separate evidence.
+
+
+## Progress-aware loop guard
+
+Runtime-contract tests distinguish legitimate revisits after new page evidence from repeated no-op actions and cycles among known pages. They exercise real browser observations, exact approval before one effect, checkpoint restoration through a new SQLite connection, reference/focus and actor-note churn, and saturation of the fixed 240-hash memory without eviction. Passing these deterministic cases establishes guard behavior; actual model task outcomes remain separately recorded in VALIDATION.md.

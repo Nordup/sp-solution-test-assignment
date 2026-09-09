@@ -615,6 +615,11 @@ Context-budget tests exercise actual Gateway admission with controlled wire coun
 
 Completion-boundary tests now require a structured next-visible-action assessment. A reached endpoint must cite the current observation admitted to that review and classify its next effect as the explicitly excluded final effect. Tests reject authentic historical endpoint text, fabricated quote/ID, missing proof and a permitted intermediate step mislabeled as reached. Research and fully performed workflows without stop-before instructions remain valid without inventing extra actions. The bounded repair path still requires ordinary action approval. Native calibration and fresh autonomous task results remain separate evidence.
 
+
+## Progress-aware loop guard
+
+Runtime-contract tests distinguish legitimate revisits after new page evidence from repeated no-op actions and cycles among known pages. They exercise real browser observations, exact approval before one effect, checkpoint restoration through a new SQLite connection, reference/focus and actor-note churn, and saturation of the fixed 240-hash memory without eviction. Passing these deterministic cases establishes guard behavior; actual model task outcomes remain separately recorded in VALIDATION.md.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -625,7 +630,7 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-Current candidate `af54bf739c82` (commit `bfbbd1b`) passed **229 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its ordered task evaluations are running. The prior candidate's mail task completed the browser changes but could not fit its completion request; that failed result is retained below. The repair fits the exact saved request at 17,754 tokens while preserving all 19 evidence sources. The remaining ordered task/failure stages and final video are not complete.
+Candidate `b7bc710bca37` (commit `bf93f5e`) passed **235 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail evaluation failed because the no-progress guard counted a legitimate revisit after new pages as a lifetime repetition. The browser read the original ten messages but deleted none. The guard repair and a fresh ordered sequence are pending; later task/failure stages and the final video remain incomplete.
 
 Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
 
@@ -766,6 +771,13 @@ A stronger generic endpoint-evidence contract is now implemented. The reviewer f
 
 Candidate `b7bc710bca37` passed **175 focused tests** and a **7/7 native endpoint-proof calibration** (`cc549dbe-dc8e-4a0a-b0a5-ac63ce563090`). The actual finalization path rejected both retained intermediate-checkout failures and a false endpoint assertion, while accepting the actual final checkout, research-only result, completed mail workflow and completed job applications. Inputs ran in scratch copies with historical file hashes checked; no actor/browser actions or historical regrades occurred. Calibration cost was $0.021948 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. Fresh ordered evidence is pending; this small calibration is not a reliability estimate.
 
+
+### Loop guard counted legitimate revisits
+
+Mail 19 (`b854a161-74ec-4e0a-89ce-b5f81fbd9c6c`) on `b7bc710bca37` remains **FAIL**, with verified trace, $0.182255 settled and no reserved/unknown amount. It read all ten original messages, then paused before deletion on a third visit to the same message. Ten distinct pages intervened between the first and final visit; the guard retained lifetime transition counts rather than counting repetition since actual new page evidence. No messages were deleted. The ordered pipeline stopped before food/jobs and later stages. All 50 actual attempts remain in the public metadata table.
+
+The bounded repair retains host-observed semantic page identities across checkpoints and reset repetition counts only when genuinely new page evidence is observed. Known-page cycles, unchanged actions, and reference/focus churn must still stop. Actor notes cannot reset the guard. The focused runtime-contract/failure regression selection passed **47 tests** in 29.66 seconds, including six added cases. Candidate `cc74a1049452` is frozen for fresh ordered validation; these guard tests are not an autonomous task pass.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -827,6 +839,7 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `d1478859-89c4-4f2f-b4bd-0114bbc47a2b` | `mail_latest_10` / 101 | `54cb4d2ed673` | FAIL | 8/10 | yes | 0.221003 | 0.000000 |
 | `3b23a07d-8c6f-43c8-80e8-49e3ea6a188d` | `mail_latest_10` / 101 | `af54bf739c82` | PASS | 13/13 | yes | 0.182371 | 0.000000 |
 | `17553c89-e37a-49a6-b8be-e15715f5a56a` | `food_previous_order` / 102 | `af54bf739c82` | FAIL | 10/11 | yes | 0.036035 | 0.000000 |
+| `b854a161-74ec-4e0a-89ce-b5f81fbd9c6c` | `mail_latest_10` / 101 | `b7bc710bca37` | FAIL | 7/10 | yes | 0.182255 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1088,7 +1101,7 @@ Return errors in one typed envelope: `code`, `stage`, `action_id`, `dispatch_sta
 | Login expired/CAPTCHA | Page observation / actor request | User handover interrupt; continue after fresh observation | Login interaction is not sent to model |
 | Approval denied/expired/changed | Approval store and target fingerprint | Reject; model gets reason; new proposal cannot bypass denial | Zero unapproved effect |
 | Context too large | Exact request count / local output limits | Scoped read, truncate with continuation, compact completed history | No over-limit model dispatch |
-| Same ineffective strategy repeats | Action signature, error and expected-state comparison | After 3 equivalent failures/no-progress cycles, stop or ask a focused question | No endless loop; long useful reading not misclassified |
+| Same ineffective strategy repeats | Transition signature plus checkpointed observed page identities (URL and text, ignoring regenerated refs/focus) | Reset repetition counts only on new host-observed page evidence; after 3 equivalent transitions without new evidence, ask | Known-page cycles still stop; 240 retained page hashes, no eviction/reset loophole |
 | Budget cannot fund next request | Shared admission gateway | Stop as budget_exhausted; render summary from saved facts without another paid call | Cost admission never exceeds cap |
 | LangSmith temporarily unavailable | Trace upload error | Queue bounded sanitized local trace; agent can continue; eval run reports telemetry issue | No loss of local result, no fabricated trace URL |
 | State/journal cannot be persisted | SQLite/disk exception | Stop before new model spend or browser effect | No unjournaled consequential dispatch |
@@ -1408,6 +1421,8 @@ Maps R05, R12, U01, U02. This is the first allowed paid stage, after stages 3–
 The evaluation runner starts/resets the selected fixture, creates its isolated profile, supplies the ordinary task and observed start URL, invokes the real actor, and independently inspects fixture state. It exports task inputs, sanitized trajectory, approvals, final state comparison, result and LangSmith link. Each command below is one case with a $5 task/experiment ceiling and the shared release-session ceiling.
 
 The source prompts below are preserved verbatim. For local fixtures, record both `source_prompt` and `effective_prompt`: replace service/domain references with the supplied local fixture URL/name, preserving all task semantics. This substitution belongs in evaluation input preparation, never in runtime navigation code. Do not ask the actor to visit a real service while grading a local fixture.
+
+The same three cases may run as one sequential experiment with `uv run python -m evals.run --suite core --seeds 101,102,103 --repetitions 1 --headed --max-experiment-usd 15 --release-session final-candidate`. It preserves mail → food → jobs order and records every case, even if an earlier case fails. Stage 6 passes only when all three pass; later stages remain gated on that result.
 
 ### 6.1 Mail first
 

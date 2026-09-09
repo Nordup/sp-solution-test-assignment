@@ -250,7 +250,7 @@ Return errors in one typed envelope: `code`, `stage`, `action_id`, `dispatch_sta
 | Login expired/CAPTCHA | Page observation / actor request | User handover interrupt; continue after fresh observation | Login interaction is not sent to model |
 | Approval denied/expired/changed | Approval store and target fingerprint | Reject; model gets reason; new proposal cannot bypass denial | Zero unapproved effect |
 | Context too large | Exact request count / local output limits | Scoped read, truncate with continuation, compact completed history | No over-limit model dispatch |
-| Same ineffective strategy repeats | Action signature, error and expected-state comparison | After 3 equivalent failures/no-progress cycles, stop or ask a focused question | No endless loop; long useful reading not misclassified |
+| Same ineffective strategy repeats | Transition signature plus checkpointed observed page identities (URL and text, ignoring regenerated refs/focus) | Reset repetition counts only on new host-observed page evidence; after 3 equivalent transitions without new evidence, ask | Known-page cycles still stop; 240 retained page hashes, no eviction/reset loophole |
 | Budget cannot fund next request | Shared admission gateway | Stop as budget_exhausted; render summary from saved facts without another paid call | Cost admission never exceeds cap |
 | LangSmith temporarily unavailable | Trace upload error | Queue bounded sanitized local trace; agent can continue; eval run reports telemetry issue | No loss of local result, no fabricated trace URL |
 | State/journal cannot be persisted | SQLite/disk exception | Stop before new model spend or browser effect | No unjournaled consequential dispatch |
