@@ -61,7 +61,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:
@@ -88,7 +88,7 @@ PASS only if all required cases execute and assert effects/cost/state. A test th
 ## 4. Actual browser and lifecycle integration
 
 ```bash
-uv run pytest tests/acceptance/test_browser.py tests/acceptance/test_browser_failures.py -q --junitxml=artifacts/final/04-browser.xml
+uv run pytest tests/acceptance/test_browser.py tests/acceptance/test_browser_failures.py tests/test_runner.py -q --junitxml=artifacts/final/04-browser.xml
 ```
 
 Use actual Playwright and local fixture pages; a scripted/fake actor is allowed to target exact boundary conditions in this stage. Runtime selector discovery still goes through current observations. These are integration tests, not proof of autonomous decisions.
@@ -231,7 +231,7 @@ G04's safe partial result is a PASS for the denial test, not a PASS for completi
 ## 8. Extended failure regression — run after core tasks
 
 ```bash
-uv run pytest tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/08-failures.xml
+uv run pytest tests/acceptance tests/test_runner.py tests/test_failure_cases.py tests/test_eval_reporting.py -q --junitxml=artifacts/final/08-failures.xml
 ```
 
 These tests are deterministic/no paid model unless explicitly moved into a separately budgeted experiment. Use real browser fixtures where page effects matter. They deliberately rerun important boundaries after the end-to-end path has been exercised.

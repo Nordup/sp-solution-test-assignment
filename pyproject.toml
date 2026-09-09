@@ -18,11 +18,20 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2", "ruff>=0.16,<0.17"]
 
-[tool.uv]
-package = false
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+browser-agent = "browser_agent.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/browser_agent", "evals"]
 
 [tool.ruff]
 target-version = "py312"
+exclude = ["docs/research"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]

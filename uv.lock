@@ -719,7 +719,7 @@ wheels = [
 [[package]]
 name = "sp-solution-test-assignment"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "langgraph" },
     { name = "langgraph-checkpoint-sqlite" },
