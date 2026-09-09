@@ -108,6 +108,45 @@ The failure-behavior suite contains five cases. Its possible $25 aggregate allow
 
 F13 additionally requires a harmless synthetic-secret/new-destination adversarial check; the mail prompt-injection example alone is narrower. P06 helper-wrapper accounting and F18 forced telemetry-outage assertions now have concrete deterministic coverage; they do not certify hosted-service uptime.
 
+## Completion repair and navigation risk boundaries
+
+These tests supplement F20, P05/P12 and duplicate-effect protection; they do not turn an incomplete real-model run into a pass. The actual graph and local Playwright run with synthetic model/reviewer replies in [test_failure_regression.py](../tests/acceptance/test_failure_regression.py):
+
+| Test | Concrete assertion |
+| --- | --- |
+| `test_completion_repair_inspects_receipt_without_replaying_effect` | Rejected completion returns feedback; the actor reads an actual receipt and reports supported completion after exactly one external effect. |
+| `test_completion_repair_can_finish_missing_work_after_approval_and_resume` | Repair may request missing work, but it remains approval-gated and survives SQLite resume; no premature final-result file is written. |
+| `test_perpetual_completion_rejection_exhausts_two_repairs` | Two correction opportunities are bounded; a third rejected proposal produces partial with no unsupported claims. |
+| `test_invalid_completion_quote_returns_feedback_before_review` | A fabricated quote is rejected before the independent paid reviewer; the next valid proposal can be reviewed. |
+| `test_completion_repair_stops_when_review_budget_is_unavailable` | Reviewer budget failure ends partial without attempting further repair. This injects a budget exception; actual Gateway accounting is covered separately by P05/P06. |
+| `test_completion_repair_respects_existing_decision_limit` | Completion repair cannot bypass the existing decision cap. |
+| `test_completion_repair_keeps_duplicate_effect_admission_guard` | Repeating an already dispatched identical consequential effect during repair remains blocked; a fresh ref/approval cannot duplicate it. |
+
+Navigation-label regressions in [test_action_safety.py](../tests/acceptance/test_action_safety.py) address a false positive found in retained mail attempt 6:
+
+- `test_ordinary_document_link_category_is_not_a_destructive_action`: an ordinary document/folder link is not elevated solely because its noun label includes Trash, Spam or a security-related title.
+- `test_navigation_exception_preserves_action_and_destination_risk`: action verbs, destructive URL paths/query flags, button semantics, form submission and JavaScript destinations still require approval. All parameter variants are required.
+- `test_navigation_noun_cannot_downgrade_independent_reviewer`: a consequential, uncertain or forbidden independent review cannot be downgraded by the link-label exception.
+
+These are deterministic classification boundaries, not a universal proof that navigation is harmless. Actual effects, runtime approval/journal bindings and independent final-result grading remain required. Mail attempt 6 passed its browser-state/effect checks but failed overall; see EVALUATION-RESULTS.md and VALIDATION.md.
+
+## Archived completion evidence and retained recovery problems
+
+The current [graph](../src/browser_agent/graph.py) builds a maximum 32,000-byte serialized evidence/provenance packet from actual registered browser snapshots. Whole observations are prioritized by claims, scope and visited index; omissions and original browser truncation remain visible. The normal provider input-token cap still applies. Separate checkpointed completion feedback persists through actor memory refreshes and ordinary resume; it does not replace the non-rewindable action/budget ledger.
+
+These regressions in [test_failure_regression.py](../tests/acceptance/test_failure_regression.py) use actual local browser/graph state and synthetic reviewer replies:
+
+| Test | Concrete boundary |
+| --- | --- |
+| `test_completion_packet_recovers_prior_contents_after_compaction` | Nine actual document bodies reach independent review despite rolling history and multiple forced memory calls; provenance includes saved timestamps. |
+| `test_completion_packet_rejects_missing_content_despite_memory_claims` | Invented body text in working notes does not become observed evidence or earn completion. |
+| `test_completion_packet_caps_bytes_and_marks_omitted_or_truncated_sources` | The serialized evidence/manifest remains bounded, claimed/scope evidence is prioritized and omitted, unavailable or originally partial observations are explicit. |
+| `test_completion_packet_does_not_load_unregistered_files` | A saved file without run evidence/visited registration is not loaded merely because a proposed claim or scope names it. |
+| `test_completion_problem_and_omissions_survive_recall_memory_and_resume` | Rejection problems/omissions remain in every subsequent actor request across recall, forced memory and actual SQLite resume; normal approval still precedes the eventual effect. |
+| `test_corrupt_completion_snapshot_is_rejected_without_uncaught_error` | Empty object, list, null, mismatched ID and invalid JSON archives yield bounded partial outcomes and no completion-review call. All five parameter variants are required. |
+
+These tests address the mechanism exposed by mail 8; passing them does not retroactively pass that attempt or prove Luna will now complete the task. New guarded-proposal descriptions clarify host approval versus `ask_user`, while the existing native schema and independent gate remain authoritative. Fresh ordered runtime checks and actual-model results are still required after these changes.
+
 ## Structured memory and original collection scope
 
 These current assertions supplement P04/F10 and consequential-action boundaries. They use the real context builder, graph and durable storage; browser-effect cases use actual local Playwright with synthetic native model/reviewer replies. They establish mechanisms, not Luna’s semantic success on the assignment tasks. Execution status is recorded separately in VALIDATION.md and the current stage XML.
@@ -126,6 +165,14 @@ All tests below are in [test_context_budget.py](../tests/acceptance/test_context
 | `test_first_uncertain_consequence_records_memory_before_asking_for_scope` | The first proposed consequential action first requests memory and retains its pending call, without prematurely offering approval. |
 
 The action-result and historical-evidence tests in [test_runtime_contracts.py](../tests/acceptance/test_runtime_contracts.py) additionally check actual resulting page text, registered-evidence-only `recall`, preservation of original task/clarifications/page receipts and progress across distinct pages. None of these tests certifies that a model correctly identified every member of a natural-language collection. Keep the core and failure-behavior real-model requirements unchanged.
+
+## Optional recording console
+
+[tests/test_demo_console.py](../tests/test_demo_console.py) contains 21 distinct HTTP/UI/cleanup cases. Twenty passed together and the additional driver-cleanup test passed separately; this is optional-console evidence, not a runtime model evaluation. The actual Playwright UI test verifies authenticated polling, streamed output rendered as text and exact approval-button binding. HTTP tests cover loopback Host, session token, Origin/CSRF admission, bounded task inputs, single active runner, stale/mismatched/duplicate approval rejection, clarification/pause delivery and exception-value redaction. Shutdown tests verify cancellation of the owned runner while allowing its driver cleanup to complete.
+
+A manual visual inspection confirmed the console presentation; no billed console task or final recording has been completed. Stage 8 includes this file so the final post-core regression covers the shipped optional interface. [DEMO.md](DEMO.md) distinguishes the browser console from the native CLI and clearly labels fixture demonstrations.
+
+The food fixture constraint has separate assertions in `test_food_task_exposes_only_permitted_boundary_and_preserves_source` and `test_payment_boundary_is_not_added_to_other_task_families` ([test_fixtures.py](../tests/test_fixtures.py)), plus `test_food_failure_tasks_inherit_payment_boundary_without_failure_hints` ([test_failure_cases.py](../tests/test_failure_cases.py)). These prove source preservation and explicit permitted outcome constraints across food variants; the state graders still require correct checkout and no payment/order commit. They do not turn earlier needs_user food attempts into passes.
 
 ## Live and submission evidence
 

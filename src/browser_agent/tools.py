@@ -44,7 +44,11 @@ class Empty(Strict):
 
 
 class Ask(Strict):
-    question: str = Field(min_length=1, max_length=1500)
+    question: str = Field(
+        min_length=1,
+        max_length=1500,
+        description="Ask for a genuinely missing fact, necessary choice, or manual authentication/challenge. Never ask for browser-action approval here: propose that concrete action through its browser tool so the host requests exact approval before dispatch.",
+    )
     kind: Literal["clarification", "login", "challenge"]
 
 
@@ -99,6 +103,8 @@ class Finish(Strict):
     remaining: list[str] = Field(max_length=20)
 
 
+_PROPOSAL_GATE = " The host resolves the effect, reviews it and requests exact approval when needed BEFORE dispatch. Calling this tool never grants approval."
+
 REGISTRY = {
     "recall": (
         Recall,
@@ -108,33 +114,52 @@ REGISTRY = {
         Reconcile,
         "Resolve a previously uncertain action ONLY when new observation proves its effect occurred. Never infer no effect from missing evidence; no browser mutation.",
     ),
-    "click": (Ref, "Click exactly one currently observed element reference."),
-    "fill": (Fill, "Replace editable field content. Password fields are unavailable."),
-    "select": (Fill, "Select a currently observed option value or label."),
+    "click": (
+        Ref,
+        "Propose clicking exactly one currently observed element reference."
+        + _PROPOSAL_GATE,
+    ),
+    "fill": (
+        Fill,
+        "Propose replacing editable field content. Password fields are unavailable."
+        + _PROPOSAL_GATE,
+    ),
+    "select": (
+        Fill,
+        "Propose selecting a currently observed option value or label."
+        + _PROPOSAL_GATE,
+    ),
     "press": (
         Press,
-        "Press a restricted key on the observed target; submissions require review.",
+        "Propose pressing a restricted key on the observed target." + _PROPOSAL_GATE,
     ),
     "navigate": (
         Navigate,
-        "Navigate to a user-supplied or observed HTTP(S) destination.",
+        "Propose navigating to a user-supplied or observed HTTP(S) destination."
+        + _PROPOSAL_GATE,
     ),
-    "back": (Empty, "Go back one page in current tab."),
+    "back": (Empty, "Propose going back one page in current tab." + _PROPOSAL_GATE),
     "read": (
         Read,
         "Read a bounded page excerpt or observed scope. Continue with next_offset.",
     ),
-    "scroll": (Scroll, "Scroll current page a viewport, then observe."),
+    "scroll": (
+        Scroll,
+        "Propose scrolling the current page a viewport, then observe." + _PROPOSAL_GATE,
+    ),
     "tabs": (Empty, "List known browser tabs."),
-    "switch_tab": (Tab, "Switch to an existing observed tab ID."),
-    "close_tab": (Tab, "Close an existing tab, subject to review."),
+    "switch_tab": (
+        Tab,
+        "Propose switching to an existing observed tab ID." + _PROPOSAL_GATE,
+    ),
+    "close_tab": (Tab, "Propose closing an existing tab." + _PROPOSAL_GATE),
     "screenshot": (
         Empty,
         "Inspect the current viewport visually when semantic observation is insufficient.",
     ),
     "ask_user": (
         Ask,
-        "Pause for missing information, manual login or a security challenge; no polling while paused.",
+        "Pause for a genuinely missing fact or necessary choice, manual login or a security challenge; no polling while paused. Do not request action approval with ask_user: propose the concrete browser action through its native tool instead; the host will request exact approval before dispatch.",
     ),
     "remember": (Note, "Save bounded working notes from observations for long tasks."),
     "finish": (

@@ -92,7 +92,8 @@ flowchart TD
     Q --> O
     D -->|finish| F[Validate completion evidence]
     F -->|supported| E([Result])
-    F -->|insufficient| PART([Partial result])
+    F -->|insufficient, up to two repairs| D
+    F -->|unavailable or repair limit| PART([Partial result])
     P -->|critical or uncertain| H[Approval interrupt]
     H -->|approve| X[Revalidate + dispatch]
     H -->|deny| PART
@@ -103,7 +104,9 @@ flowchart TD
     R --> O
 ```
 
-Implemented refinement: denial ends the current run as partial, so the actor cannot seek a different route to the denied effect. Unsupported completion is downgraded instead of accepted. The user can explicitly start a revised task; it does not retroactively approve the denied action.
+Implemented refinement: denial ends the current run as partial, so the actor cannot seek a different route to the denied effect. Unsupported completion returns precise native-tool feedback for at most two correction attempts under the existing budget, decision and active-time limits. The actor may inspect evidence or complete missing in-scope work through normal approvals; journal protections continue to prevent duplicate effects. Exhausted or unavailable verification produces an explicitly unverified partial summary, without presenting rejected claims as established facts. The user can explicitly start a revised task; it does not retroactively approve a denied action.
+
+Native browser-tool descriptions explicitly describe proposed effects: the host reviews and obtains any required exact approval before dispatch. The actor should propose the concrete observed action instead of asking broad conversational permission through `ask_user`; that tool remains available for missing facts, necessary choices, login and challenges. This description change does not bypass independent policy or guarantee the model will choose correctly.
 
 Each paid call in `decide`, `assess risk`, or optional compaction uses the same budget gateway. Budget admission is not merely one graph edge. Guard all loops with task limits. LangGraph recursion counts node steps, not model decisions; configure it sufficiently above the explicit 60-decision limit without removing the latter.
 
@@ -268,9 +271,19 @@ Reserve the intended judge allowance before the actor runs, or use deterministic
 
 Experiments have an independent aggregate admission ledger and reserve the case cap before launching each case. Initial core suite: three cases once, maximum $15. Additional repeats must be explicitly bounded in the invocation; no unlimited tune-and-rerun loop. LangSmith service charges are separate from model-token spend. No actual spend has occurred during design.
 
+### Completion evidence and recovery context
+
+Completion review now receives a separate bounded archive packet containing actual previously registered browser snapshots, not just the last few page observations. The serialized evidence plus provenance/omission manifest is capped at 32,000 UTF-8 bytes, in addition to the gateway's 20,000-token whole-request cap. Whole snapshots are prioritized by cited IDs, original scope, visited-page index and remaining registered evidence. Only IDs registered in the run's evidence list or visited index authorize file reads; neither arbitrary paths nor invented notes become evidence.
+
+The manifest records URL/title, save time when available, browser generation/revision, original snapshot truncation and continuation metadata. A snapshot already truncated by the browser remains explicitly labeled partial. Packet overflow omits whole snapshots rather than silently clipping their content, and reports omitted/missing/invalid/unregistered sources. If even the omission list is too large, a bounded list and total omission count remain. Legacy observations may lack save timestamps; the packet does not invent them. An omitted historical snapshot is not proof that its facts never existed or that an action failed.
+
+Unresolved completion problems and packet omissions remain in a separate `completion_feedback` checkpoint field, included in every actor and memory request through recall, compaction and ordinary SQLite resume until terminal finalization clears it. This field is checkpointed recovery state; it is not claimed to be a non-rewindable action/budget journal. The actor still has at most two repair opportunities and must use ordinary evidence, approval and duplicate-effect boundaries. Prepared archive/feedback regressions do not establish improved real-model success before rerunning.
+
 ## 10. Terminal and browser interaction design
 
 The product interface is a visible browser beside a readable terminal. No custom web dashboard is needed. It must resemble the reference's clarity: a short user task, visible tools and arguments, browser changes and a final result.
+
+The optional `scripts/demo_console.py` provides a browser-based recording surface for the same runner when a native terminal cannot be controlled. It shows actual Rich events, keeps the task visible and forwards exact human approval/clarification responses; it does not introduce another agent loop, auto-approval or fabricated output. Its UI is labeled Agent console with a synthetic/live mode indicator. This is an explicitly identified browser console, not a claim that the recording contains a native Terminal. See DEMO.md for loopback/session/Origin/CSRF controls, fixture isolation and recording instructions. Its 21 tested HTTP/UI/cleanup cases and manual visual inspection are interface evidence; a completed complex-task recording is still required.
 
 ### Terminal information hierarchy
 

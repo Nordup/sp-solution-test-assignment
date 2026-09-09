@@ -7,9 +7,10 @@ exists; callers obtain these results after schema and browser-reference checks.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from browser_agent.storage import Store
 
@@ -59,6 +60,70 @@ _RISK_WORDS = (
     "отпис",
 )
 _READ_TOOLS = {"read", "tabs", "screenshot", "remember", "finish", "ask_user"}
+# These words can name a destination or document without describing an action.
+# Only ordinary, resolved navigation links may avoid their lexical risk floor.
+_CATEGORY_WORDS = {"trash", "spam", "password", "security", "спам", "пароль"}
+_ACTION_WORDS = tuple(word for word in _RISK_WORDS if word not in _CATEGORY_WORDS)
+_CHANGE_VERBS = (
+    "empty",
+    "move",
+    "mark",
+    "reset",
+    "change",
+    "disable",
+    "enable",
+    "update",
+    "clear",
+    "очист",
+    "перемест",
+    "измен",
+    "сброс",
+)
+
+
+def _navigation_action_cue(context: dict) -> bool:
+    """Conservative language/URL cues, never a website route allowlist.
+
+    A noun such as a folder name is not a destructive verb. An imperative such
+    as 'Empty trash', or an explicit operation in a destination, still is risky
+    even when an independent reviewer incorrectly calls the link ordinary.
+    """
+    labels = [str(context.get(key, "")).casefold() for key in ("name", "text")]
+    for label in labels:
+        if any(word in label for word in _ACTION_WORDS):
+            return True
+        words = re.findall(r"[^\W\d_]+", label, flags=re.UNICODE)
+        if words and any(words[0].startswith(verb) for verb in _CHANGE_VERBS):
+            return True
+        # Ambiguous noun/verb words become action cues when followed by a
+        # determiner, e.g. 'Trash this item'; a category alone does not.
+        if re.search(
+            r"\b(?:trash|spam)\s+(?:this|these|selected|all|the|a|an)\b", label
+        ):
+            return True
+    destination = urlsplit(str(context.get("href", "")))
+    path = unquote(destination.path).casefold()
+    segments = re.findall(r"[^\W\d_]+", path, flags=re.UNICODE)
+    if any(
+        any(segment.startswith(verb) for verb in (*_ACTION_WORDS, *_CHANGE_VERBS))
+        for segment in segments
+    ):
+        return True
+    for key, value in parse_qsl(destination.query):
+        key, value = key.casefold(), value.casefold()
+        if key in {
+            "action",
+            "operation",
+            "op",
+            "do",
+            "command",
+            "cmd",
+            "method",
+        } and any(word in value for word in (*_RISK_WORDS, *_CHANGE_VERBS)):
+            return True
+        if key in {*_RISK_WORDS, *_CHANGE_VERBS} and value not in {"0", "false", "no"}:
+            return True
+    return False
 
 
 def resolved_effect(action: dict, context: dict) -> dict:
@@ -177,7 +242,19 @@ class Policy:
         label = " ".join(
             str(context.get(key, "")) for key in ("name", "text")
         ).casefold()
-        if any(word in label for word in _RISK_WORDS) and classification == "ordinary":
+        ordinary_link = (
+            context.get("tag") == "a"
+            and context.get("role") in {None, "", "link"}
+            and not context.get("form_action")
+            and urlsplit(str(context.get("href", ""))).scheme in {"http", "https"}
+            and (tool == "click" or (tool == "press" and args.get("key") == "Enter"))
+        )
+        risky_target = (
+            _navigation_action_cue(context)
+            if ordinary_link
+            else any(word in label for word in _RISK_WORDS)
+        )
+        if risky_target and classification == "ordinary":
             classification = "consequential"
             reason = "Resolved target indicates a consequential effect; exact approval required"
         if (

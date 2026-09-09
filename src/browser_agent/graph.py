@@ -16,7 +16,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from .browser import BrowserError
-from .context import HISTORY_GROUPS, ContextOverflow, memory_due, request, task_context
+from .context import (
+    COMPLETION_EVIDENCE_BYTES,
+    HISTORY_GROUPS,
+    ContextOverflow,
+    memory_due,
+    request,
+    task_context,
+)
 from .llm import ProviderFailure
 from .safety import Policy
 from .storage import AdmissionError, BudgetExceeded, DuplicateAction
@@ -51,6 +58,8 @@ class State(TypedDict, total=False):
     result: dict
     steps: int
     repairs: int
+    completion_repairs: int
+    completion_feedback: dict | None
     failures: int
     repetitions: dict
     evidence_ids: list
@@ -162,13 +171,104 @@ class AgentGraph:
             {"observe": "observe", "ask": "ask", "finalize": "finalize"},
         )
         graph.add_edge("ask", "observe")
-        graph.add_edge("finalize", END)
+        graph.add_conditional_edges(
+            "finalize", lambda s: s["route"], {"decide": "decide", "done": END}
+        )
         return graph.compile(checkpointer=checkpointer)
 
     def save_observation(self, observation):
+        observation.setdefault("saved_at_unix", time.time())
         path = self.run_dir / "evidence" / f"{observation['id']}.json"
         path.write_text(json.dumps(observation, ensure_ascii=False), encoding="utf-8")
         path.chmod(0o600)
+
+    @staticmethod
+    def registered_observations(state):
+        return set(state.get("evidence_ids", [])) | {
+            item["evidence_id"] for item in state.get("visited", [])
+        }
+
+    def completion_packet(self, state, proposal, max_bytes=COMPLETION_EVIDENCE_BYTES):
+        """Bound actual archived evidence, never summaries or inferred page bodies.
+
+        Whole saved snapshots are admitted in priority order. Omitting a snapshot
+        is explicit; its absence cannot establish that a task outcome is absent.
+        A saved snapshot may itself be a browser continuation, which remains
+        labelled with its original truncation/offset metadata.
+        """
+        registered = self.registered_observations(state)
+        candidates = list(
+            dict.fromkeys(
+                [claim["evidence_id"] for claim in proposal.get("claims", [])]
+                + [
+                    item["evidence_id"]
+                    for item in (state.get("scope") or {}).get("items", [])
+                ]
+                + [item["evidence_id"] for item in state.get("visited", [])]
+                + state.get("evidence_ids", [])
+            )
+        )
+        evidence = {}
+        manifest = {
+            "sources": {},
+            "omitted": [
+                {"evidence_id": evidence_id, "reason": "packet_byte_limit"}
+                for evidence_id in candidates
+            ],
+            "byte_limit": max_bytes,
+        }
+
+        def size():
+            return len(
+                json.dumps(
+                    {"evidence": evidence, "manifest": manifest}, ensure_ascii=False
+                ).encode("utf-8")
+            )
+
+        for omission in list(manifest["omitted"]):
+            evidence_id = omission["evidence_id"]
+            if evidence_id not in registered:
+                omission["reason"] = "unregistered_observation"
+                continue
+            try:
+                saved = json.loads(
+                    (self.run_dir / "evidence" / f"{evidence_id}.json").read_text()
+                )
+                if (
+                    not isinstance(saved, dict)
+                    or saved.get("id") != evidence_id
+                    or not isinstance(saved.get("text"), str)
+                ):
+                    omission["reason"] = "saved_observation_invalid"
+                    continue
+            except (OSError, ValueError):
+                omission["reason"] = "saved_observation_unavailable"
+                continue
+            source = {
+                "provenance": "registered_browser_observation",
+                "url": saved.get("url"),
+                "title": saved.get("title"),
+                "saved_at_unix": saved.get("saved_at_unix"),
+                "generation": saved.get("generation"),
+                "revision": saved.get("revision"),
+                "snapshot_truncated": bool(saved.get("truncated")),
+                "offset": saved.get("offset", 0),
+                "next_offset": saved.get("next_offset"),
+            }
+            evidence[evidence_id] = saved["text"]
+            manifest["sources"][evidence_id] = source
+            manifest["omitted"].remove(omission)
+            if size() > max_bytes:
+                del evidence[evidence_id]
+                del manifest["sources"][evidence_id]
+                manifest["omitted"].append(omission)
+        # Even an unusually large omission index has a visible bounded summary.
+        if size() > max_bytes:
+            manifest["omitted_count"] = len(manifest["omitted"])
+            manifest["omission_index_truncated"] = True
+            while manifest["omitted"] and size() > max_bytes:
+                manifest["omitted"].pop()
+        return evidence, manifest
 
     def restore_memory(self, state):
         """Authoritative memory survives old graph checkpoints and browser restart."""
@@ -932,55 +1032,127 @@ class AgentGraph:
         return update
 
     async def finalize(self, state):
+        state = self.restore_memory(state)
+        started = time.monotonic()
         result = state.get("result")
-        if result:
+        if result and result["status"] == "completed":
             evidence = {}
-            valid = True
-            for claim in result["claims"]:
+            manifest = {"sources": {}, "omitted": []}
+            problems = []
+            unavailable = False
+            for index, claim in enumerate(result["claims"], start=1):
                 evidence_id = claim["evidence_id"]
-                if evidence_id not in state.get("evidence_ids", []):
-                    valid = False
-                    break
-                obs = json.loads(
-                    (self.run_dir / "evidence" / f"{evidence_id}.json").read_text()
-                )
+                if evidence_id not in self.registered_observations(state):
+                    problems.append(
+                        f"Claim {index}: evidence_id {evidence_id!r} was not observed in this run."
+                    )
+                    continue
+                try:
+                    obs = json.loads(
+                        (self.run_dir / "evidence" / f"{evidence_id}.json").read_text()
+                    )
+                except (OSError, ValueError):
+                    problems.append(
+                        f"Claim {index}: saved observation {evidence_id!r} is unavailable."
+                    )
+                    continue
+                if (
+                    not isinstance(obs, dict)
+                    or obs.get("id") != evidence_id
+                    or not isinstance(obs.get("text"), str)
+                ):
+                    problems.append(
+                        f"Claim {index}: saved observation {evidence_id!r} is invalid."
+                    )
+                    continue
                 if claim["quote"] not in obs["text"]:
-                    valid = False
-                    break
+                    problems.append(
+                        f"Claim {index}: quote is not an exact contiguous substring of observation {evidence_id!r}."
+                    )
+                    continue
                 evidence[evidence_id] = obs["text"]
-            if result["status"] == "completed" and (
-                not valid
-                or not evidence
-                or result["remaining"]
-                or self.store.unresolved_actions(state["run_id"])
-            ):
-                result = result | {
-                    "status": "partial",
-                    "remaining": [
-                        "Completion evidence is missing, inconsistent, or an action remains uncertain."
-                    ],
-                }
-            elif result["status"] == "completed":
+            if not evidence:
+                problems.append(
+                    "No valid observed evidence supports the completion claims."
+                )
+            if result["remaining"]:
+                problems.append(
+                    "A completed result cannot have remaining work: "
+                    + "; ".join(result["remaining"])
+                )
+            if self.store.unresolved_actions(state["run_id"]):
+                problems.append(
+                    "An action remains uncertain; inspect and reconcile it before claiming completion."
+                )
+            if not problems:
+                evidence, manifest = self.completion_packet(state, result)
+                if not evidence:
+                    problems.append(
+                        "No actual saved snapshot fits the bounded evidence packet; inspect smaller scoped observations before claiming completion."
+                    )
+            if not problems:
                 try:
                     review = await self.gateway.verify_completion(
-                        state["task"], result, evidence
+                        state["task"],
+                        result
+                        | {
+                            "task_context": task_context(state),
+                            "evidence_manifest": manifest,
+                            "context_limitations": "Evidence contains actual previously registered browser snapshots: cited observations first, then original scope and indexed historical pages. The manifest records provenance, chronology, original truncation, and explicit omissions. Historical snapshots establish only what was observed then; do not treat them as the current page or infer missing facts from omitted/truncated snapshots. Preserved scope identifies the original task boundary. Working notes and dispatch receipts are not proof of successful effects; verify all outcome claims against actual observed content.",
+                        },
+                        evidence,
                     )
                     if not review["supported"]:
-                        result = result | {
-                            "status": "partial",
-                            "remaining": [review["reason"]],
-                        }
+                        problems.append(review["reason"])
                 except (
                     ProviderFailure,
                     BudgetExceeded,
                     ProtocolError,
                     ContextOverflow,
                 ) as exc:
-                    result = result | {
-                        "status": "partial",
-                        "remaining": ["Completion review unavailable: " + str(exc)],
+                    unavailable = True
+                    problems.append("Completion review unavailable: " + str(exc))
+            if problems:
+                repairs = state.get("completion_repairs", 0)
+                if (
+                    not unavailable
+                    and repairs < 2
+                    and state.get("steps", 0) < self.settings.max_decisions
+                    and state.get("active_seconds", 0) + time.monotonic() - started
+                    < self.settings.active_seconds
+                    and self.store.budget(state["run_id"])["remaining"] > 0
+                ):
+                    feedback = {
+                        "completion_accepted": False,
+                        "problems": problems,
+                        "repair_attempt": repairs + 1,
+                        "repair_limit": 2,
+                        "omitted_evidence": manifest["omitted"],
+                        "omission_index_truncated": manifest.get(
+                            "omission_index_truncated", False
+                        ),
+                        "omitted_count": manifest.get(
+                            "omitted_count", len(manifest["omitted"])
+                        ),
+                        "instruction": "Evidence absent from current context or omitted from the bounded packet may still be available through recall and the observed-page index. Retrieve relevant saved content or inspect missing outcome evidence, and address genuinely remaining in-scope work through normal review and approval. Preserve these unresolved problems across memory refreshes. Never repeat an already dispatched effect. Finish with exact supported quotes; finish partial for a genuine blocker or exhausted recovery, not merely because indexed evidence has not yet been recalled.",
                     }
-        else:
+                    self.emit("completion_repair", feedback)
+                    return self.outcome(
+                        state,
+                        feedback,
+                        result=None,
+                        status="running",
+                        completion_repairs=repairs + 1,
+                        completion_feedback=feedback,
+                        route="decide",
+                    )
+                result = result | {
+                    "status": "partial",
+                    "summary": "Completion was not verified: " + "; ".join(problems),
+                    "claims": [],
+                    "remaining": problems,
+                }
+        elif not result:
             result = {
                 "status": state.get("status", "partial"),
                 "summary": state.get(
@@ -999,4 +1171,9 @@ class AgentGraph:
             json.dumps(result, ensure_ascii=False, indent=2)
         )
         self.emit("result", result)
-        return {"result": result, "status": result["status"]}
+        return {
+            "result": result,
+            "status": result["status"],
+            "completion_feedback": None,
+            "route": "done",
+        }

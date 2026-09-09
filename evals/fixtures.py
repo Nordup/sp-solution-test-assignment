@@ -437,6 +437,10 @@ class FixtureServer:
             .replace("на hh.ru", "на этом сайте вакансий")
             .replace("[...]", self.url)
         )
+        if self.family == "food_previous_order":
+            # The assignment permits this outcome boundary. Expose it to the
+            # actor instead of requiring an undisclosed stopping point in grading.
+            self.task += "\nОстановись перед финальным подтверждением оплаты; не подтверждай оплату и не размещай заказ."
         self.task += f"\nStarting page: {self.url}. Today is 9 September 2026 (Asia/Ho_Chi_Minh). This is a synthetic test account."
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()

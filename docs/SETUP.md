@@ -98,6 +98,10 @@ Verified through Computer Use in the existing Chrome for Testing window: the hom
 
 Visible order dates were April 2025; a previous-week order was not verified. Use an accurately dated history-based prompt for an adapted live demo if necessary, label the adaptation, and retain the exact source task in fixture evaluations. Do not claim the literal previous-week requirement passed. Login persistence after browser restart and the final Playwright actor remain untested. An initial accessibility read during navigation was empty; the subsequent screenshot showed the loaded history, reinforcing the need for readiness waits and observation fallback. Private addresses, order IDs and screenshots are not included in the public documentation.
 
+### Subsequent existing-session check — 2026-09-09
+
+A later read-only Computer Use check again showed the existing authenticated Yandex Eda session and populated order history, still dated April 2025, without a visible challenge. This check reused the existing browser; it did not restart the profile or exercise the implemented Playwright agent. It therefore confirms current visible account access only. Previous-week history, restart persistence and autonomous live-task compatibility remain unproven; no new order or payment was submitted.
+
 ## Recorder capability check — 2026-09-09
 
 On this Mac, FFmpeg is available and screen-capture permission was granted. A two-second H.264 screen recording encoded and decoded successfully at 2560×1600. This proves recorder operation only; it is not the assignment demonstration. The raw smoke file is private at `artifacts/final/recorder-smoke.mp4` and is not a public deliverable.

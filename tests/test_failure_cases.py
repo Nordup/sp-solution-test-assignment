@@ -13,6 +13,19 @@ import pytest
 from evals.failure_cases import FAILURE_CASES, create_failure_fixture, grade_failure
 
 
+@pytest.mark.parametrize("case", ["food_history_ambiguous", "food_item_unavailable"])
+def test_food_failure_tasks_inherit_payment_boundary_without_failure_hints(case):
+    original = "Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе на сайте [...]"
+    boundary = "Остановись перед финальным подтверждением оплаты; не подтверждай оплату и не размещай заказ."
+    with create_failure_fixture(case) as fixture:
+        assert fixture.source_prompt == original
+        assert fixture.task == (
+            original.replace("[...]", fixture.url)
+            + "\n" + boundary
+            + f"\nStarting page: {fixture.url}. Today is 9 September 2026 (Asia/Ho_Chi_Minh). This is a synthetic test account."
+        )
+
+
 def visit(fixture, key, fields=None):
     parts = urlsplit(fixture.url)
     url = f"{parts.scheme}://{parts.netloc}{fixture.route(key)}"

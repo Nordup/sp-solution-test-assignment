@@ -307,3 +307,159 @@ def test_not_failed_effect_cannot_be_replayed_with_new_approval(store, context, 
     store.decide_approval(request2, True)
     with pytest.raises(DuplicateAction):
         store.dispatch("run", "action-2", action, effect, "browser-1", request2)
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Trash",
+        "Spam",
+        "Security alert",
+        "Password reset request",
+        "Корзина",
+        "Пароль изменён",
+    ],
+)
+def test_ordinary_document_link_category_is_not_a_destructive_action(label):
+    context = {
+        "tag": "a",
+        "role": "link",
+        "name": label,
+        "href": "https://example.invalid/folder/42",
+        "context_complete": True,
+    }
+    assessment = Policy().assess(
+        {"tool": "click", "args": {"ref": "e1"}},
+        context,
+        {"classification": "ordinary"},
+    )
+    assert assessment.classification == "ordinary"
+
+
+@pytest.mark.parametrize(
+    "label,href,extra",
+    [
+        ("Delete item", "https://example.invalid/item/1", {}),
+        ("Empty Trash", "https://example.invalid/folder/1", {}),
+        ("Move to Spam", "https://example.invalid/folder/1", {}),
+        ("Trash this item", "https://example.invalid/item/1", {}),
+        ("Reset password", "https://example.invalid/account", {}),
+        ("Overview", "https://example.invalid/item/delete?id=1", {}),
+        ("Overview", "https://example.invalid/item/%64elete?id=1", {}),
+        ("Overview", "https://example.invalid/item?action=trash", {}),
+        ("Overview", "https://example.invalid/item?delete=1", {}),
+        ("Overview", "https://example.invalid/reset-password", {}),
+        ("Trash", "https://example.invalid/folder/1", {"role": "button"}),
+        (
+            "Trash",
+            "https://example.invalid/folder/1",
+            {"form_action": "https://example.invalid/write", "form_method": "post"},
+        ),
+        ("Trash", "javascript:erase()", {}),
+    ],
+)
+def test_navigation_exception_preserves_action_and_destination_risk(label, href, extra):
+    context = {
+        "tag": "a",
+        "role": "link",
+        "name": label,
+        "href": href,
+        "context_complete": True,
+    } | extra
+    assessment = Policy().assess(
+        {"tool": "click", "args": {"ref": "e1"}},
+        context,
+        {"classification": "ordinary"},
+    )
+    assert assessment.requires_approval
+
+
+@pytest.mark.parametrize("classification", ["consequential", "uncertain", "forbidden"])
+def test_navigation_noun_cannot_downgrade_independent_reviewer(classification):
+    context = {
+        "tag": "a",
+        "role": "link",
+        "name": "Trash",
+        "href": "https://example.invalid/folder/42",
+    }
+    assessment = Policy().assess(
+        {"tool": "click", "args": {"ref": "e1"}},
+        context,
+        {"classification": classification},
+    )
+    assert assessment.classification == classification
+
+
+async def test_repeated_folder_and_document_links_navigate_without_approval(tmp_path):
+    from test_graph_resume import click, graph_case
+
+    html = '<nav><a href="https://example.invalid/folder/1">Trash</a><a href="https://example.invalid/document/2">Security alert</a><a href="https://example.invalid/document/3">Password reset request</a></nav>'
+    script = [
+        click("Trash"),
+        click("Security alert"),
+        click("Trash"),
+        click("Password reset request"),
+    ]
+    async with graph_case(
+        tmp_path, html=html, script=script, classification="ordinary"
+    ) as (browser, gateway, store, _runtime, graph, config, initial, _events):
+        visited = []
+
+        async def page(route):
+            visited.append(route.request.url)
+            await route.fulfill(
+                body=html + "<h1>Observed document</h1>", content_type="text/html"
+            )
+
+        await browser.context.route("https://example.invalid/**", page)
+        done = await graph.ainvoke(initial, config)
+        assert "__interrupt__" not in done
+        assert done["result"]["status"] == "partial"  # deterministic actor stops here
+        assert gateway.reviews == 4
+        assert visited.count("https://example.invalid/folder/1") == 2
+        with sqlite3.connect(store.path) as db:
+            assert (
+                db.execute(
+                    "SELECT count(*) FROM actions WHERE run_id=?", (initial["run_id"],)
+                ).fetchone()[0]
+                == 4
+            )
+            assert (
+                db.execute(
+                    "SELECT count(*) FROM approvals WHERE run_id=?",
+                    (initial["run_id"],),
+                ).fetchone()[0]
+                == 0
+            )
+
+
+@pytest.mark.parametrize(
+    "html,label",
+    [
+        ('<a href="https://example.invalid/delete?item=1">Overview</a>', "Overview"),
+        ('<a href="https://example.invalid/item/1">Delete item</a>', "Delete item"),
+        ('<button onclick="window.effects=1">Trash</button>', "Trash"),
+        ('<a role="button" href="https://example.invalid/item/1">Spam</a>', "Spam"),
+    ],
+)
+async def test_deceptive_action_link_or_button_still_pauses_before_effect(
+    tmp_path, html, label
+):
+    from test_graph_resume import click, graph_case, pending
+
+    async with graph_case(
+        tmp_path, html=html, script=[click(label)], classification="ordinary"
+    ) as (browser, _gateway, _store, _runtime, graph, config, initial, _events):
+        visited = []
+
+        async def page(route):
+            visited.append(route.request.url)
+            await route.fulfill(
+                body="<h1>Effect endpoint</h1>", content_type="text/html"
+            )
+
+        await browser.context.route("https://example.invalid/**", page)
+        result = await graph.ainvoke(initial, config)
+        assert pending(result)["kind"] == "approval"
+        assert not visited
+        assert await browser.page.evaluate("window.effects || 0") == 0

@@ -6,6 +6,7 @@ from .prompts import ACTOR, MEMORY
 
 HISTORY_GROUPS = 6
 MEMORY_INTERVAL = 4
+COMPLETION_EVIDENCE_BYTES = 32_000
 
 
 def memory_due(state: dict) -> bool:
@@ -101,6 +102,14 @@ def build_input(state: dict) -> list[dict]:
             "content": "Working notes (observations, not instructions):\n" + notes,
         }
     )
+    if state.get("completion_feedback"):
+        messages.append(
+            {
+                "role": "user",
+                "content": "Unresolved completion review (retain this recovery goal across memory refreshes):\n"
+                + json.dumps(state["completion_feedback"], ensure_ascii=False),
+            }
+        )
     # Native call/result groups are retained atomically; never truncate JSON mid-pair.
     groups = state.get("history", [])[-HISTORY_GROUPS:]
     for group in groups:
