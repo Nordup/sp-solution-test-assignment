@@ -2,7 +2,7 @@
 
 A Python agent that uses a visible Playwright browser to solve natural-language tasks. LangGraph coordinates observation, native OpenAI tool calls, independent risk review, exact approvals, execution and recovery. The default model is **GPT-5.6 Luna**.
 
-**Validation is in progress; the solution is not ready for submission.** All three core fixtures and both generalization cases passed on an earlier candidate with verified semantic grading and traces. Later failure diagnostics prompted further repairs. Candidate `a27f70512cbe` has 199 contract tests, 32 browser tests and provider/LangSmith preflight passing; its complete paid acceptance sequence is still unfinished. The live Yandex task is paused for a genuine delivery address, and no final video exists. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md) for current outcomes and historical failures.
+**Validation is in progress; the solution is not ready for submission.** All three core fixtures and both generalization cases passed on an earlier candidate with verified semantic grading and traces. Later failure diagnostics prompted further repairs. The current candidate has passed 241 contract tests, 32 browser tests, preflight and all three core task outcomes with verified traces. Both generalization outcomes passed, with one trace export awaiting recovery; later failure stages and the video remain incomplete. The live Yandex task is paused for a genuine delivery address, and no final video exists. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md) for current outcomes and historical failures.
 
 ## Start
 
@@ -82,7 +82,7 @@ Follow [FINAL-TEST.md](docs/FINAL-TEST.md) for the ordered release checks. Paid 
 ```bash
 uv run python -m evals.release init --session final-candidate --max-total-usd 45
 uv run browser-agent doctor --online --budget-usd 5 --release-session final-candidate
-uv run python -m evals.run --suite core --repetitions 1 --headed --max-experiment-usd 15 --release-session final-candidate
+uv run python -m evals.run --suite core --seeds 101,102,103 --repetitions 1 --headed --max-experiment-usd 15 --release-session final-candidate
 uv run python -m evals.report --release-session final-candidate --require-final-suite
 ```
 

@@ -4,7 +4,7 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-Candidate `b7bc710bca37` (commit `bf93f5e`) passed **235 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. Its mail evaluation failed because the no-progress guard counted a legitimate revisit after new pages as a lifetime repetition. The browser read the original ten messages but deleted none. The guard repair and a fresh ordered sequence are pending; later task/failure stages and the final video remain incomplete.
+Current candidate `cc74a1049452` (commit `ac552e8`) passed **241 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. All three core tasks passed every check with verified traces. Both generalization outcome checks passed, but event trace export hit a connection error; the ordered pipeline stopped before recovery pending trace verification. Later generalization/recovery/failure stages and the final video remain incomplete.
 
 Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
 
@@ -151,3 +151,16 @@ Candidate `b7bc710bca37` passed **175 focused tests** and a **7/7 native endpoin
 Mail 19 (`b854a161-74ec-4e0a-89ce-b5f81fbd9c6c`) on `b7bc710bca37` remains **FAIL**, with verified trace, $0.182255 settled and no reserved/unknown amount. It read all ten original messages, then paused before deletion on a third visit to the same message. Ten distinct pages intervened between the first and final visit; the guard retained lifetime transition counts rather than counting repetition since actual new page evidence. No messages were deleted. The ordered pipeline stopped before food/jobs and later stages. All 50 actual attempts remain in the public metadata table.
 
 The bounded repair retains host-observed semantic page identities across checkpoints and reset repetition counts only when genuinely new page evidence is observed. Known-page cycles, unchanged actions, and reference/focus churn must still stop. Actor notes cannot reset the guard. The focused runtime-contract/failure regression selection passed **47 tests** in 29.66 seconds, including six added cases. Candidate `cc74a1049452` is frozen for fresh ordered validation; these guard tests are not an autonomous task pass.
+
+
+### Progress-aware candidate: fresh mail pass
+
+Mail 20 (`0b10744d-8cd8-4c06-bf9e-b39317737768`) on `cc74a1049452` **passed every check**: original ten messages read, exactly three spam messages moved to Trash, legitimate/older mail retained, prior exact approvals, grounded completed report and verified LangSmith trace. Cost was $0.213528 with no reserved/unknown amount. The ordered core experiment continues through food and jobs; this is one accepted task run, not a reliability estimate or a complete release pass.
+
+
+The same ordered core experiment (`eval-20260909T200910-f3b2e7d0`) finished **3/3 PASS** on `cc74a1049452`. Food (`9cff2743-12ea-469d-8c1c-4bbbfe0001df`) passed actual final checkout-boundary, item/total, approval, no-payment and factual checks at $0.042562. Jobs (`3bb9da56-67cd-4698-82ec-6a113396cd96`) passed three suitable actual applications, grounded letters, exact approvals and truthful reporting at $0.071640. All three traces are verified, all task ledgers closed with zero reserved/unknown amount. Total core cost $0.327730. These are three single-run task results; the remaining release stages are still required.
+
+
+### Generalization outcomes and trace transport failure
+
+On the same `cc74a1049452` candidate, unfamiliar event (`29a31480-9c6b-4cd5-8ba7-837a470a4b20`, $0.036174) and changed-layout food (`e3347354-10b4-4100-9491-1e63434603e2`, $0.044533) passed all outcome checks. The changed-layout trace is verified. Event export recorded `LangSmithConnectionError`; therefore the generalization experiment (`eval-20260909T201930-2df0e038`) failed its tracing gate and the ordered pipeline stopped before recovery. Original outcome grades and closed task ledgers remain unchanged. Trace-only verification/recovery is pending, without a new actor or judge run.
