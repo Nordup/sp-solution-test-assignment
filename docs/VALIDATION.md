@@ -221,3 +221,21 @@ The factual reviewer now shares the existing completion-effort setting, medium b
 
 
 Candidate `1311f5860757` is frozen with shared medium final-review effort. The final affected provider/report/context selection passed **67 tests**; Ruff and diff checks passed. Fresh ordered stages03/04 are running before the provider/actor stages. Prior fingerprints and calibration failures remain historical evidence.
+
+
+### Shared final-review effort candidate: core 2/3
+
+On `1311f5860757` / source commit `4341d34`, ordered stages03/04 passed **263/32 tests** with no skips; provider/LangSmith preflight `0c1dcb0a-01f8-4428-9f2e-da496fbc7957` passed at $0.000058. Core experiment `eval-20260909T214033-95ac71e2` completed all three cases with verified traces and closed task ledgers, zero reserved/unknown:
+
+| Case | Run | Result | Cost | Evidence |
+| --- | --- | --- | --- | --- |
+| Mail | `d84c8b15-cab6-4b1b-a050-b6e5b4dde236` | FAIL | $0.157649 | All ten read, exactly three spam changes, approvals and retained mail checks passed. Step27 risk-review input was 20,025 tokens against the unchanged 20,000 cap, so no final report completed. |
+| Food | `1937db82-8215-4da1-aca9-61a57a93b813` | PASS | $0.046713 | Correct cart/final payment boundary, no payment/order, grounded report and trace passed. |
+| Jobs | `e6de1420-d926-4528-9505-29a29d2ccb1f` | PASS | $0.073333 | Three suitable approved applications, grounded letters/report and trace passed. |
+
+The pipeline stopped before generalization. Read-only diagnosis localized mail’s overflow to the risk reviewer, not actor history or final verification. The request duplicated up to 5,960 bytes of optional quote-copy aid alongside the original source archive. The rejected action had no approval or dispatch row. A bounded pre-generation repack is being implemented: remove only that duplicated aid, then reduce whole-source archive size with explicit omissions if still necessary; retain constraints/action metadata and the original cap. The exact newly resolved DOM context was not checkpointed on admission failure, so reconstructed component sizes are not represented as a byte-for-byte replay of the original full request.
+
+
+### Bounded risk-admission repair
+
+Candidate `8b0283652130` implements original request → remove duplicate copy aid → 24KB whole-source packet. No model/token/spending cap changes. Eight new admission cases plus affected provider/context/scope/resume checks passed **82 tests**, with Ruff and diff checks passing. The documentation/interface audit found no blocking command discrepancies. Fresh ordered stages03/04 and subsequent actor evaluations remain required; the previous mail failure is retained.

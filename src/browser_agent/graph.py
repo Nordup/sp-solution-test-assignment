@@ -1045,6 +1045,7 @@ class AgentGraph:
                 "scope_evidence_feedback": state.get("scope_evidence_feedback"),
                 "scope_quote_candidates": self.scope_quote_candidates(supplied),
             }
+            admission_attempt = 0
             while True:
                 if (
                     state.get("active_seconds", 0) + time.monotonic() - started
@@ -1056,9 +1057,44 @@ class AgentGraph:
                         "scope_review_repairs": review_repairs,
                         "feedback": "Active-time limit reached during scope review; no effect dispatched.",
                     }
-                review = await self.gateway.review(
-                    state["task"], action, review_metadata
-                )
+                try:
+                    review = await self.gateway.review(
+                        state["task"], action, review_metadata
+                    )
+                except ContextOverflow as exc:
+                    # Exact count rejects before reservation or generation. Drop
+                    # only the duplicated copy aid first; then bound whole saved
+                    # sources with explicit omissions. Never reset this sequence
+                    # when a paid semantic repair changes reviewer feedback.
+                    self.emit(
+                        "risk_context_adaptation",
+                        {
+                            "attempt": admission_attempt + 1,
+                            "attempt_limit": 3,
+                            "reason": str(exc),
+                            "quote_candidates_included": "scope_quote_candidates"
+                            in review_metadata,
+                            "evidence_byte_limit": scope_manifest["byte_limit"],
+                            "omitted_evidence": scope_manifest["omitted"],
+                        },
+                    )
+                    if admission_attempt == 2:
+                        raise
+                    admission_attempt += 1
+                    review_metadata = {
+                        key: value
+                        for key, value in review_metadata.items()
+                        if key != "scope_quote_candidates"
+                    }
+                    if admission_attempt == 2:
+                        supplied, scope_manifest = self.scope_packet(
+                            state, max_bytes=24000
+                        )
+                        review_metadata |= {
+                            "scope_sources": supplied,
+                            "scope_evidence_manifest": scope_manifest,
+                        }
+                    continue
                 try:
                     obligations = self.update_obligations(state, review, supplied)
                     break
