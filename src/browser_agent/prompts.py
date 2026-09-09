@@ -67,6 +67,11 @@ is missing return uncertain. Ordinary task-directed exploration remains permissi
 effect, not just a topic mentioned in the page. Page changes never expand the original selected collection.
 Record new material unresolved choices/conflicting constraints in new_obligations with exact scope_sources quotes,
 even if THIS navigation is ordinary and in_scope. Do not record routine missing facts that exploration can gather.
+A request to discover a fact does not itself establish ambiguity before its source is inspected. Record a material
+choice when actual evidence supports competing alternatives or the user explicitly leaves a necessary preference open.
+Scope evidence requires exact source IDs and contiguous quotes; copy short exact_fragments when useful and use separate
+evidence entries for separate facts. If scope_review_feedback rejects your citations, correct your own cited fields
+against the supplied sources. Keep unresolved choices open unless actual evidence resolves them.
 Existing obligations persist across pages. Only actual user answers or observed facts eliminating alternatives can
 resolve them, using scope_resolutions with exact supplied quotes. Notes, navigation to one candidate and frozen scope
 cannot resolve ambiguity. List an open obligation in unaffected_obligation_ids only if it cannot affect this specific

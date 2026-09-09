@@ -56,6 +56,8 @@ The browser check opens and closes only its own synthetic profile; it makes no m
 
 ## Remaining human-dependent work
 
+The saved live Yandex task `9ad93502-a357-41e0-b888-b92413f295a5` is paused for the actual delivery address after successful navigation on the reused profile. It has $0.080924 settled, no reserved/unknown amount, and no completed order/payment or final video. Supply only genuine missing information when resuming the same live run; preserve its existing ledger.
+
 Continue implementation validation and local synthetic evaluations using the existing setup. A dedicated `demo` profile was prepared and Yandex Eda was checked as described below; verify its current authentication and history when running the final live demo. Firefox’s existing login is not automatically the Playwright profile. Final consequential-action approvals remain required. Recorder capability has now been checked as described below; the actual browser-and-terminal demonstration remains to be recorded and reviewed.
 
 The user will top up API credit later. Until then, preserve the existing balance and use Luna. No subscription, payment method, auto-reload or unrelated account settings were changed.
@@ -88,7 +90,7 @@ The user requests minimizing bot-check triggers. Reuse the logged-in demo profil
 
 ## Preferred food demo: Yandex Eda
 
-On 2026-09-09 the user confirmed: “yandex eda is ready”. Use Yandex Eda as the preferred live food-order demo candidate, with Shopee retained as an additional scenario. This was initially user-reported readiness; the subsequent read-only verification below established authentication and populated history. Persistence after reopening, relevant previous-week history and product availability still need current live verification. Reuse the prepared authenticated profile once identified; do not create a fresh login session unnecessarily.
+On 2026-09-09 the user confirmed: “yandex eda is ready”. Use Yandex Eda as the preferred live food-order demo candidate, with Shopee retained as an additional scenario. This was initially user-reported readiness; the subsequent read-only verification below established authentication and populated history. At that initial check, reopening was untested. Later actual-runner resumes below established authenticated access; relevant previous-week history, product availability and complete task behavior remain unverified. Reuse the prepared authenticated profile once identified; do not create a fresh login session unnecessarily.
 
 Run the supplied history-dependent BBQ-burger and fries task if the account history supports it. Verify the restaurant from actual order history, then products, cart and checkout state. Stop before final order placement/payment unless exact consequential-action approval is supplied. Do not substitute invented history or claim success when the required prior order/products are unavailable. Preserve the challenge-aware browsing rules.
 
@@ -100,7 +102,7 @@ Visible order dates were April 2025; a previous-week order was not verified. Use
 
 ### Subsequent existing-session check — 2026-09-09
 
-A later read-only Computer Use check again showed the existing authenticated Yandex Eda session and populated order history, still dated April 2025, without a visible challenge. This check reused the existing browser; it did not restart the profile or exercise the implemented Playwright agent. It therefore confirms current visible account access only. Previous-week history, restart persistence and autonomous live-task compatibility remain unproven; no new order or payment was submitted.
+A later read-only Computer Use check again showed the existing authenticated Yandex Eda session and populated order history, still dated April 2025, without a visible challenge. This check reused the existing browser; it did not restart the profile or exercise the implemented Playwright agent. It therefore confirms current visible account access only. At that check, restart persistence was unproven; later actual-runner attempts below supersede that narrow point. Previous-week history and autonomous live-task compatibility remain unproven; no new order or payment was submitted.
 
 ## Recorder capability check — 2026-09-09
 

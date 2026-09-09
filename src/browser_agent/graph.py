@@ -32,6 +32,14 @@ from .storage import AdmissionError, BudgetExceeded, DuplicateAction
 from .tools import CollectionScope, ProtocolError, parse_call, protocol_pair, tool_specs
 
 
+class ScopeReviewError(ProtocolError):
+    """Grounding feedback belongs to the reviewer that supplied the bad fields."""
+
+    def __init__(self, message, errors):
+        super().__init__(message)
+        self.errors = errors
+
+
 class State(TypedDict, total=False):
     run_id: str
     task: str
@@ -44,6 +52,7 @@ class State(TypedDict, total=False):
     progress: list
     memory_step: int
     memory_required: bool
+    scope_review_repairs: int
     scope_obligations: list
     review_obligations: list
     review_scope: dict | None
@@ -381,13 +390,21 @@ class AgentGraph:
         obligations = list(state.get("scope_obligations", []))
 
         def checked(items):
-            if any(
-                item["source_id"] not in sources
-                or item["quote"] not in sources[item["source_id"]]
+            errors = [
+                item
+                | {
+                    "error": "unknown_source_id"
+                    if item["source_id"] not in sources
+                    else "quote_not_exact_substring"
+                }
                 for item in items
-            ):
-                raise ProtocolError(
-                    "Scope decision requires exact quotes from supplied actual evidence or human answers; notes are not a resolution."
+                if item["source_id"] not in sources
+                or item["quote"] not in sources[item["source_id"]]
+            ]
+            if errors:
+                raise ScopeReviewError(
+                    "Scope decision requires exact quotes from supplied actual evidence or human answers; notes are not a resolution.",
+                    errors,
                 )
             return items
 
@@ -403,7 +420,15 @@ class AgentGraph:
                 None,
             )
             if found is None:
-                raise ProtocolError("Scope resolution names an unknown obligation.")
+                raise ScopeReviewError(
+                    "Scope resolution names an unknown obligation.",
+                    [
+                        {
+                            "obligation_id": resolution["obligation_id"],
+                            "error": "unknown_obligation_id",
+                        }
+                    ],
+                )
             # Preserve the original question and evidence even after resolution.
             obligations[obligations.index(found)] = found | {
                 "status": "resolved",
@@ -444,6 +469,36 @@ class AgentGraph:
             self.atomic_json(self.run_dir / "scope-obligations.json", obligations)
             self.emit("scope_obligations", {"obligations": obligations})
         return obligations
+
+    @staticmethod
+    def scope_quote_candidates(sources):
+        """Small exact-copy fragments; full sources remain the semantic evidence."""
+        candidates = []
+        for source_id, text in sources.items():
+            quotes = []
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                # This is explicitly a fragment, not a claim to contain all facts.
+                quote = line[:320]
+                candidate = {
+                    "source_id": source_id,
+                    "exact_fragments": quotes + [quote],
+                }
+                if (
+                    len(
+                        json.dumps(
+                            candidates + [candidate], ensure_ascii=False
+                        ).encode()
+                    )
+                    > 6000
+                ):
+                    break
+                quotes.append(quote)
+            if quotes:
+                candidates.append({"source_id": source_id, "exact_fragments": quotes})
+        return candidates
 
     def action_journal(self, state):
         records = []
@@ -887,6 +942,8 @@ class AgentGraph:
 
     async def policy(self, state):
         state = self.restore_memory(state)
+        started = time.monotonic()
+        review_repairs = state.get("scope_review_repairs", 0)
         try:
             action = state["action"]
             if action["tool"] == "navigate":
@@ -911,23 +968,71 @@ class AgentGraph:
                     for item in obligation.get("evidence", [])
                 }
             )
-            supplied = {key: sources[key] for key in source_ids if key in sources}
+            # Stable order prioritizes current visible facts in the copy aid.
+            ordered_ids = [state["observation"]["id"]] + sorted(
+                source_ids - {state["observation"]["id"]}
+            )
+            supplied = {key: sources[key] for key in ordered_ids if key in sources}
             if len(json.dumps(supplied, ensure_ascii=False).encode()) > 32000:
                 raise ContextOverflow(
                     "Scope-review evidence exceeds its bound; inspect smaller evidence before continuing."
                 )
-            review = await self.gateway.review(
-                state["task"],
-                action,
-                metadata
-                | {"task_context": task_context(state), "scope_sources": supplied},
-            )
-            obligations = self.update_obligations(state, review, supplied)
+            review_metadata = metadata | {
+                "task_context": task_context(state),
+                "scope_sources": supplied,
+                "scope_quote_candidates": self.scope_quote_candidates(supplied),
+            }
+            while True:
+                if (
+                    state.get("active_seconds", 0) + time.monotonic() - started
+                    >= self.settings.active_seconds
+                ):
+                    return {
+                        "route": "finalize",
+                        "status": "partial",
+                        "scope_review_repairs": review_repairs,
+                        "feedback": "Active-time limit reached during scope review; no effect dispatched.",
+                    }
+                review = await self.gateway.review(
+                    state["task"], action, review_metadata
+                )
+                try:
+                    obligations = self.update_obligations(state, review, supplied)
+                    break
+                except ScopeReviewError as exc:
+                    # Never ask the actor to fix a hidden reviewer output. The
+                    # rejected fields are bounded by the native evidence schema.
+                    feedback = {
+                        "errors": exc.errors,
+                        "allowed_source_ids": list(supplied),
+                        "allowed_obligation_ids": [
+                            item["id"] for item in state.get("scope_obligations", [])
+                        ],
+                        "instruction": "Your scope evidence was rejected. Correct only by copying exact source IDs and unchanged contiguous quotes from scope_sources or the exact-fragment copy aid. Use separate evidence entries for facts on separate lines; never combine or reformat them. Reassess against all original evidence. If ambiguity persists, keep it open; do not fabricate a resolution. A fact not yet looked up is ordinary discovery, not evidence of competing choices.",
+                    }
+                    self.emit(
+                        "scope_review_rejected",
+                        feedback | {"repairs_used": review_repairs, "repair_limit": 2},
+                    )
+                    if review_repairs >= 2:
+                        return {
+                            "route": "ask",
+                            "scope_review_repairs": review_repairs,
+                            "question": {
+                                "kind": "clarification",
+                                "question": "The independent reviewer could not bind its decision to actual source evidence after two repairs. No effect was dispatched. Manual review is needed; this is not a request to approve an ungrounded action.",
+                            },
+                        }
+                    review_repairs += 1
+                    review_metadata = review_metadata | {
+                        "scope_review_feedback": feedback
+                    }
             state = state | {"scope_obligations": obligations}
             assessment = self.safety_policy.assess(
                 action, metadata, review, state["run_id"]
             )
             update = {
+                "scope_review_repairs": review_repairs,
                 "metadata": metadata,
                 "review": review,
                 "scope_obligations": obligations,
@@ -1026,7 +1131,12 @@ class AgentGraph:
                 return update | {"route": "approval", "approval_id": approval_id}
             return update | {"route": "execute"}
         except (BudgetExceeded, ProviderFailure, ContextOverflow) as exc:
-            return {"route": "finalize", "status": "partial", "feedback": str(exc)}
+            return {
+                "route": "finalize",
+                "status": "partial",
+                "scope_review_repairs": review_repairs,
+                "feedback": str(exc),
+            }
         except (BrowserError, ProtocolError, AdmissionError) as exc:
             return {
                 "route": "recover",

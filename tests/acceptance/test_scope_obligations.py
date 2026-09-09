@@ -403,3 +403,184 @@ async def test_opposite_user_choice_is_not_locked_out_by_forced_candidate_memory
         await graph.ainvoke(approval_answer(result), config)
         assert await browser.page.evaluate("window.effects") == 1
         assert await browser.page.evaluate("window.chosen") == "South"
+
+
+@pytest.mark.parametrize("failure_kind", ["bad_quote", "bad_source"])
+async def test_reviewer_repairs_its_own_rejected_scope_evidence_before_dispatch(
+    tmp_path, failure_kind
+):
+    resolved_fact = "South is unavailable. North is the only matching destination."
+    html = PAGE.replace(
+        "document.querySelector('#choices').remove()",
+        "document.querySelector('#choices').textContent='" + resolved_fact + "'",
+    )
+    async with graph_case(
+        tmp_path, html=html, script=[click("Explore North"), click("Send record")]
+    ) as (browser, gateway, _store, runtime, graph, config, initial, events):
+        install_reviewer(gateway)
+        original_review = gateway.review
+        attempts = []
+
+        async def risk(task, action, metadata):
+            if metadata.get("tag") == "a":
+                return await original_review(task, action, metadata)
+            assert await browser.page.evaluate("window.effects||0") == 0
+            if not any(
+                item["status"] == "open"
+                for item in metadata["task_context"]["scope_obligations"]
+            ):
+                return review()
+            attempts.append(metadata)
+            source_id = next(
+                key
+                for key, text in metadata["scope_sources"].items()
+                if resolved_fact in text
+            )
+            quote = resolved_fact
+            if len(attempts) == 1:
+                if failure_kind == "bad_quote":
+                    quote = "South unavailable; North only matching destination."
+                else:
+                    source_id = "invented-observation"
+            else:
+                feedback = metadata["scope_review_feedback"]
+                assert feedback["errors"][0]["error"] == (
+                    "quote_not_exact_substring"
+                    if failure_kind == "bad_quote"
+                    else "unknown_source_id"
+                )
+                assert any(
+                    resolved_fact in fragment
+                    for item in metadata["scope_quote_candidates"]
+                    for fragment in item["exact_fragments"]
+                )
+            open_items = [
+                item
+                for item in metadata["task_context"]["scope_obligations"]
+                if item["status"] == "open"
+            ]
+            return review(
+                resolved=[
+                    {
+                        "obligation_id": item["id"],
+                        "reason": "Observed source eliminates the alternative.",
+                        "evidence": [{"source_id": source_id, "quote": quote}],
+                    }
+                    for item in open_items
+                ]
+            )
+
+        gateway.review = risk
+        result = await graph.ainvoke(initial, config)
+        assert pending(result)["kind"] == "approval"
+        assert result["scope_review_repairs"] == 1
+        assert result.get("failures", 0) == 0
+        assert (
+            gateway.calls == 2
+        )  # Actor never had to guess what the reviewer got wrong.
+        assert any(name == "scope_review_rejected" for name, _ in events)
+        assert (
+            runtime.restore_memory(initial)["scope_obligations"][0]["status"]
+            == "resolved"
+        )
+        await graph.ainvoke(approval_answer(result), config)
+        assert await browser.page.evaluate("window.effects||0") == 1
+
+
+async def test_reviewer_quote_repair_exhaustion_is_bounded_handover_without_actor_retry(
+    tmp_path,
+):
+    async with graph_case(
+        tmp_path, html=PAGE, script=[click("Explore North"), click("Send record")]
+    ) as (browser, gateway, _store, runtime, graph, config, initial, events):
+        install_reviewer(gateway)
+        original_review = gateway.review
+        attempts = 0
+
+        async def risk(task, action, metadata):
+            nonlocal attempts
+            if metadata.get("tag") == "a":
+                return await original_review(task, action, metadata)
+            attempts += 1
+            return review(
+                resolved=[
+                    {
+                        "obligation_id": metadata["task_context"]["scope_obligations"][
+                            0
+                        ]["id"],
+                        "reason": "Unsupported fabricated resolution.",
+                        "evidence": [
+                            {
+                                "source_id": "invented-source",
+                                "quote": "The user selected North.",
+                            }
+                        ],
+                    }
+                ]
+            )
+
+        gateway.review = risk
+        result = await graph.ainvoke(initial, config)
+        assert pending(result)["kind"] == "clarification"
+        assert "independent reviewer" in pending(result)["question"]
+        assert attempts == 3 and gateway.calls == 2
+        assert result["scope_review_repairs"] == 2
+        assert len([name for name, _ in events if name == "scope_review_rejected"]) == 3
+        assert (
+            runtime.restore_memory(initial)["scope_obligations"][0]["status"] == "open"
+        )
+        assert await browser.page.evaluate("window.effects||0") == 0
+
+
+async def test_scope_repair_budget_failure_stops_before_effect(tmp_path):
+    from browser_agent.storage import BudgetExceeded
+
+    async with graph_case(
+        tmp_path, html=PAGE, script=[click("Explore North"), click("Send record")]
+    ) as (browser, gateway, _store, runtime, graph, config, initial, _events):
+        install_reviewer(gateway)
+        original_review = gateway.review
+
+        async def risk(task, action, metadata):
+            if metadata.get("tag") == "a":
+                return await original_review(task, action, metadata)
+            if metadata.get("scope_review_feedback"):
+                raise BudgetExceeded("No budget for reviewer repair.")
+            return review(
+                resolved=[
+                    {
+                        "obligation_id": metadata["task_context"]["scope_obligations"][
+                            0
+                        ]["id"],
+                        "reason": "Unsupported resolution.",
+                        "evidence": [{"source_id": "missing", "quote": "Chosen."}],
+                    }
+                ]
+            )
+
+        gateway.review = risk
+        result = await graph.ainvoke(initial, config)
+        assert result["result"]["status"] == "partial"
+        assert "No budget" in result["result"]["summary"]
+        assert result["scope_review_repairs"] == 1
+        assert (
+            runtime.restore_memory(initial)["scope_obligations"][0]["status"] == "open"
+        )
+        assert await browser.page.evaluate("window.effects||0") == 0
+
+
+def test_scope_quote_copy_aid_is_bounded_and_never_reformats_sources():
+    from browser_agent.graph import AgentGraph
+
+    sources = {
+        "observed": "  First fact.\n\n  Second\tfact.\n" + ("é" * 1000 + "\n") * 50,
+        "other": "A different source.",
+    }
+    candidates = AgentGraph.scope_quote_candidates(sources)
+    assert len(json.dumps(candidates, ensure_ascii=False).encode()) <= 6000
+    assert candidates[0]["exact_fragments"][:2] == ["First fact.", "Second\tfact."]
+    assert all(
+        fragment in sources[item["source_id"]]
+        for item in candidates
+        for fragment in item["exact_fragments"]
+    )

@@ -27,8 +27,16 @@ class ProviderFailure(RuntimeError):
 
 
 class ScopeSource(Strict):
-    source_id: str = Field(min_length=1, max_length=100)
-    quote: str = Field(min_length=1, max_length=1500)
+    source_id: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Copy an exact key from supplied scope_sources. Do not invent or shorten IDs.",
+    )
+    quote: str = Field(
+        min_length=1,
+        max_length=1500,
+        description="One unchanged contiguous substring of that source, including its actual whitespace and punctuation. Short exact_fragments are available as a copy aid. For separate facts use separate evidence entries; never reconstruct a row or join page nodes.",
+    )
 
 
 class ScopeObligation(Strict):
@@ -52,7 +60,7 @@ class RiskReview(Strict):
     )
     new_obligations: list[ScopeObligation] = Field(
         max_length=4,
-        description="New material unresolved user choices or conflicting constraints found in supplied evidence, even during ordinary exploration. Not routine unknown facts that browsing can gather. Do not duplicate existing obligations. Empty when none.",
+        description="New material unresolved user choices or conflicting constraints found in supplied evidence, even during ordinary exploration. Not routine unknown facts that browsing can gather. A user request to discover a fact is not itself evidence of multiple matching choices; inspect the source first. Do not duplicate existing obligations. Empty when none.",
     )
     scope_resolutions: list[ScopeResolution] = Field(
         max_length=8,
