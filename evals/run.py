@@ -108,9 +108,128 @@ def fixture_browser_factory(fixture):
                     "document.body.innerHTML = document.body.innerHTML"
                 )
                 fixture.state["stale_fault_injected"] = True
+                fixture.state["stale_fault_evidence"] = {
+                    "observation_id": observation["id"],
+                    "refs": observation["refs"],
+                    "at": time.time(),
+                    "errors": [],
+                    "observations": [],
+                    "actions": [],
+                }
+            elif fixture.state.get("stale_fault_evidence"):
+                fixture.state["stale_fault_evidence"]["observations"].append(
+                    {
+                        "id": observation["id"],
+                        "refs": observation["refs"],
+                        "at": time.time(),
+                    }
+                )
             return observation
 
+        async def action_context(self, tool, args, observation_id):
+            try:
+                return await super().action_context(tool, args, observation_id)
+            except BrowserError as exc:
+                fault = fixture.state.get("stale_fault_evidence")
+                if (
+                    fault
+                    and observation_id == fault["observation_id"]
+                    and args.get("ref") in fault["refs"]
+                ):
+                    fault["errors"].append(
+                        {
+                            "code": exc.code,
+                            "boundary": "action_context",
+                            "tool": tool,
+                            "ref": args["ref"],
+                            "observation_id": observation_id,
+                            "at": time.time(),
+                        }
+                    )
+                raise
+
+        async def execute(
+            self,
+            tool,
+            args,
+            observation_id,
+            expected_fingerprint=None,
+            before_dispatch=None,
+        ):
+            result = await super().execute(
+                tool,
+                args,
+                observation_id,
+                expected_fingerprint=expected_fingerprint,
+                before_dispatch=before_dispatch,
+            )
+            fault = fixture.state.get("stale_fault_evidence")
+            if fault and result.get("status") == "executed":
+                fault["actions"].append(
+                    {
+                        "observation_id": observation_id,
+                        "tool": tool,
+                        "ref": args.get("ref"),
+                        "result": result,
+                        "at": time.time(),
+                    }
+                )
+            return result
+
     return LocalBrowser
+
+
+def stale_recovery_observed(fixture, events):
+    """Join actual adapter fault provenance with graph recovery, never prose."""
+    fault = fixture.state.get("stale_fault_evidence", {})
+    if not fixture.state.get("stale_fault_injected") or not fault:
+        return False
+
+    def event_time(event):
+        try:
+            return datetime.fromisoformat(event["time"]).timestamp()
+        except (KeyError, TypeError, ValueError):
+            return float("-inf")
+
+    for error in fault.get("errors", []):
+        if not (
+            error.get("boundary") == "action_context"
+            and error.get("code")
+            in {"stale_ref", "unknown_ref", "target_changed", "stale_observation"}
+            and error.get("observation_id") == fault.get("observation_id")
+            and error.get("ref") in fault.get("refs", [])
+            and error["at"] >= fault["at"]
+        ):
+            continue
+        for view in fault.get("observations", []):
+            if view["id"] == fault["observation_id"] or view["at"] <= error["at"]:
+                continue
+            recovered = any(
+                event.get("event") == "recover"
+                and error["at"] <= event_time(event) <= view["at"]
+                for event in events
+            )
+            observed = any(
+                event.get("event") == "observe" and event.get("id") == view["id"]
+                for event in events
+            )
+            if not (recovered and observed):
+                continue
+            for action in fault.get("actions", []):
+                if not (
+                    action["observation_id"] == view["id"]
+                    and action["at"] > view["at"]
+                    and (action["ref"] is None or action["ref"] in view["refs"])
+                ):
+                    continue
+                if any(
+                    event.get("event") == "tool_result"
+                    and event.get("result") == action["result"]
+                    and event_time(event) >= action["at"]
+                    for event in events
+                ):
+                    return True
+    return False
 
 
 def request_observations(request):
@@ -759,17 +878,8 @@ async def execute_plan(
                         ),
                     }
                 elif item["case"] == "stale_ref_recovery":
-                    serialized = json.dumps(events).lower()
-                    grade["checks"]["real_stale_error_observed"] = fixture.state.get(
-                        "stale_fault_injected", False
-                    ) and any(
-                        word in serialized
-                        for word in (
-                            "stale_ref",
-                            "unknown_ref",
-                            "target_changed",
-                            "stale_observation",
-                        )
+                    grade["checks"]["real_stale_error_observed"] = (
+                        stale_recovery_observed(fixture, events)
                     )
                 record.update(
                     {

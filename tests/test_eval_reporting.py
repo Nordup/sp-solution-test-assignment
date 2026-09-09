@@ -1,6 +1,7 @@
 """No paid APIs: plan cardinality, local-only approvals and fail-closed reporting."""
 
 import asyncio
+import copy
 import hashlib
 import json
 import uuid
@@ -14,6 +15,7 @@ from langsmith.utils import LangSmithNotFoundError
 from playwright.async_api import async_playwright
 
 from browser_agent.config import Settings
+from browser_agent.runner import run_agent
 from browser_agent.storage import Store
 from evals.fixtures import FixtureServer
 from evals.graders import (
@@ -34,8 +36,10 @@ from evals.run import (
     quality_evidence,
     quality_review,
     request_observations,
+    stale_recovery_observed,
     upload_trace,
 )
+from tests.acceptance.test_graph_resume import ScriptedGateway, click
 
 
 def test_suite_has_two_cases_not_cartesian_product():
@@ -388,6 +392,73 @@ async def test_fixture_browser_blocks_external_network_and_injects_stale_dom(tmp
             ]
         finally:
             await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_real_graph_stale_fault_requires_bound_error_fresh_observation_and_dispatch(
+    tmp_path,
+):
+    """Real Chromium + graph; scripted decisions test recovery, not model quality."""
+    settings = Settings(artifact_dir=tmp_path / "artifacts")
+    with FixtureServer("stale_ref_recovery", seed=301) as fixture:
+
+        def gateway_factory(*args, **kwargs):
+            return ScriptedGateway(
+                [click("Order history"), click("Order history")],
+                classification="ordinary",
+            )
+
+        result = await run_agent(
+            settings,
+            task=fixture.task,
+            url=fixture.url,
+            profile="recovery",
+            new_run_id="recovery-sequence",
+            headless=True,
+            browser_factory=fixture_browser_factory(fixture),
+            gateway_factory=gateway_factory,
+        )
+        assert (
+            result["status"] == "partial"
+        )  # Scripted boundary test does not certify the full food task.
+        event_path = settings.artifact_dir / "runs/recovery-sequence/events.jsonl"
+        events = [json.loads(line) for line in event_path.read_text().splitlines()]
+        fault = fixture.state["stale_fault_evidence"]
+        assert len(fault["errors"]) == 1 and fault["errors"][0]["code"] == "stale_ref"
+        assert fault["errors"][0]["observation_id"] == fault["observation_id"]
+        assert fault["errors"][0]["ref"] in fault["refs"]
+        recover = next(event for event in events if event["event"] == "recover")
+        assert (
+            "stale_ref" not in recover["reason"]
+        )  # Actual logger emits readable reason, not code.
+        assert stale_recovery_observed(fixture, events)
+        assert not stale_recovery_observed(
+            fixture, [event for event in events if event["event"] != "recover"]
+        )
+        assert not stale_recovery_observed(
+            fixture, [event for event in events if event["event"] != "observe"]
+        )
+        assert not stale_recovery_observed(
+            fixture, [event for event in events if event["event"] != "tool_result"]
+        )
+        original = copy.deepcopy(fault)
+        for change in (
+            {"code": "unrelated_failure"},
+            {"observation_id": "different"},
+            {"ref": "not-in-injected-snapshot"},
+        ):
+            fixture.state["stale_fault_evidence"] = copy.deepcopy(original)
+            fixture.state["stale_fault_evidence"]["errors"][0].update(change)
+            assert not stale_recovery_observed(fixture, events)
+        fixture.state["stale_fault_evidence"] = original
+        fixture.state["stale_fault_evidence"]["errors"] = []
+        quoted = events + [
+            {
+                "event": "model_note",
+                "text": "stale_ref unknown_ref target_changed stale_observation",
+            }
+        ]
+        assert not stale_recovery_observed(fixture, quoted)
 
 
 @pytest.mark.asyncio
