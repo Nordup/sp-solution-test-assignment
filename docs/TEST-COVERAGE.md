@@ -261,3 +261,8 @@ The focused runtime selection passed 139 tests. Model judgments are scripted in 
 ## Completion endpoint assessment
 
 Six real-browser/graph tests in [test_completion_boundary.py](../tests/acceptance/test_completion_boundary.py) distinguish truthful intermediate-state claims from a completed requested outcome. The same completion review reports a required endpoint status and any remaining permitted requested steps. Tests cover correction through normal approval to the endpoint, denial, unreached/uncertain endpoints, remaining steps, and read-only completion without extra workflow actions. Provider coverage rejects missing required fields. The focused runtime selection passed 157 tests; native semantic calibration and current-version actor runs remain separate required evidence.
+
+
+## Independent semantic evidence provenance
+
+Reporting tests verify that real delivered browser text supplements compact fixture state for factual grading. The evaluator supplies exact bounded excerpts, validates citation IDs and substrings, preserves source chronology/truncation limits and retains unmatched or contradictory claims for rejection. Tests cover valid delivery facts from an actual fixture page, fabricated/mismatched/undelivered citations, cropped recall variants without joining text, and multilingual byte bounds. Actor behavior and server-effect authority are unchanged. Native calibration and fresh task outcomes are recorded separately in VALIDATION.md.

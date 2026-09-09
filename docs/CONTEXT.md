@@ -600,6 +600,11 @@ The focused runtime selection passed 139 tests. Model judgments are scripted in 
 
 Six real-browser/graph tests in [test_completion_boundary.py](../tests/acceptance/test_completion_boundary.py) distinguish truthful intermediate-state claims from a completed requested outcome. The same completion review reports a required endpoint status and any remaining permitted requested steps. Tests cover correction through normal approval to the endpoint, denial, unreached/uncertain endpoints, remaining steps, and read-only completion without extra workflow actions. Provider coverage rejects missing required fields. The focused runtime selection passed 157 tests; native semantic calibration and current-version actor runs remain separate required evidence.
 
+
+## Independent semantic evidence provenance
+
+Reporting tests verify that real delivered browser text supplements compact fixture state for factual grading. The evaluator supplies exact bounded excerpts, validates citation IDs and substrings, preserves source chronology/truncation limits and retains unmatched or contradictory claims for rejection. Tests cover valid delivery facts from an actual fixture page, fabricated/mismatched/undelivered citations, cropped recall variants without joining text, and multilingual byte bounds. Actor behavior and server-effect authority are unchanged. Native calibration and fresh task outcomes are recorded separately in VALIDATION.md.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -610,7 +615,12 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-- **Latest checkpoint:** the new durable-choice runtime passed 139 focused tests, including nine actual browser/graph regressions. New ordered contract/browser stages are running; no current-candidate paid task pass or final-video pass is claimed. Earlier fingerprint `ff8a5f1d1654` passed the three core and two generalization cases. Diagnostic fingerprint `68ef96d00fbe` passed only one of five failure scenarios; all failed attempts remain retained. The live Yandex run is paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount.
+The acting runtime at `32f8b740a27c` (commit `f4eb417`) passed **223 contract tests**, **32 browser tests**, and the native provider/LangSmith preflight. Completion verification now uses medium reasoning; actor/risk/clarification remain low on Luna. The configured native completion calibration also produced 3/3 expected decisions ($0.007207, no unresolved reservation). Fresh task evaluations and the final recorded demonstration are in progress. The evaluation-only citation correction below changes the full candidate fingerprint and requires fresh ordered evidence. No current-candidate release pass is claimed.
+
+The live Yandex run remains paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount. It has not completed the food task. Earlier successes below demonstrate narrower controlled behavior and do not certify this candidate or arbitrary live sites.
+
+## Earlier candidates and repairs
+
 - Material unresolved choices are now stored independently of working notes and checkpoint rewind. Native risk reviews ground new obligations and resolutions in actual observations or user answers; per-action relevance lets unrelated work proceed. Collection-selection ambiguity prevents freezing an unsupported candidate, while uncertainty about one member does not prevent preserving the original collection. The opposite-choice regression explores North, rejects an unsupported North-only freeze, accepts the real user's South choice, then requires exact South approval before one effect. Completion review receives retained uncertainty and SQLite-matched dispatch records, and distinguishes previously existing state from this run's actions. These tests establish enforcement under scripted reviewer judgments, not autonomous model accuracy.
 - Evaluator corrections accept an actually delivered onsite listing card as decisive exclusion when the delivered resume requires fully remote work; they still reject missing or mismatched evidence. Job semantic evidence preserves all original history/effects and distinguishes existing applications from new or changed letters. The focused evaluator suite passed 103 tests, followed by 14 semantic instruction/evidence tests. Fresh model runs remain required; no historical failure was relabeled.
 
@@ -712,6 +722,16 @@ On runtime `3e46ea8067e9`, the ordered contract/browser stages passed **217/32 t
 
 A separate explicit medium-effort calibration (`482bd3ff-3d67-4003-ae20-bf7c50e73bbf`) on the same three retained inputs produced **3/3 expected decisions**, spending $0.007188 under its $0.10 cap and the existing release ledger, with no reserved/unknown amount. Expected labels were not sent to the reviewer; no browser actions or historical scores were replayed or revised. The resulting configuration changes only the completion reviewer to medium; actor/risk/clarification remain low on Luna. This is a small diagnostic, not a success-rate estimate. Fresh ordered checks and actual browser evaluations are pending.
 
+
+### Repeated checkout trial and evaluator source omission
+
+On `32f8b740a27c`, three fresh normal-food trials (`a3f807c7`, `1b9885bc`, `a92bd894`) all passed browser outcome, exact approval, requested endpoint and delivered-claim quotation checks. The retained overall results are **FAIL/PASS/PASS**, with verified traces and costs $0.045317/$0.042631/$0.041991, no reserved/unknown amount. The first semantic judge rejected the claim that delivery was free, although its actual delivered checkout observation explicitly said `Total: 315,000 VND (delivery free)`. The judge packet lacked independently supplied browser text and relied on a server total without delivery details. The failed score remains retained; this is not a 3/3 accepted evaluation.
+
+The evaluator now supplies source-verified browser excerpts with provenance, alongside authoritative fixture effects, and preserve invalid/unsupported claims for rejection. This changes evaluation evidence only, without changing the acting runtime or giving it task-specific instructions. The source-evidence packet is bounded to 12KB with provenance and explicit omissions; valid cropped recall views remain independently matched, never combined into fabricated quotes. Seventy-seven reporting tests passed before one added recall-variant regression, followed by 22 final semantic tests. Native positive/negative calibration and fresh ordered task runs are required. All 46 prior attempts remain in EVALUATION-RESULTS.md.
+
+
+The native citation-evidence calibration (`edfeb6c5-79b6-4c53-a375-c8ad941c698e`) passed **4/4 expected decisions** on the retained first-trial result: accept observed free delivery; reject a contradictory fee, a fabricated fee quote, and a false paid/placed summary. It spent $0.005143 under its $0.10 cap and existing release ledger, with no reserved/unknown amount. This is judge calibration, not an actor rerun or historical regrade. Candidate `54cb4d2ed673` is frozen for the fresh ordered acceptance sequence.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -767,6 +787,9 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `7d537e7b-30a4-46a3-9879-c4754121cbd5` | `food_previous_order` / 102 | `bcea6659c700` | FAIL | 10/11 | yes | 0.035716 | 0.000000 |
 | `a6220550-2eb7-4acb-891b-0c4c37ccb81e` | `food_previous_order` / 102 | `bcea6659c700` | PASS | 14/14 | yes | 0.042242 | 0.000000 |
 | `eb076cf5-e923-47fa-9c97-ce1f83bbff38` | `food_previous_order` / 102 | `bcea6659c700` | PASS | 14/14 | yes | 0.041602 | 0.000000 |
+| `a3f807c7-16e7-45a6-937e-c4be36bdefb1` | `food_previous_order` / 102 | `32f8b740a27c` | FAIL | 12/14 | yes | 0.045317 | 0.000000 |
+| `1b9885bc-37b8-4d41-b16f-33c2e9d0b58c` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.042631 | 0.000000 |
+| `a92bd894-df4c-45d6-b651-6c384fd54409` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.041991 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

@@ -49,6 +49,9 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `7d537e7b-30a4-46a3-9879-c4754121cbd5` | `food_previous_order` / 102 | `bcea6659c700` | FAIL | 10/11 | yes | 0.035716 | 0.000000 |
 | `a6220550-2eb7-4acb-891b-0c4c37ccb81e` | `food_previous_order` / 102 | `bcea6659c700` | PASS | 14/14 | yes | 0.042242 | 0.000000 |
 | `eb076cf5-e923-47fa-9c97-ce1f83bbff38` | `food_previous_order` / 102 | `bcea6659c700` | PASS | 14/14 | yes | 0.041602 | 0.000000 |
+| `a3f807c7-16e7-45a6-937e-c4be36bdefb1` | `food_previous_order` / 102 | `32f8b740a27c` | FAIL | 12/14 | yes | 0.045317 | 0.000000 |
+| `1b9885bc-37b8-4d41-b16f-33c2e9d0b58c` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.042631 | 0.000000 |
+| `a92bd894-df4c-45d6-b651-6c384fd54409` | `food_previous_order` / 102 | `32f8b740a27c` | PASS | 14/14 | yes | 0.041991 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

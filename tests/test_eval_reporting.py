@@ -26,8 +26,10 @@ from evals.graders import (
 )
 from evals.report import build_report, junit_result, manual_check, require_deterministic
 from evals.run import (
+    SEMANTIC_CITATION_BYTES,
     FixtureApprover,
     build_plan,
+    claim_citation_evidence,
     complete_result,
     execute_plan,
     fixture_browser_factory,
@@ -163,7 +165,10 @@ async def test_semantic_judge_native_input_contains_only_relevant_domain_scaffol
         assert set(evidence) & all_facts == expected_facts
         assert "unexpected_domain_state" not in evidence
         assert evidence["result"] == result
-        assert evidence["verified_claim_quotes"] == result["claims"]
+        assert (
+            evidence["claim_citation_evidence"]["checks"][0]["quote_verified"] is False
+        )
+        assert evidence["claim_citation_evidence"]["source_excerpts"] == []
         assert (
             "Explicit claims about activities in another domain still require supplied evidence"
             in request["instructions"]
@@ -204,7 +209,8 @@ def test_semantic_evidence_preserves_ambiguous_and_explicitly_wrong_claims_verba
     }
     evidence = quality_evidence(fixture, result)
     assert evidence["result"] == result
-    assert evidence["verified_claim_quotes"][0]["claim"] == claim
+    assert evidence["result"]["claims"][0]["claim"] == claim
+    assert evidence["claim_citation_evidence"]["source_excerpts"] == []
     assert evidence["state"]["trash"] == fixture.state["trash"]
     assert evidence["messages"] == fixture.messages
     assert "cart" not in evidence["state"]
@@ -1003,3 +1009,181 @@ def test_core_job_semantic_evidence_quality_grades_all_submitted_letters():
         evidence["application_provenance"]["new_or_changed"]
         == fixture.state["applications"]
     )
+
+
+def test_semantic_citations_supply_actual_delivery_fact_from_real_fixture_page():
+    with FixtureServer("food_previous_order") as fixture:
+        fixture.state["cart"] = {"ember:bbq": 1, "ember:fries": 1}
+        origin = fixture.url.rsplit("/", 1)[0]
+        url = origin + fixture.route("review")
+        with urlopen(url, timeout=5) as response:
+            text = response.read().decode()
+        quote = "Total: 315,000 VND (delivery free)"
+        assert quote in text
+        view = {"id": "actual-review", "url": url, "text": text}
+        fixture.record_delivered_view(view, at=123)
+        result = {
+            "summary": "Доставка бесплатная.",
+            "claims": [
+                {
+                    "claim": "Доставка бесплатная.",
+                    "evidence_id": view["id"],
+                    "quote": quote,
+                }
+            ],
+        }
+        evidence = quality_evidence(fixture, result)
+        packet = evidence["claim_citation_evidence"]
+        assert packet["checks"] == [
+            {
+                "claim_index": 0,
+                "quote_verified": True,
+                "source_included": True,
+                "reason": "exact_quote_in_delivered_source",
+            }
+        ]
+        source = packet["source_excerpts"][0]
+        assert quote in source["text"]
+        assert (
+            source["text"]
+            == text[source["excerpt_start_char"] : source["excerpt_end_char"]]
+        )
+        assert source["url"] == url and source["delivered_at"] == 123
+        assert source["source_text_sha256"] == hashlib.sha256(text.encode()).hexdigest()
+        assert source["source_offset"] is None and source["source_truncated"] is None
+        assert evidence["result"] == result
+        assert evidence["state"]["effects"] == fixture.state["effects"]
+
+
+@pytest.mark.parametrize(
+    "defect", ["fabricated_quote", "mismatched_id", "undelivered", "conflicting_source"]
+)
+def test_semantic_citations_never_promote_unverified_actor_quotes(defect):
+    fixture = FixtureServer("food_previous_order")
+    view = {
+        "id": "observed",
+        "url": "http://127.0.0.1:1234/review",
+        "text": "Total: 315,000 VND (delivery free)",
+    }
+    result = {
+        "summary": "Claim remains subject to rejection.",
+        "claims": [
+            {
+                "evidence_id": "observed",
+                "quote": view["text"],
+                "claim": "Delivery was free.",
+            }
+        ],
+    }
+    if defect != "undelivered":
+        fixture.record_delivered_view(view)
+    if defect == "fabricated_quote":
+        result["claims"][0]["quote"] = "Delivery surcharge: 900,000 VND"
+    elif defect == "mismatched_id":
+        result["claims"][0]["evidence_id"] = "invented-id"
+    elif defect == "conflicting_source":
+        fixture.record_delivered_view(
+            view
+            | {
+                "url": "http://127.0.0.1:1234/different-page",
+                "text": "Delivery was not free.",
+            }
+        )
+    evidence = quality_evidence(fixture, result)
+    assert evidence["result"] == result
+    assert evidence["claim_citation_evidence"]["checks"][0]["quote_verified"] is False
+    assert evidence["claim_citation_evidence"]["checks"][0]["reason"]
+    assert evidence["claim_citation_evidence"]["source_excerpts"] == []
+
+
+def test_semantic_source_context_preserves_contradictory_claim_for_rejection():
+    fixture = FixtureServer("mail_latest_10")
+    text = "Subscription status: not free. Charged 900 VND. No payment was made during this run."
+    fixture.record_delivered_view(
+        {"id": "actual", "url": "http://127.0.0.1/mail", "text": text}
+    )
+    result = {
+        "summary": "I paid for a free subscription.",
+        "claims": [
+            {
+                "evidence_id": "actual",
+                "quote": "free",
+                "claim": "It was free and I paid for it.",
+            }
+        ],
+    }
+    evidence = quality_evidence(fixture, result)
+    assert evidence["result"] == result
+    assert evidence["claim_citation_evidence"]["checks"][0]["quote_verified"] is True
+    assert evidence["claim_citation_evidence"]["source_excerpts"][0]["text"] == text
+    assert evidence["state"]["effects"] == []
+    # Quote matching verifies provenance only: contrary surrounding context and
+    # absent effects remain available to reject semantic truth/authorship.
+
+
+def test_semantic_citation_packet_bounds_multilingual_bytes_without_losing_claims():
+    fixture = FixtureServer("mail_latest_10")
+    claims = []
+    for index in range(20):
+        quote = f"{index}:" + "Стоимость配送🙂" * 120
+        text = "前文" * 500 + quote + "конец" * 500
+        fixture.record_delivered_view(
+            {"id": str(index), "url": "http://127.0.0.1/mail", "text": text}
+        )
+        claims.append(
+            {
+                "evidence_id": str(index),
+                "quote": quote,
+                "claim": "Unchanged original multilingual claim.",
+            }
+        )
+    result = {"claims": claims, "summary": "All original claims must remain visible."}
+    evidence = quality_evidence(fixture, result)
+    packet = evidence["claim_citation_evidence"]
+    assert (
+        len(json.dumps(packet, ensure_ascii=False).encode()) <= SEMANTIC_CITATION_BYTES
+    )
+    assert len(packet["checks"]) == 20
+    assert all(check["quote_verified"] for check in packet["checks"])
+    assert any(
+        check["reason"] == "source_omitted_packet_byte_limit"
+        for check in packet["checks"]
+    )
+    assert packet["source_excerpts"]
+    for source in packet["source_excerpts"]:
+        quote = claims[source["claim_index"]]["quote"]
+        assert quote in source["text"] and source["excerpt_truncated"]
+    assert evidence["result"] == result
+    with pytest.raises(ValueError, match="manifest exceeds"):
+        claim_citation_evidence(fixture, result, max_bytes=10)
+
+
+def test_semantic_citation_matches_single_actual_delivered_recall_variant():
+    fixture = FixtureServer("mail_latest_10")
+    page = {
+        "id": "recallable",
+        "url": "http://127.0.0.1/mail",
+        "text": "First cropped portion without the cited fact.",
+    }
+    fixture.record_delivered_view(page)
+    fixture.record_delivered_view(
+        page
+        | {
+            "text": "Other actual portion: membership fee is 300000 VND. [historical; not actionable]"
+        }
+    )
+    result = {
+        "claims": [
+            {
+                "evidence_id": page["id"],
+                "quote": "membership fee is 300000 VND",
+                "claim": "Fee is 300000 VND.",
+            }
+        ]
+    }
+    packet = claim_citation_evidence(fixture, result)
+    assert packet["checks"][0]["quote_verified"]
+    source = packet["source_excerpts"][0]
+    assert source["delivered_variant_count"] == 2
+    assert result["claims"][0]["quote"] in source["text"]
+    assert "First cropped" not in source["text"]
