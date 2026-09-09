@@ -103,7 +103,12 @@ class ScriptedGateway:
 
     async def verify_completion(self, task, result, evidence):
         self.completion_reviews += 1
-        return {"supported": True, "reason": "Synthetic completion review"}
+        return {
+            "supported": True,
+            "boundary_status": "not_applicable",
+            "remaining_permitted_steps": [],
+            "reason": "Synthetic completion review",
+        }
 
 
 @asynccontextmanager

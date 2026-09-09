@@ -398,6 +398,8 @@ def rejecting_completion(gateway, *, once=False, error=None):
         if error:
             raise error
         return {
+            "boundary_status": "not_applicable",
+            "remaining_permitted_steps": [],
             "supported": once and gateway.completion_reviews > 1,
             "reason": "Inspect the resulting receipt; the heading alone does not establish the requested outcome.",
         }
@@ -595,6 +597,8 @@ async def test_completion_packet_recovers_prior_contents_after_compaction(tmp_pa
         async def review(task, proposal, evidence):
             reviewed.append((proposal, evidence))
             return {
+                "boundary_status": "not_applicable",
+                "remaining_permitted_steps": [],
                 "supported": all(
                     any(
                         f"Unique observed body {i}." in text
@@ -636,6 +640,8 @@ async def test_completion_packet_rejects_missing_content_despite_memory_claims(
         async def review(task, proposal, evidence):
             reviewed.append(evidence)
             return {
+                "boundary_status": "not_applicable",
+                "remaining_permitted_steps": [],
                 "supported": any(
                     "invented body text" in text for text in evidence.values()
                 ),
@@ -878,6 +884,8 @@ async def test_completion_repair_respects_explicit_stop_boundary_without_effect(
                 and await browser.page.evaluate("window.effects || 0") == 0
             )
             return {
+                "boundary_status": "reached" if supported else "uncertain",
+                "remaining_permitted_steps": [],
                 "supported": supported,
                 "reason": "The explicitly requested ready-to-send boundary is verified; submission is excluded.",
             }

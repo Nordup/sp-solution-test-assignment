@@ -256,3 +256,8 @@ The separate native-judge calibration accepted one correct mail-Trash report and
 Nine local browser/graph regressions in [test_scope_obligations.py](../tests/acceptance/test_scope_obligations.py) cover obligation persistence across navigation and resume, misleading later `in_scope` reviews, irrelevant replies, valid human and observed-fact resolution, exact denial/approval, unrelated effects, and completion repair with actual action provenance. The opposite-choice test prevents exploration of one option from freezing out a different user choice. Collection membership can still be preserved when the uncertainty concerns classification of one member. Native reviewer schema fixtures are covered by provider tests.
 
 The focused runtime selection passed 139 tests. Model judgments are scripted in these regressions; current-version autonomous ambiguity detection, reporting and task success require fresh paid evaluation evidence. The new module is included in stage 3 of FINAL-TEST.md.
+
+
+## Completion endpoint assessment
+
+Six real-browser/graph tests in [test_completion_boundary.py](../tests/acceptance/test_completion_boundary.py) distinguish truthful intermediate-state claims from a completed requested outcome. The same completion review reports a required endpoint status and any remaining permitted requested steps. Tests cover correction through normal approval to the endpoint, denial, unreached/uncertain endpoints, remaining steps, and read-only completion without extra workflow actions. Provider coverage rejects missing required fields. The focused runtime selection passed 157 tests; native semantic calibration and current-version actor runs remain separate required evidence.

@@ -593,6 +593,11 @@ Nine local browser/graph regressions in [test_scope_obligations.py](../tests/acc
 
 The focused runtime selection passed 139 tests. Model judgments are scripted in these regressions; current-version autonomous ambiguity detection, reporting and task success require fresh paid evaluation evidence. The new module is included in stage 3 of FINAL-TEST.md.
 
+
+## Completion endpoint assessment
+
+Six real-browser/graph tests in [test_completion_boundary.py](../tests/acceptance/test_completion_boundary.py) distinguish truthful intermediate-state claims from a completed requested outcome. The same completion review reports a required endpoint status and any remaining permitted requested steps. Tests cover correction through normal approval to the endpoint, denial, unreached/uncertain endpoints, remaining steps, and read-only completion without extra workflow actions. Provider coverage rejects missing required fields. The focused runtime selection passed 157 tests; native semantic calibration and current-version actor runs remain separate required evidence.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -612,6 +617,9 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 - Candidate `e2817aa4e8d5` passed 204 contract tests, 32 browser tests and preflight. Targeted normal food (`35e48992`, $0.033321) and ambiguous history (`821a8224`, $0.007931) passed with verified traces; the latter explicitly asked the user to choose between the two actual qualifying restaurants without proposing a cart change. Full mail 16 (`877ad3e6`, $0.155042) also passed. The repeated full food run (`fb797a41`, $0.012231) then failed: the actor had read the decisive history, but the risk reviewer received only the current menu and asked for the already-observed restaurant identity. No cart/checkout/order/payment effect occurred. This failure remains retained; a single successful diagnostic did not establish reliable completion.
 - The archive-sharing repair passed 150 targeted runtime tests, including 20 scope cases. Risk review receives current, recalled, original-scope and obligation/resolution snapshots plus recent delivered evidence within a 32KB packet with provenance and explicit omissions. Up to two scope-related clarification checks can return exact already-known facts to normal risk review; those checks cannot resolve obligations or approve actions themselves. Tests cover history after navigation/forced memory, known facts, stubborn disagreement, genuine choice, invalid evidence, budget failure and source prioritization/whole-snapshot bounds. Fresh ordered stages and three normal-food diagnostic repetitions are required before final sign-off.
+
+- Candidate `bcea6659c700` passed 210 contract tests, 32 browser tests and preflight. Three fresh normal-food trials at seed 102 produced **2/3 PASS**, with all traces verified: `7d537e7b` failed the checkout-boundary check ($0.035716); `a6220550` ($0.042242) and `eb076cf5` ($0.041602) passed. The first trial had correct items, total and approvals, but reported completion on an intermediate checkout page. The actor and factual completion reviewer had not distinguished reaching the requested endpoint from merely avoiding its excluded final action. No order/payment occurred. The diagnostic manifest failed, so ambiguity and the later final sequence did not run on this candidate.
+- The structured endpoint assessment passed 157 targeted runtime tests. The existing native completion call now returns required boundary_status and remaining_permitted_steps fields; the host rejects an unreached/uncertain endpoint or remaining requested steps even when factual support is true, using the existing bounded repair loop. Six real-browser/graph cases cover correction to the actual endpoint, denial, exhausted repair and research-only completion without extra action. Native schema tests reject missing fields. Native reviewer calibration and fresh ordered actor repetitions remain pending.
 
 ## Retained evidence and implementation history
 
@@ -747,6 +755,9 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `821a8224-e48a-4c46-968a-1c4fc85b1a58` | `food_history_ambiguous` / 401 | `e2817aa4e8d5` | PASS | 15/15 | yes | 0.007931 | 0.000000 |
 | `877ad3e6-bd1e-4973-9a71-ce1f294e4882` | `mail_latest_10` / 101 | `e2817aa4e8d5` | PASS | 13/13 | yes | 0.155042 | 0.000000 |
 | `fb797a41-e1c4-4e3c-8a4b-0d21deba5f58` | `food_previous_order` / 102 | `e2817aa4e8d5` | FAIL | 6/11 | yes | 0.012231 | 0.000000 |
+| `7d537e7b-30a4-46a3-9879-c4754121cbd5` | `food_previous_order` / 102 | `bcea6659c700` | FAIL | 10/11 | yes | 0.035716 | 0.000000 |
+| `a6220550-2eb7-4acb-891b-0c4c37ccb81e` | `food_previous_order` / 102 | `bcea6659c700` | PASS | 14/14 | yes | 0.042242 | 0.000000 |
+| `eb076cf5-e923-47fa-9c97-ce1f83bbff38` | `food_previous_order` / 102 | `bcea6659c700` | PASS | 14/14 | yes | 0.041602 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1254,7 +1265,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:

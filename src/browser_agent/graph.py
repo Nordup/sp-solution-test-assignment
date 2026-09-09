@@ -1654,8 +1654,21 @@ class AgentGraph:
                         },
                         evidence,
                     )
+                    self.emit("completion_review", review)
                     if not review["supported"]:
                         problems.append(review["reason"])
+                    if review["boundary_status"] in {"not_reached", "uncertain"}:
+                        problems.append(
+                            "Requested stopping boundary is "
+                            + review["boundary_status"]
+                            + ": "
+                            + review["reason"]
+                        )
+                    if review["remaining_permitted_steps"]:
+                        problems.append(
+                            "Permitted requested steps still required before completion: "
+                            + "; ".join(review["remaining_permitted_steps"])
+                        )
                 except (
                     ProviderFailure,
                     BudgetExceeded,

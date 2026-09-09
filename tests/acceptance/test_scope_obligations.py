@@ -287,6 +287,8 @@ async def test_final_review_gets_uncertainty_and_empty_authorship_then_repairs_r
             assert result["task_context"]["scope_obligations"][0]["status"] == "open"
             assert "Record already delivered." in "\n".join(evidence.values())
             return {
+                "boundary_status": "not_applicable",
+                "remaining_permitted_steps": [],
                 "supported": len(observed) == 2,
                 "reason": "Existing state does not prove this run sent anything; disclose retained uncertainty.",
             }

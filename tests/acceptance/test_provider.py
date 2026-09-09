@@ -232,7 +232,13 @@ async def test_p06_actual_reviewer_and_completion_wrappers_share_actor_ledger(tm
         },
     )
     completion = native_success(
-        "completion_review", {"supported": True, "reason": "Observed matching state"}
+        "completion_review",
+        {
+            "supported": True,
+            "boundary_status": "not_applicable",
+            "remaining_permitted_steps": [],
+            "reason": "Observed matching state",
+        },
     )
     client, store, transport, _sleeps, events = gateway(
         tmp_path, [success(), review, completion]
@@ -279,3 +285,21 @@ async def test_p06_completion_helper_cannot_bypass_remaining_actor_cap(tmp_path)
         await client.verify_completion("Read content", {}, {})
     assert len(transport.create_calls) == 2
     assert store.budget("run")["settled"] == 74
+
+
+async def test_p06_native_completion_requires_explicit_boundary_assessment(tmp_path):
+    from browser_agent.tools import ProtocolError
+
+    incomplete = native_success(
+        "completion_review",
+        {"supported": True, "reason": "Factually true but no endpoint assessment."},
+    )
+    client, store, transport, _sleeps, _events = gateway(tmp_path, [incomplete])
+    with pytest.raises(ProtocolError):
+        await client.verify_completion(
+            "Prepare through the final review, then stop.",
+            {},
+            {"observed": "Intermediate preparation."},
+        )
+    assert len(transport.create_calls) == 1
+    assert store.budget("run")["settled"] == 37

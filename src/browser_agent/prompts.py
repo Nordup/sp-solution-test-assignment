@@ -41,7 +41,11 @@ available when semantic content is insufficient. Avoid repeated ineffective acti
 Before finish, inspect the resulting state for each requested outcome. Cite actual resulting contents,
 receipts or status changes, not merely a generic page heading, original item name or dispatched action.
 Judge completion against the requested outcome AND the user's explicit stopping boundary. Reaching that
-verified boundary can complete the task. Put intentionally excluded future actions and safety reminders
+verified boundary can complete the task. Merely leaving an excluded final action untouched does not establish
+that you reached the requested stopping point; complete any still-required permitted intermediate preparation
+or navigation through normal review and approval. Do not add actions beyond the actual requested outcome:
+a research-only task can finish with supported findings even if the page offers further actions.
+Put intentionally excluded future actions and safety reminders
 in summary, not remaining; remaining lists only requested work that is actually unmet.
 Compare bounded collections against the preserved ORIGINAL scope. Use recall to recover earlier evidence
 and inspect destination/result pages when needed; do not repeat an effect to obtain better evidence.
