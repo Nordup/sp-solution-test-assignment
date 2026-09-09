@@ -270,7 +270,7 @@ uv run browser-agent login --profile final-demo
 uv run browser-agent run --profile final-demo --budget-usd 5 --release-session final-candidate "<food task with the actual delivery URL>"
 ```
 
-Replace the placeholder with an actual task before running. Prefer the supplied food task where the account has usable order history. Login is manual in the dedicated browser profile. Do not put credentials in shell arguments.
+Replace the placeholder with an actual task before running. Prefer the supplied food task where the account has usable order history. The user also offered Shopee Vietnam with recent orders; a history-dependent marketplace comparison/cart-preparation demo is an acceptable additional complex-task candidate. Label it as the Shopee scenario, do not claim it passed the exact food task, and never place/pay for an order merely to make the video. See SETUP.md for the dedicated profile. Login is manual in the dedicated browser profile. Do not put credentials in shell arguments.
 
 Manual verification, in order:
 

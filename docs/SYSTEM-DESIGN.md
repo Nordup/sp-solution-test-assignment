@@ -29,7 +29,7 @@ No framework name earns a pass. Acceptance is based on observed behavior, tests 
 | Observability | LangSmith plus local sanitized events | Model/tool/node traces and evaluation experiments |
 | Validation | pytest, Ruff, deterministic fixtures, LangSmith evals | Boundary tests, semantic outcomes and regression evidence |
 
-Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; initial recommendation is `gpt-5.6-sol` at low reasoning effort. Availability and pricing must pass preflight. No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
+Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; current user-selected default is `gpt-5.6-luna` at low reasoning effort. Credential/model/setup preflight passed; see [SETUP.md](SETUP.md). No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
 
 The independent risk reviewer is a structured model call with no execution tools. We satisfy the advanced-pattern requirement through both adaptive recovery and critical-action security; we do not depend on labeling this reviewer a “subagent.”
 
@@ -384,6 +384,6 @@ README must provide exact tested setup/run/eval commands, architecture diagram, 
 
 The video must show one actual complex task: the initial prompt, tool arguments/results, matching browser changes, any required approval, verification and final report. Prefer food checkout before payment when an account with useful history is available. Screen recording captures both browser and terminal; Playwright's viewport video alone does not. Redact sensitive account details from the shareable result. Do not publish raw mail/resume data, profiles, cookies, keys or local checkpoints.
 
-Source documents/screenshots are already preserved. Isolated Playwright and LangGraph probes passed in research, with narrow scopes documented. **No integrated runtime, paid model/evaluation run or final video exists at this design stage.** The next agent should work from this specification and the [execution goal](IMPLEMENTATION-PLAN.md), updating results only after execution.
+Source documents/screenshots are already preserved. Isolated Playwright and LangGraph probes passed in research, with narrow scopes documented. **No integrated runtime, agent evaluation or final video exists yet. A tiny paid Luna setup call and credential/dependency checks have since passed; see SETUP.md.** The next agent should work from this specification and the [execution goal](IMPLEMENTATION-PLAN.md), updating results only after execution.
 
 Open external dependencies: configured OpenAI model access, LangSmith workspace/key, suitable logged-in real-site account/history, and capture permissions. They do not block writing code and deterministic tests. They can block a truthful live demonstration, and must not be disguised as completed deliverables.

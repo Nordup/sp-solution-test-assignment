@@ -1,6 +1,8 @@
 # Browser automation AI agent — test assignment
 
-Preparation repository for an autonomous browser agent. Implementation has not started.
+Preparation repository for an autonomous browser agent. Credentials, locked dependencies and setup probes are ready locally; the autonomous runtime is not implemented yet.
+
+Read [SETUP.md](docs/SETUP.md) first. Default model is **GPT-5.6 Luna**, per the user's latest choice.
 
 Start with the [complete system design](docs/SYSTEM-DESIGN.md): every requirement mapped to implementation, failure handling and acceptance tests, plus graph/data contracts, safety, terminal UX and delivery gates.
 
@@ -12,7 +14,7 @@ Start with [the implementation handoff](docs/HANDOFF.md), [the Russian assignmen
 
 Confirmed: **Python, Playwright, OpenAI API access, LangSmith evals, $5 per task run**. Recommended: LangGraph StateGraph + native OpenAI Responses SDK + Pydantic, with Playwright tools, SQLite checkpoints and a central safety gate. See the [focused LangGraph research](docs/LANGGRAPH-RESEARCH.md) for the revised recommendation and verified checkpoint probe.
 
-Read the [full cited implementation analysis](docs/IMPLEMENTATION-RESEARCH.md) and [execution plan with a copy-paste next-agent goal](docs/IMPLEMENTATION-PLAN.md). The plan includes budget enforcement, state-based evaluations, recovery, approvals and demo acceptance criteria. No paid model/evaluation run has been performed; a narrow [Playwright snapshot capability probe](docs/research/PLAYWRIGHT-PROBE.md) was verified.
+Read the [full cited implementation analysis](docs/IMPLEMENTATION-RESEARCH.md) and [execution plan with a copy-paste next-agent goal](docs/IMPLEMENTATION-PLAN.md). The plan includes budget enforcement, state-based evaluations, recovery, approvals and demo acceptance criteria. A tiny Luna setup call has been verified; no agent evaluation has run; a narrow [Playwright snapshot capability probe](docs/research/PLAYWRIGHT-PROBE.md) was verified.
 
 **Branch policy: work directly on `main`; never create a second branch or a separate worktree.**
 

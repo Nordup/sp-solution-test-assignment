@@ -1,7 +1,93 @@
 # Complete implementation context
 
-Updated 2026-09-09. SYSTEM-DESIGN.md is the engineering specification; FINAL-TEST.md is the ordered final acceptance runbook. Includes source text, handoff, execution goal and research. Runtime implementation and final tests have not started. Inspect the three original images in `assets/` separately.
+Updated 2026-09-09. SETUP.md records verified credentials/dependencies and the latest Luna default. SYSTEM-DESIGN.md is the engineering specification; FINAL-TEST.md is the acceptance runbook. Older research is preserved for rationale. Runtime and agent evaluations remain unimplemented. Secrets are never included here. Inspect original images in `assets/` separately.
 
+
+---
+
+<!-- Source: SETUP.md -->
+
+# Local setup and implementation readiness
+
+Prepared 2026-09-09. **Credentials and dependencies are ready for implementation on this machine.** The autonomous runtime and final acceptance suite are not implemented yet. This setup status supersedes older design-stage statements that credentials/model access are unverified or that no model call has occurred.
+
+## Ready
+
+- Dedicated OpenAI project: `sp-solution-test-assignment`.
+- Project-scoped OpenAI key: `sp-solution-local-dev`, created through Firefox. It has All API-resource permissions within the dedicated project; existing keys were not changed.
+- LangSmith tracing project: `sp-solution-test-assignment`, in the existing workspace.
+- LangSmith key: `sp-solution-test-assignment-local`, personal token with a 30-day expiry (created September 9). It uses the existing workspace; do not describe it as isolated to this tracing project.
+- Empty LangSmith dataset scaffold: `sp-solution-acceptance-v1`. Add actual fixture-derived examples/reference outputs during implementation; no evaluation has passed yet.
+- Python 3.12 virtual environment, pinned dependencies and `uv.lock` installed successfully.
+- Playwright bundled Chromium and FFmpeg installed. Headed browser, AI snapshot and persistent-profile cookie round trip verified on macOS.
+- GitHub remote already works; main is the only branch. No GitHub token is needed in the application environment.
+
+## Private environment file
+
+Credentials are in **`.env.local`**, ignored by Git, untracked, with mode `0600`. The committed `.env.example` contains blank credential placeholders only. Explicitly load `.env.local` using `python-dotenv`; plain `load_dotenv()` does not necessarily choose that filename.
+
+```python
+from dotenv import load_dotenv
+load_dotenv(".env.local", override=False)
+```
+
+Do not print the file, send its content to LangSmith, or include values in exceptions, command arguments or commits. Use `scripts/setup_check.py` for presence checks. Read-only setup verification reports and project identifiers are retained in ignored `docs/private/` files; they do not contain the credential values.
+
+## Model and spending decision
+
+The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Luna's capability on the three tasks remains to be evaluated; a successful connectivity check is not a task-quality benchmark.
+
+The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Local environment budget/privacy values are configuration only; the implementation must actually enforce them.
+
+## Verification performed
+
+1. OpenAI model-list authentication succeeded, and Luna is available.
+2. Luna Responses API strict function call completed with expected validated arguments.
+3. Input-token count endpoint succeeded; actual call used 132 input and 18 output tokens. Conservative cost estimate: $0.0000546, using an input premium; actual standard uncached-text calculation is lower. No Sol generation call was made.
+4. LangSmith project read, dataset create/read and synthetic setup trace write/read succeeded. An immediate trace read initially returned 404; a later project-scoped read succeeded. Current SDK warns that legacy `read_run` is deprecated; prefer `client.runs.retrieve(run_id, project_id=...)` in new code and account for ingestion delay.
+5. Headed bundled Chromium snapshot/click/profile persistence check passed. The synthetic profile is under `artifacts/profiles/setup-check`; it contains no real-site login.
+6. `.env.local` is ignored, untracked and owner-readable/writable only. Setup scripts pass Ruff checks.
+
+These are setup checks, not `FINAL-TEST.md` passes. The setup trace is explicitly labeled `setup-connectivity-check` with `agent_evaluated=false`.
+
+## Commands that work now
+
+```bash
+uv sync --frozen
+uv run python scripts/setup_check.py
+uv run python scripts/browser_setup_check.py
+uv run ruff check scripts
+```
+
+The browser check opens and closes only its own synthetic profile; it makes no model calls. Neither script is the future `browser-agent doctor` implementation. The CLI and final-test commands in the design/runbook still need to be built. `tool.uv.package=false` is a dependency-only bootstrap; change packaging/entry points when the source package is implemented.
+
+## Remaining human-dependent work
+
+Implementation and local synthetic evaluations can start now. A real-site demo still needs the chosen service and a manual login to the agent's dedicated profile; Firefox's existing login is not automatically the Playwright profile. Final consequential-action approvals remain required. Video capture must be checked when the application is ready.
+
+The user will top up API credit later. Until then, preserve the existing balance and use Luna. No subscription, payment method, auto-reload or unrelated account settings were changed.
+
+## Next agent
+
+Read this file, then SYSTEM-DESIGN.md, IMPLEMENTATION-PLAN.md and FINAL-TEST.md. Reuse `.env.local` and the existing projects/dataset instead of creating duplicate credentials. Implement the runtime and acceptance tests; do not repeat tiny paid smoke calls without a new reason. Never upload real account data just because tracing is enabled: `AGENT_TRACE_MODE=synthetic-only` must be honored by application code before real-site usage.
+
+## Shopee demo candidate
+
+The user has a Shopee Vietnam account with recent order history and proposed it for the real demo. A dedicated profile was opened at `https://shopee.vn/` for manual login. Login completion is recorded separately below; do not infer authentication from profile existence.
+
+Reusable manual-login launcher (no model and no site-specific actor logic):
+
+```bash
+uv run python scripts/open_demo_browser.py https://shopee.vn/
+```
+
+Profile: `artifacts/profiles/demo`. Close the launched browser before another process opens this profile. The launcher only opens a user-supplied URL and waits; all agent navigation remains generic. It does not inspect password fields or copy Firefox cookies.
+
+Proposed demo task: identify a product from recent completed order history, inspect the current listing and matching variant, compare price/availability with the historical order, and optionally prepare a cart **without placing an order or paying**. Use an unambiguous real product/date after inspecting history with user authorization. Do not treat a cart as a completed purchase. Shopee is an additional marketplace scenario, not a replacement for the exact three fixture examples. The live site's compatibility with the final actor remains untested; handle login challenges or unsupported controls honestly.
+
+Current manual-login status: Google sign-in rejected the automated browser with “This browser or app may not be secure.” Shopee authentication is not verified. Try Shopee’s supported QR login using the already-authenticated mobile app; manual confirmation is pending. Do not bypass Google security checks or copy another browser’s cookies. This does not block implementation or synthetic evaluations.
+
+Official login instructions: https://help.shopee.vn/portal/4/article/79436
 
 ---
 
@@ -38,7 +124,7 @@ No framework name earns a pass. Acceptance is based on observed behavior, tests 
 | Observability | LangSmith plus local sanitized events | Model/tool/node traces and evaluation experiments |
 | Validation | pytest, Ruff, deterministic fixtures, LangSmith evals | Boundary tests, semantic outcomes and regression evidence |
 
-Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; initial recommendation is `gpt-5.6-sol` at low reasoning effort. Availability and pricing must pass preflight. No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
+Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; current user-selected default is `gpt-5.6-luna` at low reasoning effort. Credential/model/setup preflight passed; see [SETUP.md](SETUP.md). No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
 
 The independent risk reviewer is a structured model call with no execution tools. We satisfy the advanced-pattern requirement through both adaptive recovery and critical-action security; we do not depend on labeling this reviewer a “subagent.”
 
@@ -393,7 +479,7 @@ README must provide exact tested setup/run/eval commands, architecture diagram, 
 
 The video must show one actual complex task: the initial prompt, tool arguments/results, matching browser changes, any required approval, verification and final report. Prefer food checkout before payment when an account with useful history is available. Screen recording captures both browser and terminal; Playwright's viewport video alone does not. Redact sensitive account details from the shareable result. Do not publish raw mail/resume data, profiles, cookies, keys or local checkpoints.
 
-Source documents/screenshots are already preserved. Isolated Playwright and LangGraph probes passed in research, with narrow scopes documented. **No integrated runtime, paid model/evaluation run or final video exists at this design stage.** The next agent should work from this specification and the [execution goal](IMPLEMENTATION-PLAN.md), updating results only after execution.
+Source documents/screenshots are already preserved. Isolated Playwright and LangGraph probes passed in research, with narrow scopes documented. **No integrated runtime, agent evaluation or final video exists yet. A tiny paid Luna setup call and credential/dependency checks have since passed; see SETUP.md.** The next agent should work from this specification and the [execution goal](IMPLEMENTATION-PLAN.md), updating results only after execution.
 
 Open external dependencies: configured OpenAI model access, LangSmith workspace/key, suitable logged-in real-site account/history, and capture permissions. They do not block writing code and deterministic tests. They can block a truthful live demonstration, and must not be disguised as completed deliverables.
 
@@ -673,7 +759,7 @@ uv run browser-agent login --profile final-demo
 uv run browser-agent run --profile final-demo --budget-usd 5 --release-session final-candidate "<food task with the actual delivery URL>"
 ```
 
-Replace the placeholder with an actual task before running. Prefer the supplied food task where the account has usable order history. Login is manual in the dedicated browser profile. Do not put credentials in shell arguments.
+Replace the placeholder with an actual task before running. Prefer the supplied food task where the account has usable order history. The user also offered Shopee Vietnam with recent orders; a history-dependent marketplace comparison/cart-preparation demo is an acceptable additional complex-task candidate. Label it as the Shopee scenario, do not claim it passed the exact food task, and never place/pay for an order merely to make the video. See SETUP.md for the dedicated profile. Login is manual in the dedicated browser profile. Do not put credentials in shell arguments.
 
 Manual verification, in order:
 
@@ -752,6 +838,8 @@ After a complete baseline, run the three core cases on three distinct seeds each
 Prepared 2026-09-09. This repository contains source material and planning context only. No agent implementation or evaluation run has been completed.
 
 ## Read first
+
+[SETUP.md](SETUP.md) is the latest readiness record: credentials, dependencies and Luna structured-call preflight are ready; reuse existing projects and the private `.env.local`. User chose Luna and will top up credits later. Older design-stage uncertainty statements below are historical where contradicted by SETUP.md.
 
 [FINAL-TEST.md](FINAL-TEST.md) is the ordered final acceptance runbook, including exact task prompts, expected results, failure injections and sign-off. It is not yet executed.
 
@@ -1020,7 +1108,7 @@ Prepared 2026-09-09. This is the work sequence for [SYSTEM-DESIGN.md](SYSTEM-DES
 
 User decisions: Python, Playwright, OpenAI API keys available, LangSmith evals, **$5 per logical task run**, public repository, English communication, Russian source preserved. **Use `main` only. Never create another branch or worktree.**
 
-Recommended baseline (revised after [LangGraph research](LANGGRAPH-RESEARCH.md)): Python 3.12 + uv, LangGraph StateGraph with local SQLite checkpoints, native async OpenAI Responses SDK, Pydantic, Playwright 1.62.0, Rich/Typer CLI, LangSmith, pytest/Ruff. Start with configurable `gpt-5.6-sol` at low reasoning effort. Use explicit graph nodes around a single browser controller and an independent nonacting risk reviewer. Keep authoritative action/budget journals outside rewindable graph state. These recommendations should be revised only for a concrete compatibility or evaluation finding, recorded in the decision log.
+Recommended baseline (revised after [LangGraph research](LANGGRAPH-RESEARCH.md)): Python 3.12 + uv, LangGraph StateGraph with local SQLite checkpoints, native async OpenAI Responses SDK, Pydantic, Playwright 1.62.0, Rich/Typer CLI, LangSmith, pytest/Ruff. User now chose configurable `gpt-5.6-luna` for initial development with existing credits; see SETUP.md. Use explicit graph nodes around a single browser controller and an independent nonacting risk reviewer. Keep authoritative action/budget journals outside rewindable graph state. These recommendations should be revised only for a concrete compatibility or evaluation finding, recorded in the decision log.
 
 Aim for September 10 EOD. Reported employer deadline is September 11 around 17:00, timezone unconfirmed. Deliver working code, reproducible instructions, evaluation evidence, repository URL and a short demonstration video. No deployment is needed.
 
@@ -1028,7 +1116,7 @@ Aim for September 10 EOD. Reported employer deadline is September 11 around 17:0
 
 ### Milestone 1 — runnable skeleton and compatibility checks
 
-Create `pyproject.toml`, `uv.lock`, `.env.example`, source package, CLI entry point, configuration and test setup. Keep secrets and profiles ignored. Add `doctor` to check Python/browser installation, configured model, key presence without printing it, and LangSmith configuration. Network checks must be explicit and cost-aware.
+Dependency bootstrap `pyproject.toml`, `uv.lock`, `.env.example`, private credentials and setup probes already exist (see SETUP.md). Reuse them; add the source package, CLI entry point, configuration and test setup. Keep secrets and profiles ignored. Add `doctor` to check Python/browser installation, configured model, key presence without printing it, and LangSmith configuration. Network checks must be explicit and cost-aware.
 
 Smoke-test the locked native SDK with strict tool calling, usage accounting and input-token counting. Smoke-test the LangSmith wrapper with the Responses API. Confirm the configured model is available before investing in prompt tuning. Never silently switch provider or remove the budget limit on failure.
 
@@ -1161,7 +1249,7 @@ Implement and execute [FINAL-TEST.md](FINAL-TEST.md) in order. Its CLI contract 
 
 ## Copy-paste goal for the next agent
 
-> Implement this assignment end to end in the existing public repository, directly on main. Never create another branch or worktree. Read docs/SYSTEM-DESIGN.md as the current implementation contract, docs/CONTEXT.md for source context and the three reference images. Implement the requirement/failure/test mappings and release gates in the system design; make docs/FINAL-TEST.md commands executable and pass its ordered final suite with honest per-stage evidence; follow docs/IMPLEMENTATION-PLAN.md for work order and use the research documents for rationale. Build Python + LangGraph StateGraph + local SQLite checkpoints + native OpenAI Responses + Pydantic + Playwright + LangSmith with a visible browser and terminal interface. Use generic live-observation tools, an autonomous decision loop, bounded context, persistent manual login, code-enforced critical-action approvals, real bounded retries/replanning and evidence-based completion. Do not add site-specific scripts, paths, selectors or regex extraction of JSON from model prose. Enforce $5 total per logical task including all helper/retry/evaluator calls, persisting spend across resume and historical checkpoints. Keep browser side effects outside interrupt nodes; never blindly replay uncertain actions. Bound each evaluation experiment explicitly; start with three core cases once and a $15 experiment cap. Build deterministic fixture/state-based evals for the three supplied examples plus safety, recovery, context and an unseen task. Create and run LangSmith experiments when credentials are configured; never fabricate passing results. Produce reproducible setup, tested code, honest evaluation results and a short actual-run demo video; use a real food checkout task if a suitable account is available, stopping before payment. Keep secrets and private artifacts out of Git. Work autonomously through implementation and fixes; ask only for missing external credentials/login or exact consequential-action approval. If an external dependency blocks a real-site deliverable, finish independent work and state the exact remaining requirement. Commit and push the finished work to main and report repository, experiment and video locations plus any measured limitations.
+> Implement this assignment end to end in the existing public repository, directly on main. Never create another branch or worktree. Read docs/SYSTEM-DESIGN.md as the current implementation contract, docs/CONTEXT.md for source context and the three reference images. Implement the requirement/failure/test mappings and release gates in the system design; make docs/FINAL-TEST.md commands executable and pass its ordered final suite with honest per-stage evidence; follow docs/IMPLEMENTATION-PLAN.md for work order and use the research documents for rationale. Use the existing .env.local credentials and projects documented in docs/SETUP.md; start with gpt-5.6-luna and existing credits, without buying credits or silently upgrading models. Build Python + LangGraph StateGraph + local SQLite checkpoints + native OpenAI Responses + Pydantic + Playwright + LangSmith with a visible browser and terminal interface. Use generic live-observation tools, an autonomous decision loop, bounded context, persistent manual login, code-enforced critical-action approvals, real bounded retries/replanning and evidence-based completion. Do not add site-specific scripts, paths, selectors or regex extraction of JSON from model prose. Enforce $5 total per logical task including all helper/retry/evaluator calls, persisting spend across resume and historical checkpoints. Keep browser side effects outside interrupt nodes; never blindly replay uncertain actions. Bound each evaluation experiment explicitly; start with three core cases once and a $15 experiment cap. Build deterministic fixture/state-based evals for the three supplied examples plus safety, recovery, context and an unseen task. Create and run LangSmith experiments when credentials are configured; never fabricate passing results. Produce reproducible setup, tested code, honest evaluation results and a short actual-run demo video; use a real food checkout task if a suitable account is available, stopping before payment. Keep secrets and private artifacts out of Git. Work autonomously through implementation and fixes; ask only for missing external credentials/login or exact consequential-action approval. If an external dependency blocks a real-site deliverable, finish independent work and state the exact remaining requirement. Commit and push the finished work to main and report repository, experiment and video locations plus any measured limitations.
 
 This text is ready to use after the user decides to start implementation. No separate Codex task or persistent goal was created during research.
 

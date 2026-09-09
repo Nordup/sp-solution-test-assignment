@@ -13,3 +13,7 @@ docs/private/
 browser-profile/
 playwright/.auth/
 artifacts/
+
+# Local tooling caches
+.pytest_cache/
+.ruff_cache/

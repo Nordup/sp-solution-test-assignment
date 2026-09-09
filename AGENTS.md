@@ -1,6 +1,7 @@
 # Project instructions
 
 - Work directly on `main`. Never create a second branch, feature branch, or separate worktree. This is the user's explicit instruction, 2026-09-09.
+- Read `docs/SETUP.md` first: reuse the private `.env.local`, existing OpenAI/LangSmith projects and locked dependencies. User now chose `gpt-5.6-luna` and will add credits later; do not silently upgrade models or purchase credits.
 - Read `docs/SYSTEM-DESIGN.md` as the current engineering specification, then `docs/HANDOFF.md`, `docs/assignment.ru.md`, and `docs/hr-requirements.ru.md` before implementation. Review all three images in `docs/assets/`.
 - Speak with the user in English. Preserve Russian source quotations exactly, including source typos.
 - Current stage: research and implementation handoff prepared; runtime not implemented. Before implementation read `docs/SYSTEM-DESIGN.md` and `docs/IMPLEMENTATION-PLAN.md`; research documents explain rationale. User chose Python, OpenAI API access, and LangSmith evaluations. Recommended baseline: LangGraph StateGraph + SQLite checkpoints + native OpenAI Responses SDK + Pydantic + Playwright. Read `docs/LANGGRAPH-RESEARCH.md` for the latest orchestration recommendation; follow the documented plan when implementation is requested.

@@ -4,6 +4,8 @@ Prepared 2026-09-09. This repository contains source material and planning conte
 
 ## Read first
 
+[SETUP.md](SETUP.md) is the latest readiness record: credentials, dependencies and Luna structured-call preflight are ready; reuse existing projects and the private `.env.local`. User chose Luna and will top up credits later. Older design-stage uncertainty statements below are historical where contradicted by SETUP.md.
+
 [FINAL-TEST.md](FINAL-TEST.md) is the ordered final acceptance runbook, including exact task prompts, expected results, failure injections and sign-off. It is not yet executed.
 
 The current implementation contract is [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), with requirement IDs, implementation/failure/test mappings, graph and data contracts, terminal UX, evaluations and release gates. It supersedes conflicting proposed details in earlier research.
