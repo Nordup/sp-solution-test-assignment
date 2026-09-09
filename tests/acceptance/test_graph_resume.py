@@ -50,9 +50,9 @@ class ScriptedGateway:
         self.requests = []
         self.reviews = 0
         self.completion_reviews = 0
+        self.memory_calls = 0
 
-    async def call(self, req):
-        self.calls += 1
+    async def call(self, req, purpose="actor"):
         self.requests.append(req)
         current = next(
             item["content"]
@@ -61,7 +61,18 @@ class ScriptedGateway:
             and item["content"].startswith("Current browser observation")
         )
         obs = json.loads(current.split("\n", 1)[1])
-        name, args = (self.script.pop(0) if self.script else finish)(obs)
+        if req.get("tool_choice") == {"type": "function", "name": "remember"}:
+            self.memory_calls += 1
+            name, args = (
+                "remember",
+                {
+                    "notes": "Synthetic cumulative memory for this boundary test.",
+                    "scope": None,
+                },
+            )
+        else:
+            self.calls += 1
+            name, args = (self.script.pop(0) if self.script else finish)(obs)
         return {
             "status": "completed",
             "output": [
@@ -78,6 +89,7 @@ class ScriptedGateway:
         self.reviews += 1
         return {
             "classification": self.classification,
+            "scope_status": "in_scope",
             "effect_summary": "Submit the displayed application to Acme with the displayed letter.",
             "reason": "Deterministic risk classification for testing the real policy.",
         }
@@ -151,17 +163,19 @@ async def test_approval_is_pure_and_resume_dispatches_once(tmp_path):
         paused = await graph.ainvoke(initial, config)
         approval = pending(paused)
         assert approval["kind"] == "approval"
-        assert gateway.calls == gateway.reviews == 1
+        assert gateway.calls == gateway.memory_calls == 1
+        assert gateway.reviews == 2
         assert await browser.page.evaluate("window.effects || 0") == 0
         saved = await graph.aget_state(config)
         assert saved.next == ("approval",)
         # Reading persisted state neither repeats model calls nor mutates browser.
         await graph.aget_state(config)
-        assert gateway.calls == gateway.reviews == 1
+        assert gateway.calls == gateway.memory_calls == 1
+        assert gateway.reviews == 2
         result = await graph.ainvoke(approval_answer(paused), config)
         assert result["result"]["status"] == "partial"
         assert await browser.page.evaluate("window.effects") == 1
-        assert gateway.reviews == 1
+        assert gateway.reviews == 2
         assert store.approval(approval["request_id"])["status"] == "consumed"
         assert not store.unresolved_actions(initial["run_id"])
 

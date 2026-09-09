@@ -4,7 +4,7 @@ Current implementation specification: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md). It c
 
 **Updated recommendation:** use a small LangGraph StateGraph around the native OpenAI/Playwright components. Read [the focused LangGraph research](LANGGRAPH-RESEARCH.md) first; it supersedes the initial orchestration/persistence choice below.
 
-Research date: 2026-09-09. This is a design document, not a claim that the agent or evaluations already exist. Read the [original assignment](assignment.ru.md), [HR clarification](hr-requirements.ru.md), and [reference images](assets/ideal-solution-01.jpg) alongside it. The [execution plan](IMPLEMENTATION-PLAN.md) turns this analysis into work for the next agent.
+Research date: 2026-09-09. This is historical design research. The agent and evaluation tooling have since been implemented; current evidence and remaining release work are recorded in REQUIREMENTS.md and VALIDATION.md. Read the [original assignment](assignment.ru.md), [HR clarification](hr-requirements.ru.md), and [reference images](assets/ideal-solution-01.jpg) alongside it. The [execution plan](IMPLEMENTATION-PLAN.md) turns this analysis into work for the next agent.
 
 ## 1. Recommendation and decision status
 
@@ -232,7 +232,7 @@ Prefer a short desktop recording of an actual run. If platform recording access 
 
 The first implementation should omit MCP, a DOM subagent, multiple providers, deployment, custom web UI, and vector memory. Add them only after the required behaviors and tests work. The screenshot's DOM helper is optional; selective snapshots already solve its main information-reduction role.
 
-Unverified prerequisites are OpenAI model access, LangSmith credentials/workspace, and logged-in real-site accounts with suitable history. No secret should be pasted into documentation or committed. The next agent can complete the code, fixtures and most validation autonomously; real login and approval-dependent demos may still need the user. A goal must distinguish those external dependencies from implementation failures.
+At research time the unverified prerequisites were OpenAI model access, LangSmith credentials/workspace and logged-in real-site accounts with suitable history. SETUP.md records later credential/preflight and manual account checks; current live compatibility and final video remain separate release requirements. No secret should be pasted into documentation or committed. The next agent can complete the code, fixtures and most validation autonomously; real login and approval-dependent demos may still need the user. A goal must distinguish those external dependencies from implementation failures.
 
 ## Research limits
 

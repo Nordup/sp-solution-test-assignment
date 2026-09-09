@@ -1,12 +1,12 @@
 # Implementation handoff
 
-Prepared 2026-09-09. This repository contains source material and planning context only. No agent implementation or evaluation run has been completed.
+Prepared 2026-09-09; updated during implementation. The repository now contains a working runtime, deterministic acceptance tests and evaluation tooling. Release validation is incomplete; this handoff does not certify the three assignment tasks or final video.
 
 ## Read first
 
-[SETUP.md](SETUP.md) is the latest readiness record: credentials, dependencies and Luna structured-call preflight are ready; reuse existing projects and the private `.env.local`. User chose Luna and will top up credits later. Older design-stage uncertainty statements below are historical where contradicted by SETUP.md.
+Read [REQUIREMENTS.md](REQUIREMENTS.md) for implemented behavior and remaining deliverables, [TEST-COVERAGE.md](TEST-COVERAGE.md) for actual test scopes, and [VALIDATION.md](VALIDATION.md) for recorded results. [SETUP.md](SETUP.md) describes the existing credentials, dependencies, Luna default and prepared profile; reuse the projects and private `.env.local`. The user will top up credits later. Earlier research and milestone plans are historical rationale, not current completion claims.
 
-[FINAL-TEST.md](FINAL-TEST.md) is the ordered final acceptance runbook, including exact task prompts, expected results, failure injections and sign-off. It is not yet executed.
+[FINAL-TEST.md](FINAL-TEST.md) is the ordered final acceptance runbook, including exact task prompts, expected results, failure injections and sign-off. Parts have executed; the complete ordered release sequence has not passed.
 
 The current implementation contract is [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), with requirement IDs, implementation/failure/test mappings, graph and data contracts, terminal UX, evaluations and release gates. It supersedes conflicting proposed details in earlier research.
 
@@ -24,7 +24,7 @@ Source: user instructions, 2026-09-09; two-day turnaround also confirmed in the 
 - Browser automation: **Playwright**.
 - Communicate in English; source documents may remain Russian.
 - Confirmed in the research discussion: **Python**, **OpenAI API keys available**, **LangSmith evaluations**, **$5 per logical run**. The cap includes helper/retry/evaluator model calls, and persists across pauses/resume.
-- Recommended baseline: LangGraph StateGraph with local SQLite checkpoints, native OpenAI Responses SDK, Pydantic, Playwright, explicit agent loop, independent risk review, Rich/Typer CLI. See [focused LangGraph research](LANGGRAPH-RESEARCH.md) for the latest orchestration recommendation and the original research for model pricing. These are recommendations, not claims of an implemented system.
+- Recommended baseline: LangGraph StateGraph with local SQLite checkpoints, native OpenAI Responses SDK, Pydantic, Playwright, explicit agent loop, independent risk review, Rich/Typer CLI. See [focused LangGraph research](LANGGRAPH-RESEARCH.md) for the latest orchestration recommendation and the original research for model pricing. This baseline is implemented; current refinements and evidence limits are recorded in REQUIREMENTS.md and VALIDATION.md.
 - Reported employer turnaround: two days; Friday, 2026-09-11, about 17:00. Deadline timezone is unconfirmed.
 - User's target: finish Thursday, 2026-09-10, by end of day. User's current local timezone is Asia/Ho_Chi_Minh; this does not establish the employer's deadline timezone.
 - Deliver a repository link and a short video of the agent actually solving one complex task. The assignment does not specify repository visibility; public visibility is the user's choice.
@@ -75,8 +75,8 @@ Suggested cross-cutting checks:
 
 The research and execution plan now specify the recommended stack, page representation, context policy, safety/recovery, evaluation design, milestones and a copy-paste goal. Do not reopen settled language/browser/evaluation choices without a concrete reason.
 
-Still unverified: OpenAI model entitlement, LangSmith credentials/workspace, suitable logged-in real-site account/history, and screen-recording access. The user has OpenAI keys; do not ask them to paste secrets into chat or documentation. Finish independent implementation and fixture tests if account login blocks a real-site demo.
+OpenAI Luna entitlement and LangSmith connectivity were verified. Yandex Eda authentication and populated history were observed in a prior manual read-only check; previous-week history, current login persistence, final-actor live compatibility and the finished demonstration recording remain release checks. A two-second recorder smoke passed; it is not a demonstration. Do not ask the user to paste secrets into chat or documentation. Continue independent fixture validation if account access blocks a real-site demo.
 
-No runtime, paid model calls, remote LangSmith datasets/experiments or final video have been produced in this preparation phase. The isolated Playwright capability probe passed for snapshot refs, iframe refs and stale-ref rejection; its narrow scope is documented in `research/PLAYWRIGHT-PROBE.md`.
+The original preparation phase produced source capture and isolated probes. Runtime implementation and integrated paid preflight followed; actual task evaluation attempts and failures are retained separately. No full release or video pass is claimed here. The original Playwright probe’s narrow scope remains documented in `research/PLAYWRIGHT-PROBE.md`; use the acceptance tests for current adapter evidence.
 
 Keep this handoff current and replace proposed checks with actual results only after execution. Employer deadline timezone remains unconfirmed. Full HR messages, including optional course/VPN information, are local-only in `docs/private/hr-messages.ru.md`.

@@ -223,6 +223,7 @@ async def test_p06_actual_reviewer_and_completion_wrappers_share_actor_ledger(tm
         "risk_review",
         {
             "classification": "ordinary",
+            "scope_status": "in_scope",
             "effect_summary": "Read visible content",
             "reason": "Read operation",
         },
@@ -258,6 +259,7 @@ async def test_p06_completion_helper_cannot_bypass_remaining_actor_cap(tmp_path)
         "risk_review",
         {
             "classification": "ordinary",
+            "scope_status": "in_scope",
             "effect_summary": "Read content",
             "reason": "Read operation",
         },

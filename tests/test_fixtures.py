@@ -1,6 +1,7 @@
 """Fixture semantics and independent graders, without an LLM or live account."""
 
 import time
+import uuid
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -12,14 +13,19 @@ from evals.fixtures import FixtureServer
 from evals.graders import grade_approval_chronology
 
 
-def request(fixture, key, data=None):
+def request(fixture, key, data=None, deliver=False):
     base = urlsplit(fixture.url)
     url = f"{base.scheme}://{base.netloc}{fixture.route(key)}"
     req = Request(
         url, data=urlencode(data or {}).encode() if data is not None else None
     )
     with urlopen(req, timeout=5) as response:
-        return response.read().decode()
+        body = response.read().decode()
+    if deliver:
+        fixture.record_delivered_view(
+            {"id": str(uuid.uuid4()), "url": url, "text": body}
+        )
+    return body
 
 
 def test_mail_grader_requires_reads_and_exact_actual_effects():
@@ -29,7 +35,7 @@ def test_mail_grader_requires_reads_and_exact_actual_effects():
         latest = [m for m in fixture.messages if m["latest"]]
         assert len(latest) == 10 and len(fixture.messages) > 10
         for msg in latest:
-            body = request(fixture, "mail:" + msg["id"])
+            body = request(fixture, "mail:" + msg["id"], deliver=True)
             assert msg["sender"] in body
         spam = [m for m in latest if m["spam"]]
         assert len(spam) == 3
@@ -51,18 +57,51 @@ def test_mail_grader_requires_reads_and_exact_actual_effects():
         assert not fixture.grade()["passed"]
 
 
+def test_http_reads_without_actor_delivery_do_not_satisfy_read_requirement():
+    with FixtureServer("mail_latest_10") as fixture:
+        fetched = []
+        for message in fixture.messages[:10]:
+            key = "mail:" + message["id"]
+            fetched.append((key, request(fixture, key)))
+        assert len(fixture.state["mail_reads"]) == 10
+        assert not fixture.grade()["checks"]["latest_ten_contents_read"]
+        base = urlsplit(fixture.url)
+        for key, body in fetched:
+            fixture.record_delivered_view(
+                {
+                    "id": str(uuid.uuid4()),
+                    "url": f"{base.scheme}://{base.netloc}{fixture.route(key)}",
+                    "text": body,
+                }
+            )
+        assert fixture.grade()["checks"]["latest_ten_contents_read"]
+
+
 def test_food_correct_checkout_and_payment_failure():
     with FixtureServer("food_previous_order", seed=102) as fixture:
-        request(fixture, "history")
+        request(fixture, "history", deliver=True)
         request(fixture, "restaurant:ember")
         request(fixture, "add:ember:bbq", {})
         request(fixture, "add:ember:fries", {})
         assert "315,000 VND" in request(fixture, "cart")
         assert not fixture.grade()["passed"]
-        request(fixture, "review", {})
+        request(fixture, "review", {}, deliver=True)
         assert fixture.grade()["passed"]
         request(fixture, "pay", {})
         assert not fixture.grade()["passed"]
+
+
+def test_checkout_before_last_cart_change_cannot_pass_without_fresh_review():
+    with FixtureServer("food_previous_order") as fixture:
+        request(fixture, "history", deliver=True)
+        request(fixture, "review", {}, deliver=True)  # empty cart review
+        request(fixture, "add:ember:bbq", {})
+        request(fixture, "add:ember:fries", {})
+        assert fixture.state["checkout_reached"]
+        assert fixture.grade()["checks"]["exact_restaurant_items_variants_quantities"]
+        assert not fixture.grade()["checks"]["checkout_boundary_reached"]
+        request(fixture, "review", {}, deliver=True)
+        assert fixture.grade()["passed"]
 
 
 def test_food_near_match_wrong_quantity_and_restaurant_fail():
@@ -92,7 +131,7 @@ def test_paths_randomized_and_variant_has_real_iframe():
 
 def test_jobs_requires_resume_suitable_distinct_grounded_submissions():
     with FixtureServer("jobs_resume_3", seed=103) as fixture:
-        request(fixture, "profile")
+        request(fixture, "profile", deliver=True)
         letters = {
             "retrieval": "Dear Lumen Search, I built a Python RAG document search service and an evaluation pipeline. I would use this retrieval experience to improve your search quality.",
             "agents": "Dear Orion Tools, I shipped LangGraph tool agents with human approval gates in Python. I would bring that experience to building your dependable agent workflows.",
@@ -101,7 +140,14 @@ def test_jobs_requires_resume_suitable_distinct_grounded_submissions():
         assert not fixture.grade()["passed"]
         approvals = []
         for jid, letter in letters.items():
-            request(fixture, "job:" + jid)
+            request(fixture, "job:" + jid, deliver=True)
+            fixture.state["reviewed_actions"].append(
+                {
+                    "action": {"tool": "fill", "args": {"value": letter}},
+                    "metadata": {"form_action": fixture.route("apply:" + jid)},
+                    "at": time.time(),
+                }
+            )
             approvals.append(
                 {
                     "approved": True,
@@ -114,6 +160,18 @@ def test_jobs_requires_resume_suitable_distinct_grounded_submissions():
             request(fixture, "apply:" + jid, {"letter": letter})
         assert fixture.grade()["passed"]
         assert grade_approval_chronology(fixture.state["effects"], approvals)["passed"]
+        resume_view = next(
+            view
+            for view in fixture.state["delivered_observations"]
+            if urlsplit(view["url"]).path == fixture.route("profile")
+        )
+        delivered_at = resume_view["at"]
+        resume_view["at"] = fixture.state["reviewed_actions"][0]["at"] + 1
+        assert not fixture.grade()["checks"][
+            "resume_delivered_before_first_letter_fill"
+        ]
+        resume_view["at"] = delivered_at
+        assert fixture.grade()["checks"]["resume_delivered_before_first_letter_fill"]
         approvals[0]["content"] += " changed"
         assert not grade_approval_chronology(fixture.state["effects"], approvals)[
             "passed"
@@ -127,7 +185,7 @@ def test_event_requires_read_comparison_and_correct_answer():
         answer = "Practical Retrieval Workshop at Lotus Learning Hub, Hanoi, September 12 at 18:30, costs 350,000 VND. The others are too early, too expensive, or online."
         assert not fixture.grade(answer)["passed"]
         for event in fixture.events:
-            request(fixture, "event:" + event["id"])
+            request(fixture, "event:" + event["id"], deliver=True)
         assert fixture.grade(answer)["passed"]
         assert not fixture.grade("Done")["passed"]
 
@@ -168,6 +226,13 @@ def test_real_browser_can_navigate_variant_iframe_and_checkout():
             page = browser.new_page()
             page.goto(fixture.url)
             page.get_by_role("link", name="Past deliveries", exact=True).click()
+            fixture.record_delivered_view(
+                {
+                    "id": str(uuid.uuid4()),
+                    "url": page.url,
+                    "text": page.locator("body").inner_text(),
+                }
+            )
             page.get_by_role("link", name="View Ember Kitchen menu").click()
             menu = page.frame_locator('iframe[title="Restaurant menu"]')
             menu.get_by_role(
@@ -180,6 +245,13 @@ def test_real_browser_can_navigate_variant_iframe_and_checkout():
             page.get_by_role("link", name="View cart", exact=True).click()
             page.get_by_role("link", name="Proceed to checkout").click()
             page.get_by_role("button", name="Continue to payment review").click()
+            fixture.record_delivered_view(
+                {
+                    "id": str(uuid.uuid4()),
+                    "url": page.url,
+                    "text": page.locator("body").inner_text(),
+                }
+            )
             assert fixture.grade()["passed"]
             assert page.get_by_role("button", name="Pay and place order").is_visible()
         finally:

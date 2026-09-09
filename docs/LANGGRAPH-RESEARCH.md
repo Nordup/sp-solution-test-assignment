@@ -2,7 +2,7 @@
 
 Current implementation specification: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md). It consolidates and supersedes conflicting proposed details in this research document.
 
-Researched 2026-09-09 after the user clarified that they meant **LangGraph**, rather than LangChain. This document supersedes the earlier recommendation to omit LangGraph. It changes the proposed orchestration/persistence layer; browser tools, native OpenAI calls, safety policy, budgets and evaluation criteria from [the original analysis](IMPLEMENTATION-RESEARCH.md) remain applicable. This is a recommendation, not a claim that the user has approved or that implementation is complete.
+Researched 2026-09-09 after the user clarified that they meant **LangGraph**, rather than LangChain. This document supersedes the earlier recommendation to omit LangGraph. It changes the proposed orchestration/persistence layer; browser tools, native OpenAI calls, safety policy, budgets and evaluation criteria from [the original analysis](IMPLEMENTATION-RESEARCH.md) remain applicable. This is historical research rationale. The baseline is now implemented; current behavior and unresolved release evidence are in REQUIREMENTS.md and VALIDATION.md.
 
 ## Recommendation
 
@@ -124,4 +124,4 @@ Compared with a handwritten loop, LangGraph adds dependencies, graph state/reduc
 
 Compared with OpenAI Agents SDK, LangGraph is lower-level orchestration. We write more of the model/tool protocol, but can explicitly route approvals, revalidation, uncertain outcomes and recovery without nesting runner behavior. Compared with LangChain `create_agent`, the graph provides more direct control over these boundaries at the cost of writing the nodes ourselves.
 
-Update the original plan by replacing the handwritten outer loop with `graph.py` and explicit nodes; use SQLite checkpointers for graph state while retaining `journal.py` and `budget.py` as authoritative non-rewindable records. Add no hosted runtime, second agent framework or task-specific subgraphs. All source, $5, main-only, privacy, evaluation and demo requirements remain in force. The user has requested research; runtime implementation has not started.
+Update the original plan by replacing the handwritten outer loop with `graph.py` and explicit nodes; use SQLite checkpointers for graph state while retaining `journal.py` and `budget.py` as authoritative non-rewindable records. Add no hosted runtime, second agent framework or task-specific subgraphs. All source, $5, main-only, privacy, evaluation and demo requirements remain in force. At the time of this research, implementation had not started. The later runtime and validation status are recorded in REQUIREMENTS.md and VALIDATION.md.

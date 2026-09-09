@@ -2,7 +2,26 @@
 
 import json
 
-from .prompts import ACTOR
+from .prompts import ACTOR, MEMORY
+
+HISTORY_GROUPS = 6
+MEMORY_INTERVAL = 4
+
+
+def memory_due(state: dict) -> bool:
+    """Force compaction while the evidence-bearing recent groups still exist."""
+    return bool(state.get("memory_required")) or (
+        state.get("steps", 0) - state.get("memory_step", 0) >= MEMORY_INTERVAL
+    )
+
+
+def task_context(state: dict) -> dict:
+    return {
+        "original_collection_scope": state.get("scope"),
+        "working_notes": state.get("notes", ""),
+        "action_receipts": state.get("progress", []),
+        "user_clarifications": state.get("clarifications", []),
+    }
 
 
 class ContextOverflow(ValueError):
@@ -53,7 +72,29 @@ def build_input(state: dict) -> list[dict]:
                 + json.dumps(visited, ensure_ascii=False),
             }
         )
-    notes = clip(state.get("notes", ""), 6000)
+    scope = state.get("scope")
+    if scope:
+        messages.append(
+            {
+                "role": "user",
+                "content": "Frozen original collection scope (observed evidence; membership does not change after effects):\n"
+                + json.dumps(scope, ensure_ascii=False),
+            }
+        )
+    progress = state.get("progress", [])
+    if progress:
+        messages.append(
+            {
+                "role": "user",
+                "content": "Durable action receipts (dispatch/results, not semantic success claims):\n"
+                + json.dumps(progress, ensure_ascii=False),
+            }
+        )
+    notes = state.get("notes", "")
+    if len(notes.encode("utf-8")) > 12000:
+        raise ContextOverflow(
+            "Cumulative notes exceed memory cap; no scope facts were silently truncated."
+        )
     messages.append(
         {
             "role": "user",
@@ -61,7 +102,7 @@ def build_input(state: dict) -> list[dict]:
         }
     )
     # Native call/result groups are retained atomically; never truncate JSON mid-pair.
-    groups = state.get("history", [])[-6:]
+    groups = state.get("history", [])[-HISTORY_GROUPS:]
     for group in groups:
         if len(json.dumps(group, ensure_ascii=False).encode("utf-8")) < 12000:
             messages.extend(group)
@@ -83,11 +124,14 @@ def build_input(state: dict) -> list[dict]:
 
 
 def request(state, tools):
+    due = memory_due(state)
     return {
-        "instructions": ACTOR,
+        "instructions": ACTOR + ("\n\n" + MEMORY if due else ""),
         "input": build_input(state),
-        "tools": tools,
+        "tools": [tool for tool in tools if tool["name"] == "remember"]
+        if due
+        else tools,
         "parallel_tool_calls": False,
-        "tool_choice": "required",
+        "tool_choice": {"type": "function", "name": "remember"} if due else "required",
         "truncation": "disabled",
     }

@@ -124,7 +124,12 @@ async def test_b12_cancel_at_approval_boundary_saves_checkpoint_and_resumes(tmp_
     assert resumed_questions[0]["request_id"] != old_request
     assert store.approval(old_request)["status"] == "pending"
     assert store.budget("cancel-safe")["reserved"] == 50
-    assert gateways[0].reviews == gateways[1].reviews == 1
+    # Initial review schedules memory, then re-reviews the retained action. Resume
+    # reuses that durable memory but still requires a fresh browser-generation review.
+    assert gateways[0].reviews == 2
+    assert gateways[1].reviews == 1
+    assert gateways[0].memory_calls == 1
+    assert gateways[1].memory_calls == 0
 
 
 async def test_f19_cancel_inflight_preserves_uncertain_effect_and_never_replays(

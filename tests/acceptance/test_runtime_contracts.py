@@ -239,3 +239,33 @@ def test_user_constraints_and_page_receipts_survive_history_compaction():
     serialized = str(build_input(state))
     assert "Retain the selected original set" in serialized
     assert "Already inspected" in serialized and "obs-known" in serialized
+
+
+async def test_returning_from_distinct_pages_is_progress_not_a_repeated_loop(tmp_path):
+    from test_graph_resume import click
+
+    html = """<h1>Collection</h1><button onclick="document.querySelector('h1').textContent='Entry A'">First</button><button onclick="document.querySelector('h1').textContent='Entry B'">Second</button><button onclick="document.querySelector('h1').textContent='Entry C'">Third</button><button onclick="document.querySelector('h1').textContent='Collection'">Return</button>"""
+    script = [
+        click("First"),
+        click("Return"),
+        click("Second"),
+        click("Return"),
+        click("Third"),
+        click("Return"),
+    ]
+    async with graph_case(tmp_path, html, script, classification="ordinary") as (
+        _browser,
+        gateway,
+        _store,
+        _runtime,
+        graph,
+        config,
+        initial,
+        _events,
+    ):
+        result = await graph.ainvoke(initial, config)
+        assert "__interrupt__" not in result
+        assert gateway.calls == 7
+        assert (
+            result["result"]["status"] == "partial"
+        )  # scripted test finish, not task-quality claim

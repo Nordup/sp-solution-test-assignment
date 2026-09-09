@@ -1,6 +1,6 @@
 # Implementation plan and next-agent goal
 
-Prepared 2026-09-09. This is the work sequence for [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), the current detailed implementation contract. Implementation and paid evaluation have not started. The detailed rationale and primary sources are in [IMPLEMENTATION-RESEARCH.md](IMPLEMENTATION-RESEARCH.md).
+Prepared 2026-09-09. This is the work sequence for [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), the current detailed implementation contract. This is the historical milestone plan: runtime implementation and evaluation attempts have since begun. Use [REQUIREMENTS.md](REQUIREMENTS.md), [VALIDATION.md](VALIDATION.md) and [FINAL-TEST.md](FINAL-TEST.md) for current status and the remaining ordered work. Imperative milestone text below describes the original plan, not unimplemented or completed status. The detailed rationale and primary sources are in [IMPLEMENTATION-RESEARCH.md](IMPLEMENTATION-RESEARCH.md).
 
 ## Fixed constraints and chosen baseline
 
@@ -85,9 +85,9 @@ tests/               # deterministic policy/protocol/browser tests
 
 This is a responsibility map, not a requirement to create empty files. Merge small cohesive modules when useful. Keep all fixture-specific knowledge under `evals/` or tests, never in runtime prompt/tool logic.
 
-## Proposed CLI contract
+## Current CLI entry points
 
-These commands do not exist yet; the implementation should provide them or document any intentional naming change.
+These entry points now exist. The full, ordered acceptance commands and shared release accounting are in FINAL-TEST.md. Replace task/URL/run-ID placeholders before execution; do not run this example list as an extra paid suite.
 
 ```bash
 uv sync --frozen
@@ -98,7 +98,7 @@ uv run browser-agent run --profile demo --budget-usd 5 "<ordinary task>"
 uv run browser-agent resume <run-id>
 uv run pytest
 uv run ruff check .
-uv run python -m evals.run --suite core --repetitions 1 --max-experiment-usd 15
+uv run python -m evals.run --suite core --repetitions 1 --max-experiment-usd 15 --release-session final-candidate
 ```
 
 Configuration should include `OPENAI_API_KEY`, `OPENAI_MODEL`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, optional workspace/endpoint as required, tracing/privacy mode, profile/artifact directories, per-run budget and experiment cap. Never put actual values in `.env.example`. Reject budgets above the user's $5 task cap unless the user explicitly changes it; a CLI flag is not independent authorization.

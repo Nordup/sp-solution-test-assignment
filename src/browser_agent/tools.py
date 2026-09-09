@@ -48,10 +48,29 @@ class Ask(Strict):
     kind: Literal["clarification", "login", "challenge"]
 
 
+class ScopeItem(Strict):
+    identity: str = Field(
+        min_length=1,
+        max_length=250,
+        description="Exact observed name or URL appearing within the supporting quote; never invent an identifier.",
+    )
+    evidence_id: str
+    quote: str = Field(min_length=3, max_length=700)
+
+
+class CollectionScope(Strict):
+    boundary: str = Field(min_length=1, max_length=1500)
+    items: list[ScopeItem] = Field(min_length=1, max_length=60)
+
+
 class Note(Strict):
     notes: str = Field(
+        min_length=1,
         max_length=6000,
-        description="Replace working notes with concise cumulative facts and evidence IDs; preserve unresolved constraints.",
+        description="Cumulative facts, completed work, pending work and evidence IDs. Preserve earlier facts as rolling history expires.",
+    )
+    scope: CollectionScope | None = Field(
+        description="For a bounded collection defined by the original task, freeze its originally observed identities BEFORE changes shift membership/order. Use exact evidence quotes. Null if not yet observable, not a fixed-collection task, or already frozen. Never redefine an existing scope."
     )
 
 

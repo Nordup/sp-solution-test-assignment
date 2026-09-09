@@ -1,6 +1,6 @@
 # Local setup and implementation readiness
 
-Prepared 2026-09-09. **Credentials and dependencies are ready for implementation on this machine.** The autonomous runtime and final acceptance suite are not implemented yet. This setup status supersedes older design-stage statements that credentials/model access are unverified or that no model call has occurred.
+Prepared 2026-09-09. **Credentials, dependencies and runtime are installed on this machine.** Acceptance tests and evaluation tooling are implemented; the final release suite remains incomplete. See [VALIDATION.md](VALIDATION.md) and [REQUIREMENTS.md](REQUIREMENTS.md) for current implementation/evidence status. This setup status supersedes older design-stage statements that credentials/model access are unverified or that no model call has occurred.
 
 ## Ready
 
@@ -8,7 +8,7 @@ Prepared 2026-09-09. **Credentials and dependencies are ready for implementation
 - Project-scoped OpenAI key: `sp-solution-local-dev`, created through Firefox. It has All API-resource permissions within the dedicated project; existing keys were not changed.
 - LangSmith tracing project: `sp-solution-test-assignment`, in the existing workspace.
 - LangSmith key: `sp-solution-test-assignment-local`, personal token with a 30-day expiry (created September 9). It uses the existing workspace; do not describe it as isolated to this tracing project.
-- Empty LangSmith dataset scaffold: `sp-solution-acceptance-v1`. Add actual fixture-derived examples/reference outputs during implementation; no evaluation has passed yet.
+- LangSmith dataset `sp-solution-acceptance-v1` was created as an empty setup scaffold. The implemented evaluator idempotently exports fixture-derived examples and actual results; dataset existence does not establish an evaluation pass.
 - Python 3.12 virtual environment, pinned dependencies and `uv.lock` installed successfully.
 - Playwright bundled Chromium and FFmpeg installed. Headed browser, AI snapshot and persistent-profile cookie round trip verified on macOS.
 - GitHub remote already works; main is the only branch. No GitHub token is needed in the application environment.
@@ -28,7 +28,7 @@ Do not print the file, send its content to LangSmith, or include values in excep
 
 The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Luna's capability on the three tasks remains to be evaluated; a successful connectivity check is not a task-quality benchmark.
 
-The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Local environment budget/privacy values are configuration only; the implementation must actually enforce them.
+The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Runtime admission now enforces persisted task and aggregate ledgers; configuration values alone never establish a pass. Budget and privacy boundary evidence is mapped in TEST-COVERAGE.md.
 
 ## Verification performed
 
@@ -48,19 +48,21 @@ uv sync --frozen
 uv run python scripts/setup_check.py
 uv run python scripts/browser_setup_check.py
 uv run ruff check scripts
+uv run browser-agent doctor
+uv run browser-agent --help
 ```
 
-The browser check opens and closes only its own synthetic profile; it makes no model calls. Neither script is the future `browser-agent doctor` implementation. The CLI and final-test commands in the design/runbook still need to be built. `tool.uv.package=false` is a dependency-only bootstrap; change packaging/entry points when the source package is implemented.
+The browser check opens and closes only its own synthetic profile; it makes no model calls. These setup probes are separate from the implemented offline `browser-agent doctor`. The project now installs an editable source package and the CLI entry point. Current runtime and evaluation commands are in README.md and FINAL-TEST.md; their existence does not mean the complete release suite passed.
 
 ## Remaining human-dependent work
 
-Implementation and local synthetic evaluations can start now. A real-site demo still needs the chosen service and a manual login to the agent's dedicated profile; Firefox's existing login is not automatically the Playwright profile. Final consequential-action approvals remain required. Video capture must be checked when the application is ready.
+Continue implementation validation and local synthetic evaluations using the existing setup. A dedicated `demo` profile was prepared and Yandex Eda was checked as described below; verify its current authentication and history when running the final live demo. Firefox’s existing login is not automatically the Playwright profile. Final consequential-action approvals remain required. Recorder capability has now been checked as described below; the actual browser-and-terminal demonstration remains to be recorded and reviewed.
 
 The user will top up API credit later. Until then, preserve the existing balance and use Luna. No subscription, payment method, auto-reload or unrelated account settings were changed.
 
 ## Next agent
 
-Read this file, then SYSTEM-DESIGN.md, IMPLEMENTATION-PLAN.md and FINAL-TEST.md. Reuse `.env.local` and the existing projects/dataset instead of creating duplicate credentials. Implement the runtime and acceptance tests; do not repeat tiny paid smoke calls without a new reason. Never upload real account data just because tracing is enabled: `AGENT_TRACE_MODE=synthetic-only` must be honored by application code before real-site usage.
+Read this file, then SYSTEM-DESIGN.md, IMPLEMENTATION-PLAN.md and FINAL-TEST.md. Reuse `.env.local` and the existing projects/dataset instead of creating duplicate credentials. Continue the ordered acceptance sequence and unresolved evaluation repairs; do not repeat tiny paid smoke calls without a new reason. Never upload real account data just because tracing is enabled: `AGENT_TRACE_MODE=synthetic-only` is enforced through explicit synthetic export and disabled automatic graph tracing. Review this boundary before real-site usage.
 
 ## Shopee demo candidate
 
@@ -76,17 +78,17 @@ Profile: `artifacts/profiles/demo`. Close the launched browser before another pr
 
 Proposed demo task: identify a product from recent completed order history, inspect the current listing and matching variant, compare price/availability with the historical order, and optionally prepare a cart **without placing an order or paying**. Use an unambiguous real product/date after inspecting history with user authorization. Do not treat a cart as a completed purchase. Shopee is an additional marketplace scenario, not a replacement for the exact three fixture examples. The live site's compatibility with the final actor remains untested; handle login challenges or unsupported controls honestly.
 
-Current manual-login status: **user confirmed successful Shopee login on 2026-09-09** in the dedicated demo browser. The launcher is still running; close that browser normally before the implementation agent reuses `artifacts/profiles/demo`. Authentication persistence after reopening and compatibility with the final actor remain to be verified. Google OAuth initially rejected the automated browser; the successful login method was not specified. Do not copy cookies from another browser.
+Current manual-login status: **user confirmed successful Shopee login on 2026-09-09** in the dedicated demo browser. At that setup check the launcher was still running; check current profile ownership and close any holder normally before reusing `artifacts/profiles/demo`. Authentication persistence after reopening and compatibility with the final actor remain to be verified. Google OAuth initially rejected the automated browser; the successful login method was not specified. Do not copy cookies from another browser.
 
 Official login instructions: https://help.shopee.vn/portal/4/article/79436
 
 ## Live-browser operating preference
 
-The user requests minimizing bot-check triggers. Reuse the logged-in demo profile, keep actions sequential, and avoid repeated login/reload attempts. Challenge-aware behavior and regression checks are specified in SYSTEM-DESIGN.md and FINAL-TEST.md; they still need implementation. If challenged, pause for manual verification rather than polling or trying to evade detection. No guarantee of avoiding site challenges has been established.
+The user requests minimizing bot-check triggers. Reuse the logged-in demo profile, keep actions sequential, and avoid repeated login/reload attempts. Challenge-aware behavior is implemented, including persisted manual handover and Retry-After deadlines; regression scopes are recorded in TEST-COVERAGE.md. SYSTEM-DESIGN.md and FINAL-TEST.md retain the required live behavior. If challenged, pause for manual verification rather than polling or trying to evade detection. No guarantee of avoiding site challenges has been established.
 
 ## Preferred food demo: Yandex Eda
 
-On 2026-09-09 the user confirmed: “yandex eda is ready”. Use Yandex Eda as the preferred live food-order demo candidate, with Shopee retained as an additional scenario. This is user-reported readiness; the exact browser profile, persistence after reopening, relevant previous-week order history, and product availability have not been independently verified. Reuse the prepared authenticated profile once identified; do not create a fresh login session unnecessarily.
+On 2026-09-09 the user confirmed: “yandex eda is ready”. Use Yandex Eda as the preferred live food-order demo candidate, with Shopee retained as an additional scenario. This was initially user-reported readiness; the subsequent read-only verification below established authentication and populated history. Persistence after reopening, relevant previous-week history and product availability still need current live verification. Reuse the prepared authenticated profile once identified; do not create a fresh login session unnecessarily.
 
 Run the supplied history-dependent BBQ-burger and fries task if the account history supports it. Verify the restaurant from actual order history, then products, cart and checkout state. Stop before final order placement/payment unless exact consequential-action approval is supplied. Do not substitute invented history or claim success when the required prior order/products are unavailable. Preserve the challenge-aware browsing rules.
 
@@ -95,3 +97,21 @@ Run the supplied history-dependent BBQ-burger and fries task if the account hist
 Verified through Computer Use in the existing Chrome for Testing window: the home page loads, the profile menu shows an authenticated account and Log out, and Orders opens a populated history with delivered and canceled orders. No CAPTCHA or security challenge appeared during this short check. No cart changes or order submissions were made.
 
 Visible order dates were April 2025; a previous-week order was not verified. Use an accurately dated history-based prompt for an adapted live demo if necessary, label the adaptation, and retain the exact source task in fixture evaluations. Do not claim the literal previous-week requirement passed. Login persistence after browser restart and the final Playwright actor remain untested. An initial accessibility read during navigation was empty; the subsequent screenshot showed the loaded history, reinforcing the need for readiness waits and observation fallback. Private addresses, order IDs and screenshots are not included in the public documentation.
+
+## Recorder capability check — 2026-09-09
+
+On this Mac, FFmpeg is available and screen-capture permission was granted. A two-second H.264 screen recording encoded and decoded successfully at 2560×1600. This proves recorder operation only; it is not the assignment demonstration. The raw smoke file is private at `artifacts/final/recorder-smoke.mp4` and is not a public deliverable.
+
+AVFoundation reported `Capture screen 0` as device 3 during that check. List devices before a later recording because indices can change:
+
+```bash
+ffmpeg -f avfoundation -list_devices true -i ""
+```
+
+After verifying the screen device, a bounded recording command is:
+
+```bash
+ffmpeg -f avfoundation -framerate 10 -capture_cursor 1 -pixel_format nv12 -i "3:none" -t 120 -c:v libx264 -pix_fmt yuv420p artifacts/final/demo-private.mp4
+```
+
+The example has no audio and a two-minute limit; change the duration deliberately for the actual run. Arrange the visible agent browser and terminal together before capture, then inspect the entire recording and redact private information in a separate shareable copy. Do not publish the raw screen recording or describe the recorder smoke as a completed demo.

@@ -28,6 +28,9 @@ class ProviderFailure(RuntimeError):
 
 class RiskReview(Strict):
     classification: Literal["ordinary", "consequential", "uncertain", "forbidden"]
+    scope_status: Literal["in_scope", "out_of_scope", "uncertain"] = Field(
+        description="Whether the actual proposed effect fits original user constraints and any frozen original collection; ordinary exploration may remain in scope. Explicitly excluded objects are out_of_scope, not merely consequential."
+    )
     effect_summary: str = Field(min_length=1, max_length=5000)
     reason: str = Field(min_length=1, max_length=2000)
 

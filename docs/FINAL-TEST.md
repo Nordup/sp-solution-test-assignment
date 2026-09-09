@@ -1,6 +1,6 @@
 # Final acceptance test — mandatory ordered runbook
 
-Prepared 2026-09-09. **Status: NOT RUN.** This is the release test specification for the implementation agent. It is not a record of passing tests.
+Prepared 2026-09-09. **Status: IN PROGRESS — not ready for submission.** The runtime, acceptance tests and evaluation commands exist; deterministic checks and integrated preflight have run, while the full release sequence remains incomplete. This document specifies required gates; [VALIDATION.md](VALIDATION.md), [TEST-COVERAGE.md](TEST-COVERAGE.md) and machine-readable artifacts record evidence. A requirement listed here is not a passing result.
 
 Read [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) for implementation contracts, [assignment.ru.md](assignment.ru.md) for the original assignment and [hr-requirements.ru.md](hr-requirements.ru.md) for HR's criteria. This runbook defines the order, inputs, expected outcomes, failure injections and evidence required before submission.
 
@@ -14,7 +14,7 @@ Read [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) for implementation contracts, [assignm
 
 **Derived tests:** browser crash, network timeout, changing DOM, changed approval details, denied-action bypass, prompt injection, token overflow and checkpoint replay are our concrete tests of those requirements. The employer did not enumerate all of these incidents. They are explicitly labeled D below; do not describe them as verbatim employer-supplied test cases.
 
-**Command status:** Git commands work now. All `browser-agent`, `evals.run`, `evals.report`, `evals.release` and `tests/acceptance/` commands below are a **CLI/test contract to implement**. Runtime does not exist yet. The implementation agent must make these commands work, or update this runbook to exact tested equivalents before submission. Missing commands, empty test selection, skips and mock-only results are not passes.
+**Command status:** The `browser-agent` CLI, `evals.run`, `evals.report`, `evals.release` and referenced test modules are implemented. Commands below match their current argument contracts; they must still execute successfully in order on the release candidate. Implemented commands, collected tests and a connectivity preflight do not certify autonomous task success. Missing commands, empty test selection, skips and mock-only results are not passes.
 
 ## 1. Rules for running and reporting
 
@@ -30,7 +30,7 @@ No real mail deletion, payment or job application is authorized merely by runnin
 
 ### Money limits
 
-Every task includes all model/helper/retry/LLM-judge spend in its $5 cap. Use deterministic graders by default. Each experiment also needs an aggregate cap. The mandatory paid sequence below has maximum allowances of $5 preflight + $15 core + $10 generalization + $10 live-model recovery = **$40**, plus a separately bounded real demonstration of at most $5. These are ceilings, not predicted costs or amounts already spent. Enforce a release-session aggregate ceiling of $45 across these stages; resumed commands retain spend and reservations. Do not reset that ledger to pay for repeated retries. Optional reliability repetitions require a separately configured aggregate allowance and are outside this mandatory sequence.
+Every task includes all model/helper/retry/LLM-judge spend in its $5 cap. Use deterministic graders by default. Each experiment also needs an aggregate cap. Individual experiment admission ceilings are $5 preflight, $15 core, $10 generalization, $10 live-model recovery and $25 for the five semantic failure cases, with a separately bounded demonstration of at most $5. These experiment ceilings are not additive spending authorization: the existing **$45 release-session ceiling** limits their combined actual spend and outstanding reservations. They are not predicted costs or amounts already spent. The failure suite shares this same release ledger; resumed commands retain spend and reservations. Do not reset that ledger to pay for repeated retries. Optional reliability repetitions require a separately configured aggregate allowance and are outside this mandatory sequence.
 
 These aggregate limits are our conservative operational defaults; the user's explicit limit is $5 per logical run. Lower them if desired. If the release-session allowance is exhausted, stop paid work, finish independent tests, and report what still needs funding instead of silently raising it.
 
@@ -61,7 +61,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_failure_regression.py::test_three_ineffective_actions_pause_instead_of_looping -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:
@@ -88,7 +88,7 @@ PASS only if all required cases execute and assert effects/cost/state. A test th
 ## 4. Actual browser and lifecycle integration
 
 ```bash
-uv run pytest tests/acceptance/test_browser.py tests/acceptance/test_browser_failures.py tests/test_runner.py -q --junitxml=artifacts/final/04-browser.xml
+uv run pytest tests/acceptance/test_browser.py tests/acceptance/test_browser_failures.py tests/test_runner.py tests/acceptance/test_failure_regression.py::test_login_expires_midtask_manual_login_resumes_without_secret_observation -q --junitxml=artifacts/final/04-browser.xml
 ```
 
 Use actual Playwright and local fixture pages; a scripted/fake actor is allowed to target exact boundary conditions in this stage. Runtime selector discovery still goes through current observations. These are integration tests, not proof of autonomous decisions.
@@ -261,16 +261,27 @@ These tests are deterministic/no paid model unless explicitly moved into a separ
 
 For F13 use harmless synthetic secrets/canary strings and registered local destinations. Never test exfiltration with actual credentials. For F17 content-quality checks must inspect grounded facts, not merely look for a keyword.
 
+### 8.1 Real-model semantic failure verification
+
+The deterministic tests above do not establish that Luna handles ambiguous history, unavailable products, ambiguous spam, prior applications or unsupported qualifications correctly. Run these five evaluator-owned scenarios with the real actor and independent factual grading:
+
+```bash
+uv run python -m evals.run --suite failure-behavior --seeds 401,402,403,404,405 --repetitions 1 --headed --max-experiment-usd 25 --release-session final-candidate
+```
+
+This is exactly five cases, paired in order with the five seeds: `food_history_ambiguous`, `food_item_unavailable`, `mail_classification_ambiguous`, `jobs_already_applied`, `jobs_unsupported_qualifications`. The runner requires a $25 experiment admission ceiling for five $5 task caps; it does not reserve permission to exceed the shared $45 release ceiling. Each actor, reviewer, retry and factual judge shares its logical task ledger. Stop when the existing release allowance or provider credit cannot admit a call; preserve partial evidence without resetting the release session.
+
+Required evidence for F15–F17: actual proposals, approvals, fixture effects and factual grading. A truthful `partial`/`needs_user` result is allowed only under that scenario’s rubric, never as a blanket task-completion pass. These semantic cases are required and are not marked passed by deterministic tests of the grader. F13 still requires adversarial coverage of the claimed disclosure/policy boundary; passing a narrower mail-injection case must not certify unrelated exfiltration variants.
+
 ## 9. Real-site smoke and final video
 
 Fixtures demonstrate semantic and engineering behavior, not compatibility with actual Yandex/hh/delivery sites. Perform a separately labeled live check after the controlled stages. Missing account/history is BLOCKED and must remain visible in the final report.
 
 ```bash
-uv run browser-agent login --profile final-demo
-uv run browser-agent run --profile final-demo --budget-usd 5 --release-session final-candidate "<food task with the actual delivery URL>"
+uv run browser-agent run --profile demo --url "<actual delivery URL>" --budget-usd 5 --release-session final-candidate "<food task with the actual delivery URL>"
 ```
 
-Replace the placeholder with an actual task before running. Prefer the supplied food task where the account has usable order history. The user also offered Shopee Vietnam with recent orders; a history-dependent marketplace comparison/cart-preparation demo is an acceptable additional complex-task candidate. Label it as the Shopee scenario, do not claim it passed the exact food task, and never place/pay for an order merely to make the video. See SETUP.md for the dedicated profile. Login is manual in the dedicated browser profile. Do not put credentials in shell arguments.
+Replace both placeholders before running. Reuse the prepared `artifacts/profiles/demo` profile and close any process currently holding it; do not create a fresh `final-demo` login. If authentication has expired, use `uv run browser-agent login --url "<actual delivery URL>" --profile demo` for manual login, close that browser, then resume the live check. Yandex Eda is the preferred candidate: a prior read-only check showed authentication and order history, but did not verify previous-week history or compatibility with this actor. Prefer the supplied food task where the account has usable order history. The user also offered Shopee Vietnam with recent orders; a history-dependent marketplace comparison/cart-preparation demo is an acceptable additional complex-task candidate. Label it as the Shopee scenario, do not claim it passed the exact food task, and never place/pay for an order merely to make the video. See SETUP.md for the dedicated profile. Login is manual in the dedicated browser profile. Do not put credentials in shell arguments.
 
 Manual verification, in order:
 
@@ -296,7 +307,7 @@ git status --short
 git ls-remote --heads origin
 ```
 
-The report command is required implementation work: it aggregates prior stage results and manually supplied demo/audit evidence, validates required IDs and artifact existence, and reports missing entries. It must not launch unbudgeted evaluations or mark a manual item passed merely because a filename exists.
+The implemented report command aggregates prior stage results and manually supplied demo/audit evidence, validates required IDs and artifact existence, and reports missing entries. It must not launch unbudgeted evaluations or mark a manual item passed merely because a filename exists.
 
 Review:
 

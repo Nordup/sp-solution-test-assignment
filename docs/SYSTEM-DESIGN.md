@@ -1,6 +1,6 @@
 # Browser agent — implementation design specification
 
-Version 1, 2026-09-09. Status: **design, not implemented**. This is the current implementation contract and requirement-to-test map for the next agent. The user requested a full design covering every requirement, implementation choices and failure handling. “Design system” here means the complete engineering and interaction design, including the terminal interface; a separate web application is not required.
+Version 1, 2026-09-09. Status: **engineering specification; runtime implemented, release validation incomplete**. This records the design baseline and required behavior. [REQUIREMENTS.md](REQUIREMENTS.md) maps current code and refinements; [VALIDATION.md](VALIDATION.md) records results. Proposed design checks below are not passing evidence. The user requested a full design covering every requirement, implementation choices and failure handling. “Design system” here means the complete engineering and interaction design, including the terminal interface; a separate web application is not required.
 
 ## 1. Scope, authority and success
 
@@ -92,16 +92,18 @@ flowchart TD
     Q --> O
     D -->|finish| F[Validate completion evidence]
     F -->|supported| E([Result])
-    F -->|insufficient| O
+    F -->|insufficient| PART([Partial result])
     P -->|critical or uncertain| H[Approval interrupt]
     H -->|approve| X[Revalidate + dispatch]
-    H -->|deny| R[Recovery / feedback]
+    H -->|deny| PART
     P -->|low risk| X
     X --> V[Fresh observation + verify]
     V --> C
-    X -->|failed / uncertain| R
+    X -->|failed / uncertain| R[Recovery / feedback]
     R --> O
 ```
+
+Implemented refinement: denial ends the current run as partial, so the actor cannot seek a different route to the denied effect. Unsupported completion is downgraded instead of accepted. The user can explicitly start a revised task; it does not retroactively approve the denied action.
 
 Each paid call in `decide`, `assess risk`, or optional compaction uses the same budget gateway. Budget admission is not merely one graph edge. Guard all loops with task limits. LangGraph recursion counts node steps, not model decisions; configure it sufficiently above the explicit 60-decision limit without removing the latter.
 
@@ -244,9 +246,13 @@ LangGraph node retries are suitable for selected safe operations; do not attach 
 
 ## 9. Context and cost design
 
-Starting limits are configurable downward and may be tuned with recorded evaluation evidence: 6,000 tokens per observation, 20,000 total input tokens per main request, 2,048 maximum output tokens, 60 model decisions and 20 minutes active execution excluding user waits. These are design defaults, not measured optimal values.
+Current limits are configurable downward and may be tuned with recorded evaluation evidence: 18 KB UTF-8 observation text, 20,000 provider-counted total input tokens per request, 2,048 maximum output tokens, 60 model decisions and 20 minutes active execution excluding user waits. The original 6,000-token observation target was replaced with a byte bound plus exact whole-request token admission; bytes are not claimed to equal tokens. These limits are not measured optimal values.
 
-Build every model request from: universal instructions; user task/constraints; bounded progress notes; relevant recent completed call/result groups; current scoped observation; optionally one current screenshot. Preserve Responses protocol items/call IDs correctly. Store older observations/evidence locally. Compaction does not modify authoritative approvals, denials or cost records. Oversized individual labels/tool values are bounded too.
+Build every model request from: universal instructions; user task/constraints; bounded progress notes; relevant recent completed call/result groups; current scoped observation; optionally one current screenshot. Preserve Responses protocol items/call IDs correctly. Store older observations/evidence locally. Compaction does not modify authoritative approvals, denials or cost records. The implemented memory checkpoint uses a strict native `remember` call every four decisions since the last memory step and before the first consequential effect. Only that tool is available while memory is due; it shares the task budget. Cumulative notes have a 12 KB UTF-8 refusal boundary rather than silent truncation. Oversized individual labels/tool values are bounded too.
+
+An optional original collection scope records up to 60 distinct identities with registered evidence IDs and exact observed quotes containing those identities. The initial scope is immutable even if later mutations change the displayed collection. Scope, cumulative notes and action receipts are atomically persisted outside rewindable graph checkpoints and restored before decisions, review and execution. A receipt records an action and resulting observation; it is not a task-success assertion. These durable fields supplement the bounded recent history and historical `recall` tool.
+
+The risk reviewer receives this original scope and accumulated task context. Explicitly out-of-scope consequential effects return recovery feedback before any approval is offered; uncertain membership pauses for clarification. A stale checkpoint whose reviewed scope differs from durable memory cannot dispatch. The gate enforces the reviewer’s result, while exact quote validation establishes source grounding only: semantic correctness of the selected initial scope and the reviewer’s judgment still require actual-model evaluation. See REQUIREMENTS.md and TEST-COVERAGE.md for current evidence limits.
 
 Do not automatically put the whole graph state into the prompt. Reviewer requests contain only action-relevant evidence. If compaction uses a model, it has no action tools and consumes the same budget. Prefer deterministic progress records before adding paid summarization.
 
@@ -355,7 +361,7 @@ Passing this is evidence of some generalization, not proof that the agent can so
 
 ## 12. Evaluation, release gates and implementation order
 
-Execute [FINAL-TEST.md](FINAL-TEST.md) as the concrete final acceptance sequence. Implement its proposed commands before marking the release ready; report employer requirements and derived failure tests separately.
+Execute [FINAL-TEST.md](FINAL-TEST.md) as the concrete final acceptance sequence. Run its implemented commands on the final candidate before marking the release ready; report employer requirements and derived failure tests separately.
 
 Test layers:
 
@@ -384,9 +390,9 @@ README must provide exact tested setup/run/eval commands, architecture diagram, 
 
 The video must show one actual complex task: the initial prompt, tool arguments/results, matching browser changes, any required approval, verification and final report. Prefer food checkout before payment when an account with useful history is available. Screen recording captures both browser and terminal; Playwright's viewport video alone does not. Redact sensitive account details from the shareable result. Do not publish raw mail/resume data, profiles, cookies, keys or local checkpoints.
 
-Source documents/screenshots are already preserved. Isolated Playwright and LangGraph probes passed in research, with narrow scopes documented. **No integrated runtime, agent evaluation or final video exists yet. A tiny paid Luna setup call and credential/dependency checks have since passed; see SETUP.md.** The next agent should work from this specification and the [execution goal](IMPLEMENTATION-PLAN.md), updating results only after execution.
+Source documents/screenshots are already preserved. Isolated Playwright and LangGraph probes passed in research, with narrow scopes documented. **Historical preparation status:** this design preceded the integrated runtime. The runtime, deterministic tests and evaluation runner now exist; integrated Luna/LangSmith preflight ran. The full autonomous suite and final video are not certified. Continue from [REQUIREMENTS.md](REQUIREMENTS.md), [VALIDATION.md](VALIDATION.md) and the acceptance runbook, updating results only after execution.
 
-Open external dependencies: configured OpenAI model access, LangSmith workspace/key, suitable logged-in real-site account/history, and capture permissions. They do not block writing code and deterministic tests. They can block a truthful live demonstration, and must not be disguised as completed deliverables.
+OpenAI model access and LangSmith workspace/key were verified during setup. Remaining live dependencies include current authenticated profile access, suitable account history and capture permissions. They do not block writing code and deterministic tests. They can block a truthful live demonstration, and must not be disguised as completed deliverables.
 
 ## 14. Challenge-aware live browsing
 

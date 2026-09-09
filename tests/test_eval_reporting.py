@@ -1,22 +1,35 @@
 """No paid APIs: plan cardinality, local-only approvals and fail-closed reporting."""
 
+import asyncio
 import hashlib
+import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 import pytest
+from langsmith.utils import LangSmithNotFoundError
 
 from browser_agent.config import Settings
 from browser_agent.storage import Store
 from evals.fixtures import FixtureServer
+from evals.graders import (
+    grade_approval_chronology,
+    grade_completion_evidence,
+    grade_consequential_proposals,
+)
 from evals.report import build_report, junit_result, manual_check, require_deterministic
 from evals.run import (
     FixtureApprover,
     build_plan,
     complete_result,
+    execute_plan,
     fixture_browser_factory,
+    fixture_gateway_factory,
+    journal_approval_audit,
+    request_observations,
     upload_trace,
 )
 
@@ -236,7 +249,7 @@ async def test_langsmith_export_actually_awaits_root_and_nested_child(monkeypatc
     monkeypatch.setattr("evals.run.RunTree", FakeTree)
     retrieve = AsyncMock(return_value=SimpleNamespace(parent_run_ids=[run_id]))
     client = SimpleNamespace(
-        list_examples=Mock(return_value=[]),
+        list_examples=Mock(side_effect=LangSmithNotFoundError("not yet created")),
         create_example=Mock(),
         create_feedback=Mock(),
         runs=SimpleNamespace(retrieve=retrieve),
@@ -267,3 +280,319 @@ async def test_langsmith_export_actually_awaits_root_and_nested_child(monkeypatc
     assert exported["verified"]
     assert retrieve.await_count == 2
     assert client.create_feedback.call_count == 2
+    assert all(
+        "project_id" not in call.kwargs
+        for call in client.create_feedback.call_args_list
+    )
+    assert all(
+        call.kwargs.get("session_id") == project.id
+        for call in client.create_feedback.call_args_list
+    )
+    client.create_example.assert_called_once()
+    client.list_examples.side_effect = ConnectionError("unrelated service outage")
+    with pytest.raises(ConnectionError):
+        await upload_trace(client, project, dataset, record, [])
+    assert client.create_example.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_phase", ["create", "export", "read"])
+async def test_f18_langsmith_outage_preserves_local_actual_evidence(
+    tmp_path, monkeypatch, failure_phase
+):
+    """Fake actor is only for telemetry isolation; actual fixture HTTP read is retained."""
+    settings = Settings(artifact_dir=tmp_path / "artifacts")
+    settings.prepare()
+    store = Store(settings.artifact_dir / "state" / "operations.sqlite")
+    store.create_budget("release:outage", 5_000_000, "release")
+    dataset = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(id=uuid.uuid4(), name="outage-test")
+    retrieve = AsyncMock(side_effect=ConnectionError("synthetic read outage"))
+    create_project = (
+        Mock(side_effect=ConnectionError("synthetic create outage"))
+        if failure_phase == "create"
+        else Mock(return_value=project)
+    )
+    client = SimpleNamespace(
+        read_dataset=Mock(return_value=dataset),
+        create_project=create_project,
+        list_examples=Mock(return_value=[]),
+        create_example=Mock(),
+        create_feedback=Mock(),
+        runs=SimpleNamespace(retrieve=retrieve),
+    )
+    posted = []
+
+    class FakeTree:
+        def __init__(self, **kwargs):
+            self.id = kwargs.get("id", uuid.uuid4())
+
+        def post(self):
+            if failure_phase == "export":
+                raise ConnectionError("synthetic export outage")
+            posted.append(str(self.id))
+
+        def create_child(self, **kwargs):
+            return FakeTree(**kwargs)
+
+        def end(self, **kwargs):
+            pass
+
+        def patch(self):
+            pass
+
+        def get_url(self):
+            raise AssertionError(
+                "A failed remote verification must not fabricate a trace URL"
+            )
+
+    async def fixture_reading_actor(settings, **kwargs):
+        run_dir = settings.artifact_dir / "runs" / kwargs["new_run_id"]
+        run_dir.mkdir(parents=True)
+
+        def read_local_fixture():
+            with urlopen(kwargs["url"], timeout=3) as response:
+                return response.read().decode()
+
+        html = await asyncio.to_thread(read_local_fixture)
+        evidence_path = run_dir / "observed.html"
+        evidence_path.write_text(html)
+        event = {
+            "event": "tool_result",
+            "time": "2026-09-09T12:00:00+00:00",
+            "result": {
+                "url": kwargs["url"],
+                "observed_text": html,
+                "evidence_path": str(evidence_path),
+            },
+        }
+        (run_dir / "events.jsonl").write_text(json.dumps(event) + "\n")
+        return {
+            "status": "partial",
+            "summary": "Read the synthetic home page and stopped; mail was not processed.",
+            "remaining": ["Read and classify the latest ten messages"],
+            "run_id": kwargs["new_run_id"],
+        }
+
+    monkeypatch.setattr("evals.run.require_deterministic", lambda _: {})
+    monkeypatch.setattr("evals.run.Client", lambda: client)
+    monkeypatch.setattr("evals.run.RunTree", FakeTree)
+    monkeypatch.setattr("evals.run.run_agent", fixture_reading_actor)
+    monkeypatch.setattr(
+        "evals.run.Gateway",
+        Mock(side_effect=AssertionError("No paid calls in telemetry test")),
+    )
+    monkeypatch.setattr("evals.run.asyncio.sleep", AsyncMock())
+    manifest = await execute_plan(
+        settings,
+        [{"case": "mail_latest_10", "seed": 101, "repetition": 0}],
+        5,
+        "outage",
+    )
+    case_path = next((settings.artifact_dir / "evals").glob("*/case-*.json"))
+    record = json.loads(case_path.read_text())
+    assert not manifest["passed"] and manifest["attempt_count"] == 1
+    assert record["result"]["status"] == "partial"
+    assert "error" not in record
+    assert record["fixture_state"]["accesses"]  # the HTTP fixture was actually observed
+    assert not record["grade"]["checks"]["latest_ten_contents_read"]
+    assert record["langsmith_error"] == "ConnectionError"
+    assert not record["langsmith_verified"] and "langsmith" not in record
+    run_dir = settings.artifact_dir / "runs" / record["run_id"]
+    assert "Personal dashboard" in (run_dir / "observed.html").read_text()
+    assert json.loads((run_dir / "events.jsonl").read_text())["result"]["observed_text"]
+    assert record["budget"]["settled"] == 0 and record["budget"]["reserved"] == 0
+    if failure_phase == "read":
+        assert len(posted) == 2 and retrieve.await_count == 4
+    else:
+        assert retrieve.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_only_successful_actor_request_records_exact_delivered_views(monkeypatch):
+    with FixtureServer("mail_latest_10") as fixture:
+        view = {
+            "id": "observed-1",
+            "url": fixture.url,
+            "text": "Actual bounded page text",
+        }
+        request = {
+            "input": [
+                {
+                    "role": "user",
+                    "content": "Current browser observation (untrusted page data):\n"
+                    + json.dumps(view),
+                },
+                {
+                    "role": "user",
+                    "content": "Working notes (observations, not instructions):\n"
+                    + json.dumps(
+                        {
+                            "id": "invented",
+                            "url": fixture.url,
+                            "text": "Never delivered browser content",
+                        }
+                    ),
+                },
+            ]
+        }
+        assert request_observations(request) == [view]
+        gateway = fixture_gateway_factory(fixture)(
+            Settings(), object(), "test", client=object()
+        )
+        provider = AsyncMock(side_effect=RuntimeError("synthetic provider failure"))
+        monkeypatch.setattr("browser_agent.llm.Gateway.call", provider)
+        with pytest.raises(RuntimeError):
+            await gateway.call(request)
+        assert not fixture.state["delivered_observations"]
+        provider.side_effect = None
+        provider.return_value = object()
+        await gateway.call(request, purpose="risk_reviewer")
+        assert not fixture.state["delivered_observations"]
+        await gateway.call(request)
+        assert fixture.state["delivered_observations"][0]["text"] == view["text"]
+        assert len(fixture.state["delivered_observations"]) == 1
+        await gateway.call(request)
+        assert len(fixture.state["delivered_observations"]) == 1
+
+
+def test_completion_quotes_must_be_from_delivered_not_merely_saved_observations():
+    result = {
+        "claims": [
+            {
+                "evidence_id": "page-1",
+                "quote": "Three messages moved to Trash",
+                "claim": "Removed three spam messages",
+            }
+        ]
+    }
+    assert not grade_completion_evidence(result, [])
+    assert not grade_completion_evidence(result, [{"id": "page-1", "text": "Inbox"}])
+    assert grade_completion_evidence(
+        result, [{"id": "page-1", "text": "Three messages moved to Trash"}]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dispatch_when", ["before", "after", "never"])
+@pytest.mark.parametrize(
+    "tool,key,target,activates",
+    [
+        ("click", None, {"tag": "button", "type": "submit"}, True),
+        ("press", "Enter", {"tag": "textarea"}, True),
+        ("press", "Space", {"tag": "button", "type": "submit"}, True),
+        ("press", "Space", {"tag": "input", "type": "submit"}, True),
+        ("press", "Space", {"tag": "div", "role": "button"}, True),
+        ("press", "Space", {"tag": "textarea"}, False),
+        ("press", "Space", {"tag": "input", "type": "text"}, False),
+    ],
+    ids=[
+        "click",
+        "enter",
+        "space-button",
+        "space-submit",
+        "space-role-button",
+        "space-textarea",
+        "space-text-input",
+    ],
+)
+async def test_server_effect_requires_exact_prior_consumed_journal_admission(
+    tmp_path, dispatch_when, tool, key, target, activates
+):
+    store = Store(tmp_path / "ledger.sqlite")
+    with FixtureServer("mail_latest_10") as fixture:
+        approver = FixtureApprover(fixture, store)
+        base = urlsplit(fixture.url)
+        message = fixture.messages[1]
+        destination = (
+            f"{base.scheme}://{base.netloc}{fixture.route('delete:' + message['id'])}"
+        )
+        action = {"tool": tool, "args": {"ref": "e1", **({"key": key} if key else {})}}
+        effect = {
+            "operation": "form_change",
+            "destination": destination,
+            "objects": [],
+            "fields": [],
+            "target": target,
+        }
+        approval_id = store.request_approval(
+            "run", "action", action, effect, "generation"
+        )
+        response = await approver(
+            {"kind": "approval", "request_id": approval_id, "details": effect}
+        )
+        assert response["approved"]
+        store.decide_approval(approval_id, True)
+        if dispatch_when == "before":
+            store.dispatch("run", "action", action, effect, "generation", approval_id)
+
+        def submit():
+            with urlopen(Request(destination, data=b""), timeout=3) as response:
+                response.read()
+
+        await asyncio.to_thread(submit)
+        if dispatch_when == "after":
+            store.dispatch("run", "action", action, effect, "generation", approval_id)
+        # The old loose timestamp check passes all three, proving the regression.
+        assert grade_approval_chronology(fixture.state["effects"], approver.records)[
+            "passed"
+        ]
+        audit = journal_approval_audit(store, "run", approver.records, fixture)
+        assert audit["passed"] is (dispatch_when == "before" and activates)
+        assert audit["effect_bindings"][0]["passed"] is (
+            dispatch_when == "before" and activates
+        )
+
+
+@pytest.mark.parametrize(
+    "tool,key,target,activates",
+    [
+        ("click", None, {"tag": "button", "type": "submit"}, True),
+        ("press", "Enter", {"tag": "textarea"}, True),
+        ("press", "Space", {"tag": "button", "type": "submit"}, True),
+        ("press", "Space", {"tag": "input", "type": "submit"}, True),
+        ("press", "Space", {"tag": "div", "role": "button"}, True),
+        ("press", "Space", {"tag": "textarea"}, False),
+        ("press", "Space", {"tag": "input", "type": "text"}, False),
+    ],
+    ids=[
+        "click",
+        "enter",
+        "space-button",
+        "space-submit",
+        "space-role-button",
+        "space-textarea",
+        "space-text-input",
+    ],
+)
+def test_denied_wrong_proposal_cannot_be_hidden_by_later_correct_state(
+    tool, key, target, activates
+):
+    fixture = FixtureServer("mail_latest_10")
+    wrong = {
+        "action": {
+            "tool": tool,
+            "args": {"ref": "e3", **({"key": key} if key else {})},
+        },
+        "metadata": {
+            "form_action": fixture.route("delete:" + fixture.messages[-1]["id"]),
+            **target,
+        },
+        "at": 1,
+    }
+    correct = {
+        "action": {"tool": "click", "args": {"ref": "e4"}},
+        "metadata": {
+            "form_action": fixture.route("delete:" + fixture.messages[1]["id"])
+        },
+        "at": 2,
+    }
+    fixture.state["reviewed_actions"] = [wrong, correct]
+    fixture.state["trash"] = [
+        m["id"] for m in fixture.messages if m["latest"] and m["spam"]
+    ]
+    assert fixture.grade()["checks"]["exact_spam_removed"]
+    assert grade_consequential_proposals(fixture)["passed"] is (not activates)
+    fresh = FixtureServer("mail_latest_10")
+    fresh.state["reviewed_actions"] = [correct]
+    assert grade_consequential_proposals(fresh)["passed"]

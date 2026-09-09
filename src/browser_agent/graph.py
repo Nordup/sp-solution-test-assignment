@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -14,11 +16,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from .browser import BrowserError
-from .context import ContextOverflow, request
+from .context import HISTORY_GROUPS, ContextOverflow, memory_due, request, task_context
 from .llm import ProviderFailure
 from .safety import Policy
 from .storage import AdmissionError, BudgetExceeded, DuplicateAction
-from .tools import ProtocolError, parse_call, protocol_pair, tool_specs
+from .tools import CollectionScope, ProtocolError, parse_call, protocol_pair, tool_specs
 
 
 class State(TypedDict, total=False):
@@ -28,6 +30,12 @@ class State(TypedDict, total=False):
     observation: dict
     history: list
     notes: str
+    scope: dict | None
+    progress: list
+    memory_step: int
+    memory_required: bool
+    review_scope: dict | None
+    pending_call: dict | None
     feedback: str
     clarifications: list[str]
     retry_not_before: float
@@ -125,6 +133,7 @@ class AgentGraph:
             lambda s: s["route"],
             {
                 "approval": "approval",
+                "decide": "decide",
                 "execute": "execute",
                 "recover": "recover",
                 "ask": "ask",
@@ -160,6 +169,83 @@ class AgentGraph:
         path = self.run_dir / "evidence" / f"{observation['id']}.json"
         path.write_text(json.dumps(observation, ensure_ascii=False), encoding="utf-8")
         path.chmod(0o600)
+
+    def restore_memory(self, state):
+        """Authoritative memory survives old graph checkpoints and browser restart."""
+        path = self.run_dir / "memory.json"
+        if not path.exists():
+            return state
+        saved = json.loads(path.read_text())
+        if saved.get("scope"):
+            CollectionScope.model_validate(saved["scope"])
+        return state | {key: saved.get(key) for key in ("scope", "notes", "progress")}
+
+    def persist_memory(self, state):
+        path = self.run_dir / "memory.json"
+        payload = {
+            "scope": state.get("scope"),
+            "notes": state.get("notes", ""),
+            "progress": state.get("progress", []),
+        }
+        if path.exists():
+            previous = json.loads(path.read_text())
+            if previous.get("scope") and previous["scope"] != payload["scope"]:
+                raise ProtocolError(
+                    "Original collection scope is immutable; new observations cannot replace it."
+                )
+        # Atomic replacement and synchronous write: no later dispatch can use an
+        # unpersisted scope. A filesystem failure propagates before browser effects.
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.run_dir, delete=False
+            ) as handle:
+                temporary = Path(handle.name)
+                os.chmod(temporary, 0o600)
+                json.dump(payload, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            directory_fd = os.open(self.run_dir, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            if temporary and temporary.exists():
+                temporary.unlink()
+
+    def validate_scope(self, proposed, state):
+        if proposed is None:
+            return state.get("scope")
+        if state.get("scope") and proposed != state["scope"]:
+            raise ProtocolError(
+                "Frozen collection identities cannot be replaced. Return scope=null and retain the original boundary."
+            )
+        allowed = set(state.get("evidence_ids", [])) | {
+            item["evidence_id"] for item in state.get("visited", [])
+        }
+        identities = set()
+        for item in proposed["items"]:
+            if item["identity"].casefold() not in item["quote"].casefold():
+                raise ProtocolError(
+                    "Scope identity must appear in its supporting observed quote; invented identifiers are not accepted."
+                )
+            if item["identity"] in identities or item["evidence_id"] not in allowed:
+                raise ProtocolError(
+                    "Scope requires distinct identities and previously observed evidence IDs."
+                )
+            identities.add(item["identity"])
+            evidence = json.loads(
+                (self.run_dir / "evidence" / f"{item['evidence_id']}.json").read_text()
+            )
+            if item["quote"] not in evidence["text"]:
+                raise ProtocolError(
+                    f"Scope quote for {item['identity']!r} is absent from actual observed evidence. "
+                    "Use one unchanged contiguous substring, not combined page nodes. "
+                    "The exact observed identity alone is sufficient as its quote. Put dates and other combined facts in notes."
+                )
+        return proposed
 
     async def observe(self, state):
         remaining = state.get("retry_not_before", 0) - time.time()
@@ -246,12 +332,13 @@ class AgentGraph:
         return {
             "history": (
                 state.get("history", []) + [protocol_pair(state["call"], value)]
-            )[-6:],
+            )[-HISTORY_GROUPS:],
             "feedback": json.dumps(value, ensure_ascii=False)[:2000],
             **extra,
         }
 
     async def decide(self, state):
+        state = self.restore_memory(state)
         if (
             state.get("steps", 0) >= self.settings.max_decisions
             or state.get("active_seconds", 0) >= self.settings.active_seconds
@@ -295,9 +382,20 @@ class AgentGraph:
                         ],
                     }
                 )
-            response = await self.gateway.call(req)
+            response = (
+                await self.gateway.call(req, purpose="memory")
+                if memory_due(state)
+                else await self.gateway.call(req)
+            )
             call = parse_call(response)
+            if memory_due(state) and call["name"] != "remember":
+                raise ProtocolError(
+                    "A native remember call is required before rolling history expires; no browser action was dispatched."
+                )
             update = {
+                "scope": state.get("scope"),
+                "progress": state.get("progress", []),
+                "notes": state.get("notes", ""),
                 "call": call,
                 "steps": state.get("steps", 0) + 1,
                 "repairs": 0,
@@ -391,11 +489,32 @@ class AgentGraph:
                     route="decide",
                 )
             if call["name"] == "remember":
+                notes = call["arguments"]["notes"]
+                if len(notes.encode("utf-8")) > 12000:
+                    raise ProtocolError(
+                        "Cumulative memory must fit 12000 UTF-8 bytes; summarize before saving."
+                    )
+                scope = self.validate_scope(call["arguments"]["scope"], state)
+                self.persist_memory(state | {"notes": notes, "scope": scope})
+                self.emit(
+                    "memory_saved",
+                    {
+                        "step": update["steps"],
+                        "scope_fixed": scope is not None,
+                        "scope_items": len(scope["items"]) if scope else 0,
+                        "receipts": len(state.get("progress", [])),
+                    },
+                )
                 return update | self.outcome(
                     state | update,
                     {"saved": True},
-                    notes=call["arguments"]["notes"],
-                    route="decide",
+                    notes=notes,
+                    scope=scope,
+                    memory_step=update["steps"],
+                    memory_required=False,
+                    call=state["pending_call"] if state.get("pending_call") else call,
+                    pending_call=None,
+                    route="policy" if state.get("pending_call") else "decide",
                 )
             if call["name"] in ("read", "screenshot", "tabs"):
                 if call["name"] == "read":
@@ -465,6 +584,7 @@ class AgentGraph:
             }
 
     async def policy(self, state):
+        state = self.restore_memory(state)
         try:
             action = state["action"]
             if action["tool"] == "navigate":
@@ -483,13 +603,16 @@ class AgentGraph:
             metadata = await self.browser.action_context(
                 action["tool"], action["args"], state["observation"]["id"]
             )
-            review = await self.gateway.review(state["task"], action, metadata)
+            review = await self.gateway.review(
+                state["task"], action, metadata | {"task_context": task_context(state)}
+            )
             assessment = self.safety_policy.assess(
                 action, metadata, review, state["run_id"]
             )
             update = {
                 "metadata": metadata,
                 "review": review,
+                "review_scope": state.get("scope"),
                 "assessment": {
                     "classification": assessment.classification,
                     "effect": assessment.effect,
@@ -511,6 +634,35 @@ class AgentGraph:
                         "question": assessment.reason,
                     },
                 }
+            viewing = review["classification"] == "ordinary" and (
+                action["tool"] in {"back", "scroll", "switch_tab", "navigate"}
+                or (metadata.get("tag") == "a" and not metadata.get("form_action"))
+            )
+            if assessment.requires_approval and not viewing:
+                if not state.get("memory_step"):
+                    return update | {
+                        "memory_required": True,
+                        "pending_call": state["call"],
+                        "route": "decide",
+                    }
+                if review.get("scope_status", "uncertain") == "out_of_scope":
+                    return update | self.outcome(
+                        state,
+                        {
+                            "error": "out_of_scope",
+                            "reason": "Proposed effect is outside the preserved original task boundary. Choose an in-scope action; no approval was requested.",
+                        },
+                        route="recover",
+                        failures=state.get("failures", 0) + 1,
+                    )
+                if review.get("scope_status", "uncertain") != "in_scope":
+                    return update | {
+                        "route": "ask",
+                        "question": {
+                            "kind": "clarification",
+                            "question": "The affected object's membership in the original task scope is not established. Clarify or inspect the original selection before making this change.",
+                        },
+                    }
             unresolved = self.store.unresolved_actions(state["run_id"])
             viewing = assessment.classification == "ordinary" and (
                 action["tool"] in {"back", "scroll", "switch_tab", "navigate"}
@@ -569,9 +721,14 @@ class AgentGraph:
         }
 
     async def execute(self, state):
+        restored = self.restore_memory(state)
         action = state["action"]
         action_id = state["action_id"]
         try:
+            if restored.get("scope") != state.get("review_scope"):
+                raise AdmissionError(
+                    "Original scope changed since this checkpoint's review; reobserve and review before dispatch."
+                )
             if self.store.action(action_id):
                 raise DuplicateAction(
                     "Action already journaled. Inspect the outcome; do not replay."
@@ -656,6 +813,27 @@ class AgentGraph:
             # verify has a conditional edge too: security challenges must pause immediately.
             return update
         observation = update["observation"]
+        durable = self.restore_memory(state)
+        progress = list(durable.get("progress", []))
+        if state.get("action_id") and not any(
+            item["action_id"] == state["action_id"] for item in progress
+        ):
+            progress.append(
+                {
+                    "action_id": state["action_id"],
+                    "tool": state.get("action", {}).get("tool"),
+                    "target": state.get("metadata", {}).get("name", "")[:250],
+                    "result_title": observation["title"][:200],
+                    "evidence_id": observation["id"],
+                    "status": "observed_after_dispatch",
+                }
+            )
+            self.persist_memory(durable | {"progress": progress})
+        update.update(
+            progress=progress,
+            scope=durable.get("scope"),
+            notes=durable.get("notes", ""),
+        )
         # Attach actual resulting page evidence to the native call result. A URL-only
         # receipt loses the content needed to make the next multi-step decision.
         history = list(state.get("history", []))
@@ -671,7 +849,17 @@ class AgentGraph:
             last[-1]["output"] = json.dumps(result, ensure_ascii=False)
             history[-1] = last
             update["history"] = history
-        semantic_text = re.sub(r"\[ref=[A-Za-z0-9]+\]", "", observation["text"])
+
+        def semantic_snapshot(text):
+            # Keyboard focus and regenerated references are not task progress.
+            return "\n".join(
+                line.rstrip()
+                for line in re.sub(
+                    r"[ \t]*\[(?:ref=[A-Za-z0-9]+|active)\]", "", text
+                ).splitlines()
+            )
+
+        semantic_text = semantic_snapshot(observation["text"])
         action = state.get("action", {})
         target = state.get("metadata", {})
         signature = json.dumps(
@@ -679,6 +867,8 @@ class AgentGraph:
                 "tool": action.get("tool"),
                 "args": {k: v for k, v in action.get("args", {}).items() if k != "ref"},
                 "target": target.get("name"),
+                "source_url": state["observation"]["url"],
+                "source_text": semantic_snapshot(state["observation"]["text"]),
                 "url": observation["url"],
                 "text": semantic_text,
             },

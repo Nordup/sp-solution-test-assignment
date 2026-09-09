@@ -73,6 +73,9 @@ class FixtureServer:
             "job_reads": [],
             "applications": [],
             "event_reads": [],
+            "delivered_observations": [],
+            "reviewed_actions": [],
+            "checkout_receipts": [],
         }
         self.lock = threading.RLock()
         self._build_data()
@@ -581,6 +584,16 @@ class FixtureServer:
                 )
             else:
                 self.state["checkout_reached"] = True
+                self.state["checkout_receipts"].append(
+                    {
+                        "at": time.time(),
+                        "cart": dict(self.state["cart"]),
+                        "total": sum(
+                            self.products[k]["price"] * n
+                            for k, n in self.state["cart"].items()
+                        ),
+                    }
+                )
                 body += (
                     "<p>Ready for final payment confirmation. No order has been placed yet.</p>"
                     + self.form("pay", "Pay and place order")
@@ -786,6 +799,21 @@ class FixtureServer:
                 self.state["revision"] += 1
             else:
                 raise ValueError(f"Unknown fixture fault {name!r}")
+
+    def record_delivered_view(self, observation: dict, at: float | None = None) -> None:
+        """Harness receipt after successful actor request; never a browser/tool endpoint."""
+        with self.lock:
+            view = {
+                key: observation[key]
+                for key in ("id", "url", "text")
+                if key in observation
+            }
+            if set(view) != {"id", "url", "text"}:
+                raise ValueError(
+                    "Delivered view needs id, URL and exact delivered text"
+                )
+            view["at"] = time.time() if at is None else at
+            self.state["delivered_observations"].append(view)
 
     def grade(self, final_text: str = "") -> dict[str, Any]:
         from evals.graders import grade_fixture
