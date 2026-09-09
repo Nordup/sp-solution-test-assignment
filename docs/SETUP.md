@@ -83,3 +83,9 @@ Official login instructions: https://help.shopee.vn/portal/4/article/79436
 ## Live-browser operating preference
 
 The user requests minimizing bot-check triggers. Reuse the logged-in demo profile, keep actions sequential, and avoid repeated login/reload attempts. Challenge-aware behavior and regression checks are specified in SYSTEM-DESIGN.md and FINAL-TEST.md; they still need implementation. If challenged, pause for manual verification rather than polling or trying to evade detection. No guarantee of avoiding site challenges has been established.
+
+## Preferred food demo: Yandex Eda
+
+On 2026-09-09 the user confirmed: “yandex eda is ready”. Use Yandex Eda as the preferred live food-order demo candidate, with Shopee retained as an additional scenario. This is user-reported readiness; the exact browser profile, persistence after reopening, relevant previous-week order history, and product availability have not been independently verified. Reuse the prepared authenticated profile once identified; do not create a fresh login session unnecessarily.
+
+Run the supplied history-dependent BBQ-burger and fries task if the account history supports it. Verify the restaurant from actual order history, then products, cart and checkout state. Stop before final order placement/payment unless exact consequential-action approval is supplied. Do not substitute invented history or claim success when the required prior order/products are unavailable. Preserve the challenge-aware browsing rules.
