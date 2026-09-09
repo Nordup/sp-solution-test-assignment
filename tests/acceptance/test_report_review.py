@@ -383,3 +383,124 @@ def test_factual_archive_covers_distinct_pages_before_intermediate_revisits(tmp_
     assert {f"result-{index}" for index in range(3)} <= {item["evidence_id"] for item in manifest["omitted"]}
     assert proposal["report"] == result
     assert len(json.dumps({"proposal": proposal, "evidence": evidence}, ensure_ascii=False).encode()) <= 10000
+
+
+
+def partial(summary, quote="Unavailable", remaining=None):
+    def proposal(obs):
+        name, result = finish(summary, quote)(obs)
+        return name, result | {"status": "partial", "remaining": remaining or ["The requested item is unavailable."]}
+    return proposal
+
+
+async def test_truthful_blocked_partial_is_audited_without_endpoint_completion(tmp_path):
+    async with graph_case(tmp_path, html="<p>Unavailable</p>", script=[partial("The item is unavailable; nothing was submitted.")]) as (
+        _browser, actor, _store, _runtime, graph, config, initial, _events
+    ):
+        packets = []
+        async def audit(_task, proposal, evidence):
+            packets.append(proposal)
+            assert proposal["report"]["remaining"] == ["The requested item is unavailable."]
+            assert "Unavailable" in "\n".join(evidence.values())
+            return {"supported": True, "issues": [], "reason": "Truthful blocked result."}
+        actor.verify_report = audit
+        result = await graph.ainvoke(initial, config)
+        assert result["result"]["status"] == "partial" and result["result"]["claims"]
+        assert result["result"]["remaining"] == ["The requested item is unavailable."]
+        assert len(packets) == 1 and actor.completion_reviews == 0
+
+
+@pytest.mark.parametrize("invalid_source", [False, True])
+async def test_partial_fabricated_quote_or_unregistered_source_is_repaired_locally(tmp_path, invalid_source):
+    def bad(obs):
+        name, result = partial("Blocked.", "Unavailable" if invalid_source else "A fabricated paraphrase")(obs)
+        if invalid_source:
+            result["claims"][0]["evidence_id"] = "obs-never-observed"
+        return name, result
+    async with graph_case(tmp_path, html="<p>Unavailable</p>", script=[bad, partial("Blocked.")]) as (
+        _browser, actor, _store, _runtime, graph, config, initial, events
+    ):
+        result = await graph.ainvoke(initial, config)
+        assert result["result"]["status"] == "partial"
+        assert result["result"]["claims"][0]["quote"] == "Unavailable"
+        assert actor.calls == 2 and actor.report_reviews == 1 and actor.completion_reviews == 0
+        assert len([1 for name, _ in events if name == "completion_repair"]) == 1
+
+
+async def test_relabeling_false_completed_report_partial_cannot_bypass_audit_or_replay_effect(tmp_path):
+    async with graph_case(tmp_path, script=[click("Send application"), finish("It preexisted."), partial("It preexisted.", "Application recorded"), partial("Submitted once in this run.", "Application recorded")]) as (
+        browser, actor, store, _runtime, graph, config, initial, events
+    ):
+        reports = []
+        async def audit(_task, proposal, _evidence):
+            reports.append(proposal["report"])
+            accurate = proposal["report"]["summary"] == "Submitted once in this run."
+            return {"supported": accurate, "issues": [] if accurate else ["The current-run dispatch contradicts claimed prior state."], "reason": "Attribution checked for either status."}
+        actor.verify_report = audit
+        paused = await graph.ainvoke(initial, config)
+        result = await graph.ainvoke(approval_answer(paused), config)
+        assert result["result"]["summary"] == "Submitted once in this run."
+        assert [item["status"] for item in reports] == ["completed", "partial", "partial"]
+        assert actor.completion_reviews == 1
+        assert len([1 for name, _ in events if name == "completion_repair"]) == 2
+        assert await browser.page.evaluate("window.effects||0") == 1
+        assert len(store.actions_for_run(initial["run_id"])) == 1
+
+
+async def test_partial_exact_quote_with_false_claim_exhausts_shared_repair_bound(tmp_path):
+    async with graph_case(tmp_path, html="<p>Unavailable</p>", script=[partial("Purchased successfully.")] * 3) as (
+        _browser, actor, _store, _runtime, graph, config, initial, events
+    ):
+        async def reject(*_args):
+            return {"supported": False, "issues": ["Unavailable does not prove a purchase."], "reason": "False partial claim."}
+        actor.verify_report = reject
+        result = await graph.ainvoke(initial, config)
+        assert result["result"]["status"] == "partial" and not result["result"]["claims"]
+        assert result["result"]["summary"].startswith("Report was not verified:")
+        assert actor.calls == 3 and actor.completion_reviews == 0
+        assert len([1 for name, _ in events if name == "completion_repair"]) == 2
+
+
+@pytest.mark.parametrize("failure", [ProviderFailure("Unavailable"), BudgetExceeded("No allowance"), None])
+async def test_partial_report_audit_unavailable_strips_claims_without_further_actor_calls(tmp_path, failure):
+    async with graph_case(tmp_path, html="<p>Unavailable</p>", script=[partial("Blocked.")]) as (
+        _browser, actor, _store, _runtime, graph, config, initial, _events
+    ):
+        async def unavailable(*_args):
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+        actor.verify_report = unavailable
+        result = await graph.ainvoke(initial, config)
+        assert result["result"]["status"] == "partial" and not result["result"]["claims"]
+        assert actor.calls == 1 and actor.completion_reviews == 0
+
+
+async def test_host_budget_fallback_without_actor_report_does_not_request_audit(tmp_path):
+    async with graph_case(tmp_path) as (_browser, actor, _store, runtime, _graph, _config, initial, _events):
+        result = await runtime.finalize(initial | {"status": "partial", "feedback": "Budget cannot admit another call."})
+        assert not result["result"]["claims"]
+        assert result["result"]["summary"] == "Budget cannot admit another call."
+        assert actor.calls == actor.completion_reviews == actor.report_reviews == 0
+
+
+async def test_partial_report_exhausted_real_ledger_counts_but_never_generates(tmp_path):
+    from test_provider import Transport
+
+    from browser_agent.llm import Gateway
+
+    async with graph_case(tmp_path, html="<p>Unavailable</p>", script=[partial("Blocked.")]) as (
+        _browser, actor, store, runtime, graph, config, initial, events
+    ):
+        transport = Transport([])
+        native = Gateway(runtime.settings, store, initial["run_id"], client=transport, emit=runtime.emit)
+        actor.verify_report = native.verify_report
+        store.reserve(initial["run_id"], "existing-budget-hold", 5_000_000)
+        result = await graph.ainvoke(initial, config)
+        assert result["result"]["status"] == "partial" and not result["result"]["claims"]
+        assert actor.calls == 1 and actor.completion_reviews == 0
+        assert len(transport.count_calls) == 1 and transport.create_calls == []
+        assert not any(name == "model_admitted" for name, _ in events)
+        budget = store.budget(initial["run_id"])
+        assert budget["settled"] == budget["unknown"] == 0
+        assert budget["reserved"] == 5_000_000

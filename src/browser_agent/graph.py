@@ -1956,7 +1956,8 @@ class AgentGraph:
         state = self.restore_memory(state)
         started = time.monotonic()
         result = state.get("result")
-        if result and result["status"] == "completed":
+        if result and result["status"] in {"completed", "partial"}:
+            completed = result["status"] == "completed"
             evidence = {}
             manifest = {"sources": {}, "omitted": []}
             problems = []
@@ -1992,20 +1993,20 @@ class AgentGraph:
                     )
                     continue
                 evidence[evidence_id] = obs["text"]
-            if not evidence:
+            if completed and not evidence:
                 problems.append(
                     "No valid observed evidence supports the completion claims."
                 )
-            if result["remaining"]:
+            if completed and result["remaining"]:
                 problems.append(
                     "A completed result cannot have remaining work. remaining lists unmet requested work only; deliberately excluded future actions and stopping constraints belong in summary and do not make the requested task partial. Recheck the original requested outcome and boundary before correcting this result. Reported remaining work: "
                     + "; ".join(result["remaining"])
                 )
-            if self.store.unresolved_actions(state["run_id"]):
+            if completed and self.store.unresolved_actions(state["run_id"]):
                 problems.append(
                     "An action remains uncertain; inspect and reconcile it before claiming completion."
                 )
-            if not problems:
+            if completed and not problems:
                 evidence, manifest = self.completion_packet(state, result)
                 if not evidence:
                     problems.append(
@@ -2013,53 +2014,54 @@ class AgentGraph:
                     )
             if not problems:
                 try:
-                    (
-                        review,
-                        evidence,
-                        manifest,
-                    ) = await self.review_completion_with_admission(
-                        state, result, evidence, manifest, started
-                    )
-                    self.emit("completion_review", review)
-                    if not review["supported"]:
-                        problems.append(review["reason"])
-                    if review["boundary_status"] in {"not_reached", "uncertain"}:
-                        problems.append(
-                            "Requested stopping boundary is "
-                            + review["boundary_status"]
-                            + ": "
-                            + review["reason"]
+                    if completed:
+                        (
+                            review,
+                            evidence,
+                            manifest,
+                        ) = await self.review_completion_with_admission(
+                            state, result, evidence, manifest, started
                         )
-                    next_action = review["next_visible_action"]
-                    if review["boundary_status"] == "reached":
-                        if next_action["kind"] != "excluded_final_effect":
+                        self.emit("completion_review", review)
+                        if not review["supported"]:
+                            problems.append(review["reason"])
+                        if review["boundary_status"] in {"not_reached", "uncertain"}:
                             problems.append(
-                                "Reached endpoint contradicts next visible action kind: "
-                                + next_action["kind"]
-                                + ". Complete permitted intermediate preparation or inspect the actual endpoint."
+                                "Requested stopping boundary is "
+                                + review["boundary_status"]
+                                + ": "
+                                + review["reason"]
                             )
-                        current_id = state.get("observation", {}).get("id")
-                        if not next_action["evidence"] or any(
-                            item["evidence_id"] != current_id
-                            or current_id not in evidence
-                            or item["quote"] not in evidence[current_id]
-                            for item in next_action["evidence"]
+                        next_action = review["next_visible_action"]
+                        if review["boundary_status"] == "reached":
+                            if next_action["kind"] != "excluded_final_effect":
+                                problems.append(
+                                    "Reached endpoint contradicts next visible action kind: "
+                                    + next_action["kind"]
+                                    + ". Complete permitted intermediate preparation or inspect the actual endpoint."
+                                )
+                            current_id = state.get("observation", {}).get("id")
+                            if not next_action["evidence"] or any(
+                                item["evidence_id"] != current_id
+                                or current_id not in evidence
+                                or item["quote"] not in evidence[current_id]
+                                for item in next_action["evidence"]
+                            ):
+                                problems.append(
+                                    "Reached endpoint requires positive exact next-action evidence from the current observation admitted to this review. Historical pages, fabricated quotes and absence of commitment are insufficient."
+                                )
+                        elif (
+                            review["boundary_status"] == "not_applicable"
+                            and next_action["kind"] != "not_applicable"
                         ):
                             problems.append(
-                                "Reached endpoint requires positive exact next-action evidence from the current observation admitted to this review. Historical pages, fabricated quotes and absence of commitment are insufficient."
+                                "Boundary not_applicable contradicts the supplied next-action classification; reassess the original requested outcome."
                             )
-                    elif (
-                        review["boundary_status"] == "not_applicable"
-                        and next_action["kind"] != "not_applicable"
-                    ):
-                        problems.append(
-                            "Boundary not_applicable contradicts the supplied next-action classification; reassess the original requested outcome."
-                        )
-                    if review["remaining_permitted_steps"]:
-                        problems.append(
-                            "Permitted requested steps still required before completion: "
-                            + "; ".join(review["remaining_permitted_steps"])
-                        )
+                        if review["remaining_permitted_steps"]:
+                            problems.append(
+                                "Permitted requested steps still required before completion: "
+                                + "; ".join(review["remaining_permitted_steps"])
+                            )
                     if not problems:
                         factual, manifest = await self.review_report_with_admission(
                             state, result, started
@@ -2077,7 +2079,7 @@ class AgentGraph:
                     ContextOverflow,
                 ) as exc:
                     unavailable = True
-                    problems.append("Completion review unavailable: " + str(exc))
+                    problems.append(("Completion" if completed else "Factual report") + " review unavailable: " + str(exc))
             if problems:
                 repairs = state.get("completion_repairs", 0)
                 if (
@@ -2114,7 +2116,7 @@ class AgentGraph:
                     )
                 result = result | {
                     "status": "partial",
-                    "summary": "Completion was not verified: " + "; ".join(problems),
+                    "summary": ("Completion" if completed else "Report") + " was not verified: " + "; ".join(problems),
                     "claims": [],
                     "remaining": problems,
                 }

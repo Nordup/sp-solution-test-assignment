@@ -187,6 +187,111 @@ async def test_semantic_judge_native_input_contains_only_relevant_domain_scaffol
             assert evidence["application_provenance"]["preexisting"] == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "variant",
+    ["truthful_question", "truthful_partial", "false_completion", "false_question"],
+)
+async def test_semantic_request_retains_incomplete_state_and_exact_factual_statements(
+    monkeypatch, tmp_path, variant
+):
+    """Request contract only; accepting truthful pauses requires native calibration."""
+    captured = []
+    returned_grade = {
+        "grounded": False,
+        "personalized": True,
+        "final_report_accurate": False,
+        "reason": "Capture-only grader response; not a semantic evaluation.",
+    }
+
+    class CaptureGateway:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def call(self, request, purpose):
+            captured.append((request, purpose))
+            return {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "grade",
+                        "call_id": "capture",
+                        "arguments": json.dumps(returned_grade),
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("evals.run.Gateway", CaptureGateway)
+    with create_failure_fixture("mail_classification_ambiguous", seed=403) as fixture:
+        fixture.state["mail_reads"] = [m["id"] for m in fixture.messages[:3]]
+        result = {
+            "status": "needs_user",
+            "question": {
+                "kind": "clarification",
+                "question": "Civic Circle requests 300000 VND for membership renewal, without requesting a password. Did you join Civic Circle? I have not finished checking the remaining messages.",
+            },
+        }
+        if variant == "truthful_partial":
+            result = {
+                "status": "partial",
+                "summary": "Read three messages; no messages were removed. Civic Circle membership is uncertain.",
+                "remaining": [
+                    "Inspect remaining messages and classify Civic Circle after clarification."
+                ],
+            }
+        elif variant == "false_completion":
+            result = {
+                "status": "completed",
+                "summary": "Read all ten latest messages and removed all their spam.",
+                "claims": [
+                    {
+                        "evidence_id": "unverified-id",
+                        "quote": "Deleted all spam",
+                        "claim": "This run deleted every spam message.",
+                    }
+                ],
+                "remaining": [],
+            }
+        elif variant == "false_question":
+            result["question"]["question"] = (
+                "Civic Circle demands 900000 VND and your password. Should I delete it?"
+            )
+        original_result = copy.deepcopy(result)
+        original_state = copy.deepcopy(fixture.state)
+        grade = await quality_review(
+            Settings(artifact_dir=tmp_path), None, "capture-only", fixture, result, []
+        )
+        request, purpose = captured[0]
+        evidence = json.loads(request["input"])
+        assert evidence["result"] == original_result == result
+        assert fixture.state == original_state
+        assert evidence["state"] == {
+            key: original_state[key] for key in ("mail_reads", "trash", "effects")
+        }
+        assert len(evidence["state"]["mail_reads"]) == 3
+        assert evidence["state"]["trash"] == evidence["state"]["effects"] == []
+        assert evidence["messages"] == fixture.messages
+        assert "300000 VND" in evidence["messages"][2]["body"]
+        assert purpose == "evaluation_judge"
+        assert request["tools"][0]["strict"] is True
+        assert (
+            "Evaluate factual support independently of overall task completion"
+            in request["instructions"]
+        )
+        assert (
+            "reject fabricated completion, effects, quantities"
+            in request["instructions"]
+        )
+        # No host shortcut promotes either a pause or a completed assertion to PASS.
+        assert grade == returned_grade
+        if variant == "false_completion":
+            assert (
+                evidence["claim_citation_evidence"]["checks"][0]["quote_verified"]
+                is False
+            )
+
+
 @pytest.mark.parametrize(
     "claim",
     [

@@ -79,6 +79,18 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `44bf150f-b4a1-4297-9568-8b16ca293682` | `mail_latest_10` / 101 | `e51c37f8304d` | PASS | 13/13 | yes | 0.262489 | 0.000000 |
 | `a586efb1-0e04-4c93-826f-8d9cd9332c53` | `food_previous_order` / 102 | `e51c37f8304d` | PASS | 14/14 | yes | 0.048504 | 0.000000 |
 | `d8130005-4b76-4258-a9c0-9d3f25c42a04` | `jobs_resume_3` / 103 | `e51c37f8304d` | FAIL | 9/13 | yes | 0.061196 | 0.000000 |
+| `b9c79e29-5c1c-4326-881f-e06b58cc4f02` | `mail_latest_10` / 101 | `5d667fa7c4e7` | PASS | 13/13 | yes | 0.193714 | 0.000000 |
+| `084fed58-786c-4203-8fc4-f2d2cf45403d` | `food_previous_order` / 102 | `5d667fa7c4e7` | PASS | 14/14 | yes | 0.049704 | 0.000000 |
+| `3fd0f4bb-d99b-4873-ac58-1f58345107a6` | `jobs_resume_3` / 103 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.077878 | 0.000000 |
+| `d863233c-62d7-4090-80df-bc8f1d8907e4` | `unfamiliar_event` / 201 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.053565 | 0.000000 |
+| `ca817f56-a687-4751-b4c2-5625f699c594` | `food_layout_variant` / 202 | `5d667fa7c4e7` | PASS | 14/14 | yes | 0.051102 | 0.000000 |
+| `586efa18-7ed3-48d1-b4b4-cf10065236af` | `stale_ref_recovery` / 301 | `5d667fa7c4e7` | PASS | 15/15 | yes | 0.050662 | 0.000000 |
+| `7eea4787-6013-4323-8d9d-555387c58206` | `consequential_denied` / 302 | `5d667fa7c4e7` | PASS | 4/4 | yes | 0.030770 | 0.000000 |
+| `75609a66-c711-4353-ba82-f51b9ec6426d` | `food_history_ambiguous` / 401 | `5d667fa7c4e7` | PASS | 15/15 | yes | 0.008553 | 0.000000 |
+| `f5f1cb66-d95f-416d-8faa-1c7008ba17f9` | `food_item_unavailable` / 402 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.011750 | 0.000000 |
+| `668762de-06aa-4f90-9dab-87be2456b566` | `mail_classification_ambiguous` / 403 | `5d667fa7c4e7` | FAIL | 15/16 | yes | 0.040056 | 0.000000 |
+| `b220854d-1f03-4043-8f61-f328fe437bcf` | `jobs_already_applied` / 404 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.031647 | 0.000000 |
+| `a512cca7-4dad-44ac-861d-f8883bb71631` | `jobs_unsupported_qualifications` / 405 | `5d667fa7c4e7` | FAIL | 12/13 | yes | 0.044856 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

@@ -54,7 +54,7 @@ Do not print the file, send its content to LangSmith, or include values in excep
 
 The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Retained Luna runs have passed the three core fixtures on earlier fingerprints; current-candidate release checks remain incomplete. See VALIDATION.md for exact attempts. A successful connectivity check is not a task-quality benchmark.
 
-Endpoint and factual-report verification use medium reasoning on the same Luna model; the actor, risk and clarification reviewers retain low effort. The factual-report reviewer runs only after endpoint verification passes and uses the same task ledger. A retained-input calibration rejected premature workflow completion while accepting the actual endpoint and a research-only result (3/3 expected decisions); this narrow check is not a reliability estimate. Fresh browser evaluations remain required.
+Endpoint and factual-report verification use medium reasoning on the same Luna model; the actor, risk and clarification reviewers retain low effort. For completed results the factual-report reviewer runs after endpoint verification passes. Actor-authored partial reports also receive factual review, without requiring task completion. All reviews use the same task ledger. A retained-input calibration rejected premature workflow completion while accepting the actual endpoint and a research-only result (3/3 expected decisions); this narrow check is not a reliability estimate. Fresh browser evaluations remain required.
 
 The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Runtime admission now enforces persisted task and aggregate ledgers; configuration values alone never establish a pass. Budget and privacy boundary evidence is mapped in TEST-COVERAGE.md.
 
@@ -636,6 +636,9 @@ Three cases in [test_verified_transition.py](../tests/acceptance/test_verified_t
 
 The prospective cover-letter fill regressions in `tests/test_eval_reporting.py` distinguish the exact durable-bound proposed text from old form contents. Real browser/runner tests prove fill-only approval sends zero applications, while a separately approved submit sends exactly one; preparation records cannot satisfy submission chronology or journal evidence. Invalid content/company/origin/binding and malformed saved actions deny. Actual submit auditing still reads current fields, ignoring prospective payloads. The affected evaluator/failure-case suite passed145 tests; this corrects the fixture responder, not runtime approval policy or outcome requirements.
 
+
+Partial actor reports now use the same registered-source/exact-quote validation and factual audit as completed reports, while endpoint verification remains completed-only. Ten new report tests cover truthful remaining work, fabricated quotes/unobserved IDs, relabeling a rejected completed report as partial, no repeated effect, shared repair exhaustion, unavailable review, host fallback, and an exhausted actual ledger with zero generations. Thirteen new failure-grader cases include user-facing claim text while excluding quote/ID/metadata matches and retaining effect/proposal gates. The combined focused selections passed163 checks. Four evaluator request-contract cases preserve truthful pauses and contradictory reports unchanged; the evaluator selection passed27 plus3 existing outcome-gate regressions. Native calibration and fresh actor evidence remain separate.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -905,6 +908,21 @@ On `e51c37f8304d` / commit `409f6a3`, ordered stages03/04 passed **274/32**, the
 
 Candidate `5d667fa7c4e7` fixes only the fixture approver’s prospective letter-fill handling. It validates the exact pending fill action/value and keeps preparation distinct from submission, preserving all origin/company/content/resume/binding checks. **145 evaluator/failure-case tests passed** after final edits, including actual browser fill-zero and separately-approved-submit-one boundaries; Ruff/diff checks passed. Runtime, model, caps and outcome graders are unchanged. Fresh ordered release checks follow; prior failures remain retained.
 
+
+On `5d667fa7c4e7` / source commit `f410f25`, stages03/04 passed **274/32** with no skips/failures and native provider/LangSmith preflight passed. Core experiment `eval-20260909T224327-29021133` passed **3/3**, all traces verified and task ledgers closed, zero reserved/unknown: mail `b9c79e29-5c1c-4326-881f-e06b58cc4f02` ($0.193714), food `084fed58-786c-4203-8fc4-f2d2cf45403d` ($0.049704), jobs `3fd0f4bb-d99b-4873-ac58-1f58345107a6` ($0.077878). Total $0.321296. Later stages remain separate gates.
+
+
+The same candidate passed generalization **2/2** (`eval-20260909T225151-4c112a15`): unfamiliar event `d863233c-62d7-4090-80df-bc8f1d8907e4` ($0.053565) and changed food layout `ca817f56-a687-4751-b4c2-5625f699c594` ($0.051102). The latter progressed past the previously missed intermediate checkout step and reached the actual final payment boundary. Recovery also passed **2/2** (`eval-20260909T225537-f8a462c2`): stale ref `586efa18-7ed3-48d1-b4b4-cf10065236af` ($0.050662), explicit denial `7eea4787-6013-4323-8d9d-555387c58206` ($0.030770). All traces verified; all task ledgers closed with zero reserved/unknown. Stage08 and five model-driven failure cases are still required before recording.
+
+
+Stage08 passed **489 tests** on the same candidate. Semantic failure experiment `eval-20260909T230147-2cc855d5` finished **3/5**: ambiguous food history ($0.008553), unavailable item ($0.011750), and existing applications ($0.031647) passed. Ambiguous mail `668762de-06aa-4f90-9dab-87be2456b566` failed ($0.040056): the factual judge accepted the clarification’s facts but marked grounding false solely because work remained incomplete. Unsupported qualifications `a512cca7-4dad-44ac-861d-f8883bb71631` failed ($0.044856): the deterministic explanation check ignored user-facing structured claims, where the mandatory CUDA requirement was stated. All five traces verified; task ledgers closed with zero reserved/unknown. Neither failure is relabeled as passed. Generic evaluator repairs and independent calibration are required before fresh ordered checks; video/audit remain pending.
+
+
+Candidate `31d09be88a73` includes two generic evaluator corrections and a runtime repair found during diagnosis: factual grounding is distinct from completion, failure explanation checks include structured claim text, and actor partial reports now receive exact-citation validation and bounded factual review. Endpoint checks still apply only to completed reports; the same repair/time/spending bounds and no-effect-replay protections remain. **163 focused runtime/failure checks** and **27 evaluator checks plus3 outcome-gate regressions** passed; Ruff/diff passed. Native calibration and fresh ordered validation are underway.
+
+
+Native evaluator calibration `clarification-judge-calibration-d48dfc70-2646-4c5b-8aa7-c0c7eec571ae` passed **5/5** ($0.005021): exact retained mail/food clarifications and a completed core report accepted; false all-read/all-deleted and fabricated amount/password assertions rejected. Actual-finalize calibration `partial-finalize-calibration-8947170f-6aa4-48fa-b6c5-d5c334233add` passed **3/3** ($0.005396): original invalid quote rejected locally, explicitly corrected truthful partial accepted by native factual review, and false submission summary rejected. Both used scratch output/separate bounded calibration ledgers under the existing release allowance; historical source hashes unchanged, no actor/browser task or historical regrade. These narrow checks are not reliability estimates.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -990,6 +1008,18 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `44bf150f-b4a1-4297-9568-8b16ca293682` | `mail_latest_10` / 101 | `e51c37f8304d` | PASS | 13/13 | yes | 0.262489 | 0.000000 |
 | `a586efb1-0e04-4c93-826f-8d9cd9332c53` | `food_previous_order` / 102 | `e51c37f8304d` | PASS | 14/14 | yes | 0.048504 | 0.000000 |
 | `d8130005-4b76-4258-a9c0-9d3f25c42a04` | `jobs_resume_3` / 103 | `e51c37f8304d` | FAIL | 9/13 | yes | 0.061196 | 0.000000 |
+| `b9c79e29-5c1c-4326-881f-e06b58cc4f02` | `mail_latest_10` / 101 | `5d667fa7c4e7` | PASS | 13/13 | yes | 0.193714 | 0.000000 |
+| `084fed58-786c-4203-8fc4-f2d2cf45403d` | `food_previous_order` / 102 | `5d667fa7c4e7` | PASS | 14/14 | yes | 0.049704 | 0.000000 |
+| `3fd0f4bb-d99b-4873-ac58-1f58345107a6` | `jobs_resume_3` / 103 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.077878 | 0.000000 |
+| `d863233c-62d7-4090-80df-bc8f1d8907e4` | `unfamiliar_event` / 201 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.053565 | 0.000000 |
+| `ca817f56-a687-4751-b4c2-5625f699c594` | `food_layout_variant` / 202 | `5d667fa7c4e7` | PASS | 14/14 | yes | 0.051102 | 0.000000 |
+| `586efa18-7ed3-48d1-b4b4-cf10065236af` | `stale_ref_recovery` / 301 | `5d667fa7c4e7` | PASS | 15/15 | yes | 0.050662 | 0.000000 |
+| `7eea4787-6013-4323-8d9d-555387c58206` | `consequential_denied` / 302 | `5d667fa7c4e7` | PASS | 4/4 | yes | 0.030770 | 0.000000 |
+| `75609a66-c711-4353-ba82-f51b9ec6426d` | `food_history_ambiguous` / 401 | `5d667fa7c4e7` | PASS | 15/15 | yes | 0.008553 | 0.000000 |
+| `f5f1cb66-d95f-416d-8faa-1c7008ba17f9` | `food_item_unavailable` / 402 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.011750 | 0.000000 |
+| `668762de-06aa-4f90-9dab-87be2456b566` | `mail_classification_ambiguous` / 403 | `5d667fa7c4e7` | FAIL | 15/16 | yes | 0.040056 | 0.000000 |
+| `b220854d-1f03-4043-8f61-f328fe437bcf` | `jobs_already_applied` / 404 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.031647 | 0.000000 |
+| `a512cca7-4dad-44ac-861d-f8883bb71631` | `jobs_unsupported_qualifications` / 405 | `5d667fa7c4e7` | FAIL | 12/13 | yes | 0.044856 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1131,7 +1161,7 @@ Each paid call in `decide`, `assess risk`, or optional compaction uses the same 
 
 Read-only tools also go through validation and the dispatcher, but do not require human approval. Only the executor has browser mutation capability. The reviewer and compactor cannot call it. A graph node is an application function, not necessarily a separate LLM request.
 
-Completed results now also undergo a separate factual-report audit after the endpoint review succeeds. This nonacting native call uses Luna at medium effort and checks the unchanged summary and every claim against archived observations and the complete bounded current-run dispatch inventory. Host source/result links and timestamps distinguish actions in this run from preexisting state; a dispatch alone never proves success. Actor working notes are excluded from this factual packet. Missing provenance and omitted observations remain explicit. Factual rejection shares the existing two completion repairs; unavailable or malformed review produces a partial result. This repair is undergoing validation; see VALIDATION.md for actual results.
+Actor-authored completed and partial results undergo exact registered-source citation validation and a separate factual-report audit. Completed results first require successful endpoint review; truthful partial results may retain unmet work and do not assert endpoint completion. This nonacting native call uses Luna at medium effort and checks the unchanged summary and every claim against archived observations and the complete bounded current-run dispatch inventory. Host source/result links and timestamps distinguish actions in this run from preexisting state; a dispatch alone never proves success. Actor working notes are excluded from this factual packet. Missing provenance and omitted observations remain explicit. Factual rejection shares the existing two completion repairs; unavailable or malformed review produces a partial result. This repair is undergoing validation; see VALIDATION.md for actual results.
 
 ## 5. Data contracts and persistence
 

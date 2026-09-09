@@ -121,11 +121,17 @@ def _result(value: str | dict) -> dict:
 
 def _discussion(result: dict) -> str:
     # Restrict report grading to user-facing text, not arbitrary evidence/path IDs.
+    claims = result.get("claims", [])
+    claim_text = [
+        item["claim"]
+        for item in claims if isinstance(item, dict) and isinstance(item.get("claim"), str)
+    ] if isinstance(claims, list) else []
     return " ".join(
         [
             str(result.get("summary", "")),
             str(result.get("question", {}).get("question", "")),
             " ".join(str(item) for item in result.get("remaining", [])),
+            *claim_text,
         ]
     ).casefold()
 
