@@ -85,7 +85,7 @@ Profile: `artifacts/profiles/demo`. Close the launched browser before another pr
 
 Proposed demo task: identify a product from recent completed order history, inspect the current listing and matching variant, compare price/availability with the historical order, and optionally prepare a cart **without placing an order or paying**. Use an unambiguous real product/date after inspecting history with user authorization. Do not treat a cart as a completed purchase. Shopee is an additional marketplace scenario, not a replacement for the exact three fixture examples. The live site's compatibility with the final actor remains untested; handle login challenges or unsupported controls honestly.
 
-Current manual-login status: Google sign-in rejected the automated browser with “This browser or app may not be secure.” Shopee authentication is not verified. Try Shopee’s supported QR login using the already-authenticated mobile app; manual confirmation is pending. Do not bypass Google security checks or copy another browser’s cookies. This does not block implementation or synthetic evaluations.
+Current manual-login status: **user confirmed successful Shopee login on 2026-09-09** in the dedicated demo browser. The launcher is still running; close that browser normally before the implementation agent reuses `artifacts/profiles/demo`. Authentication persistence after reopening and compatibility with the final actor remain to be verified. Google OAuth initially rejected the automated browser; the successful login method was not specified. Do not copy cookies from another browser.
 
 Official login instructions: https://help.shopee.vn/portal/4/article/79436
 
