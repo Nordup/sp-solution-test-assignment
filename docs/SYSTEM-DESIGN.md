@@ -29,7 +29,7 @@ No framework name earns a pass. Acceptance is based on observed behavior, tests 
 | Observability | LangSmith plus local sanitized events | Model/tool/node traces and evaluation experiments |
 | Validation | pytest, Ruff, deterministic fixtures, LangSmith evals | Boundary tests, semantic outcomes and regression evidence |
 
-Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; current user-selected default is `gpt-5.6-luna` at low reasoning effort. Credential/model/setup preflight passed; see [SETUP.md](SETUP.md). No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
+Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; current user-selected model is `gpt-5.6-luna`. The actor, risk and clarification reviewers use low reasoning effort; completion verification uses medium after a retained-input calibration exposed a premature-endpoint acceptance at low effort. Credential/model/setup preflight passed; see [SETUP.md](SETUP.md). No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
 
 The independent risk reviewer is a structured model call with no execution tools. We satisfy the advanced-pattern requirement through both adaptive recovery and critical-action security; we do not depend on labeling this reviewer a “subagent.”
 

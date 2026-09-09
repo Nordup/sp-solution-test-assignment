@@ -28,6 +28,8 @@ Do not print the file, send its content to LangSmith, or include values in excep
 
 The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Retained Luna runs have passed the three core fixtures on earlier fingerprints; current-candidate release checks remain incomplete. See VALIDATION.md for exact attempts. A successful connectivity check is not a task-quality benchmark.
 
+Completion verification now uses medium reasoning on the same Luna model; the actor, risk and clarification reviewers retain low effort. A retained-input calibration rejected premature workflow completion while accepting the actual endpoint and a research-only result (3/3 expected decisions); this narrow check is not a reliability estimate. Fresh browser evaluations remain required.
+
 The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Runtime admission now enforces persisted task and aggregate ledgers; configuration values alone never establish a pass. Budget and privacy boundary evidence is mapped in TEST-COVERAGE.md.
 
 ## Verification performed

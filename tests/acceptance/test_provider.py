@@ -303,3 +303,58 @@ async def test_p06_native_completion_requires_explicit_boundary_assessment(tmp_p
         )
     assert len(transport.create_calls) == 1
     assert store.budget("run")["settled"] == 37
+
+
+@pytest.mark.parametrize(
+    "purpose,expected_effort",
+    [
+        ("completion_reviewer", "medium"),
+        ("actor", "low"),
+        ("risk_reviewer", "low"),
+        ("clarification_reviewer", "low"),
+        ("memory", "low"),
+    ],
+)
+async def test_host_selects_completion_only_effort_for_count_generation_and_retry(
+    tmp_path, purpose, expected_effort
+):
+    client, store, transport, _sleeps, events = gateway(tmp_path, [error(), success()])
+    await client.call(
+        {
+            "input": "Synthetic review request",
+            "model": "untrusted-model",
+            "reasoning": {"effort": "high"},
+        },
+        purpose=purpose,
+    )
+    assert len(transport.count_calls) == 1 and len(transport.create_calls) == 2
+    counted = transport.count_calls[0]
+    assert counted["model"] == "gpt-5.6-luna"
+    assert counted["reasoning"] == {"effort": expected_effort}
+    for generated in transport.create_calls:
+        assert {
+            key: value
+            for key, value in generated.items()
+            if key not in {"max_output_tokens", "store"}
+        } == counted
+    admissions = [data for event, data in events if event == "model_admitted"]
+    assert [data["reasoning_effort"] for data in admissions] == [
+        expected_effort,
+        expected_effort,
+    ]
+    assert store.budget("run")["unknown"] == admissions[0]["reserved_microusd"]
+    assert store.budget("run")["settled"] == 37
+
+
+async def test_completion_effort_is_explicit_validated_host_configuration(tmp_path):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(completion_reasoning="unsupported")
+    client, _store, transport, _sleeps, _events = gateway(tmp_path, [success()])
+    client.settings = Settings(max_output_tokens=128, completion_reasoning="low")
+    await client.call(
+        {"input": "Synthetic review", "reasoning": {"effort": "medium"}},
+        purpose="completion_reviewer",
+    )
+    assert transport.create_calls[0]["reasoning"] == {"effort": "low"}

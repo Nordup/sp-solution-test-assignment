@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -18,6 +19,7 @@ class Settings(BaseModel):
     max_decisions: int = Field(default=60, ge=1, le=120)
     active_seconds: int = Field(default=1200, ge=1, le=1200)
     reasoning: str = "low"
+    completion_reasoning: Literal["low", "medium", "high"] = "medium"
 
     @classmethod
     def load(cls, **overrides):

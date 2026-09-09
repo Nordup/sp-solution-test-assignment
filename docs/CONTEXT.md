@@ -54,6 +54,8 @@ Do not print the file, send its content to LangSmith, or include values in excep
 
 The user selected **`gpt-5.6-luna` for now**, using existing OpenAI credits, and will add credits later. This overrides earlier Sol-first recommendations. Keep Luna configurable, but do not silently switch to a more expensive model. Retained Luna runs have passed the three core fixtures on earlier fingerprints; current-candidate release checks remain incomplete. See VALIDATION.md for exact attempts. A successful connectivity check is not a task-quality benchmark.
 
+Completion verification now uses medium reasoning on the same Luna model; the actor, risk and clarification reviewers retain low effort. A retained-input calibration rejected premature workflow completion while accepting the actual endpoint and a research-only result (3/3 expected decisions); this narrow check is not a reliability estimate. Fresh browser evaluations remain required.
+
 The $5 limit remains a maximum per logical task, not a target spend or a guarantee of available account credit. Use small bounded Luna experiments; if quota is exhausted, continue code/offline tests and report that funding is needed. Do not buy credits, enable auto-reload or raise limits automatically. Runtime admission now enforces persisted task and aggregate ledgers; configuration values alone never establish a pass. Budget and privacy boundary evidence is mapped in TEST-COVERAGE.md.
 
 ## Verification performed
@@ -687,7 +689,7 @@ The runtime uses an 18 KB UTF-8 observation limit and exact provider request-tok
 
 Structured memory is required before the first consequential effect and every four decisions. An originally selected collection is stored with observed identities and exact evidence quotes; later page changes cannot replace it. Notes and actual action receipts survive checkpoint rewind. The independent reviewer receives that scope and rejects explicitly out-of-scope effects before approval. These mechanisms have deterministic coverage; their task-level effectiveness still requires the model evaluations below.
 
-The default model is Luna, with low reasoning effort and a conservative $0.25-per-million input reservation (including the documented cache-write premium) and $1.20-per-million output. Verified against the [official Luna model page](https://developers.openai.com/api/docs/models/gpt-5.6-luna) on September 9, 2026. All retries and nonacting reviewers use the same task ledger.
+The default model is Luna: low reasoning for acting, risk and clarification; medium for completion verification. Admission uses a conservative $0.25-per-million input reservation (including the documented cache-write premium) and $1.20-per-million output. Verified against the [official Luna model page](https://developers.openai.com/api/docs/models/gpt-5.6-luna) on September 9, 2026. All retries and nonacting reviewers use the same task ledger.
 
 A browser-dispatched action is recorded as `observed`; it is not itself semantic task success. Final claims require actual observation quotes and an independent completion review. Fixture evaluations additionally check server-side outcomes and factual consistency.
 
@@ -702,6 +704,13 @@ The evaluator's form-content comparison now canonicalizes only HTML CR/LF newlin
 A user denial terminates the current run as partial. This conservative boundary prevents an alternate route or tool from silently revisiting the denied effect. A new task with a genuinely revised instruction can be started explicitly by the user.
 
 Synthetic LangSmith exports are explicit and isolated from real-account runs. Automatic graph tracing is disabled; fixture network requests are restricted to their registered local origin. No production approve-all option exists.
+
+
+### Completion reviewer reasoning calibration
+
+On runtime `3e46ea8067e9`, the ordered contract/browser stages passed **217/32 tests**, with native preflight. The native completion calibration at low effort accepted a retained premature intermediate checkout (incorrect), accepted the actual final review state and accepted a research-only event report: **2/3 expected decisions**, not a passed calibration. It spent $0.006742; the original actor failure remains unchanged.
+
+A separate explicit medium-effort calibration (`482bd3ff-3d67-4003-ae20-bf7c50e73bbf`) on the same three retained inputs produced **3/3 expected decisions**, spending $0.007188 under its $0.10 cap and the existing release ledger, with no reserved/unknown amount. Expected labels were not sent to the reviewer; no browser actions or historical scores were replayed or revised. The resulting configuration changes only the completion reviewer to medium; actor/risk/clarification remain low on Luna. This is a small diagnostic, not a success-rate estimate. Fresh ordered checks and actual browser evaluations are pending.
 
 ---
 
@@ -798,7 +807,7 @@ No framework name earns a pass. Acceptance is based on observed behavior, tests 
 | Observability | LangSmith plus local sanitized events | Model/tool/node traces and evaluation experiments |
 | Validation | pytest, Ruff, deterministic fixtures, LangSmith evals | Boundary tests, semantic outcomes and regression evidence |
 
-Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; current user-selected default is `gpt-5.6-luna` at low reasoning effort. Credential/model/setup preflight passed; see [SETUP.md](SETUP.md). No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
+Use the researched package versions as compatibility candidates and commit the tested lockfile. The model is configurable; current user-selected model is `gpt-5.6-luna`. The actor, risk and clarification reviewers use low reasoning effort; completion verification uses medium after a retained-input calibration exposed a premature-endpoint acceptance at low effort. Credential/model/setup preflight passed; see [SETUP.md](SETUP.md). No additional acting-agent framework, hosted graph server, vector store, MCP server or custom web frontend in the initial scope.
 
 The independent risk reviewer is a structured model call with no execution tools. We satisfy the advanced-pattern requirement through both adaptive recovery and critical-action security; we do not depend on labeling this reviewer a “subagent.”
 

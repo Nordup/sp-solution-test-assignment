@@ -149,10 +149,15 @@ class Gateway:
         self.usage = {"input_tokens": 0, "output_tokens": 0, "calls": 0}
 
     async def call(self, request: dict, purpose="actor"):
+        effort = (
+            self.settings.completion_reasoning
+            if purpose == "completion_reviewer"
+            else self.settings.reasoning
+        )
         req = dict(
             request,
             model=self.settings.model,
-            reasoning={"effort": self.settings.reasoning},
+            reasoning={"effort": effort},
         )
         rates = PRICES[self.settings.model]
         # Count exactly the generation input, including tools and any current image.
@@ -180,6 +185,7 @@ class Gateway:
                 "model_admitted",
                 {
                     "purpose": purpose,
+                    "reasoning_effort": effort,
                     "attempt": attempt + 1,
                     "input_tokens": input_tokens,
                     "reserved_microusd": reservation,
