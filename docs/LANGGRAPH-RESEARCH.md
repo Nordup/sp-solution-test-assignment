@@ -1,5 +1,7 @@
 # LangGraph + Playwright: focused research and revised recommendation
 
+Current implementation specification: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md). It consolidates and supersedes conflicting proposed details in this research document.
+
 Researched 2026-09-09 after the user clarified that they meant **LangGraph**, rather than LangChain. This document supersedes the earlier recommendation to omit LangGraph. It changes the proposed orchestration/persistence layer; browser tools, native OpenAI calls, safety policy, budgets and evaluation criteria from [the original analysis](IMPLEMENTATION-RESEARCH.md) remain applicable. This is a recommendation, not a claim that the user has approved or that implementation is complete.
 
 ## Recommendation

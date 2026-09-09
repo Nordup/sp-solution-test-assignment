@@ -4,6 +4,8 @@ Prepared 2026-09-09. This repository contains source material and planning conte
 
 ## Read first
 
+The current implementation contract is [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), with requirement IDs, implementation/failure/test mappings, graph and data contracts, terminal UX, evaluations and release gates. It supersedes conflicting proposed details in earlier research.
+
 1. [Assignment in Russian](assignment.ru.md): complete retained task text, expanded requirements, ideal-solution description, and all three nested example tasks.
 2. [HR evaluation clarification in Russian](hr-requirements.ru.md): engineering priorities and concrete rejection reasons.
 3. [Reference 1](assets/ideal-solution-01.jpg), [reference 2](assets/ideal-solution-02.jpg), [reference 3](assets/ideal-solution-03.jpg): original downloaded screenshots supplied by the employer.
