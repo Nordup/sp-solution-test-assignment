@@ -1392,12 +1392,38 @@ class AgentGraph:
             scope=durable.get("scope"),
             notes=durable.get("notes", ""),
         )
+        transition = {
+            "status": "observed_after_dispatch",
+            "requires_observation": False,
+            "limitation": "This records a dispatch and a subsequent observation, not proof of task completion.",
+            "action_id": state.get("action_id"),
+            "tool": state.get("action", {}).get("tool"),
+            "target": {
+                "ref": state.get("action", {}).get("args", {}).get("ref"),
+                "name": state.get("metadata", {}).get("name", "")[:250],
+            },
+            "source": {
+                "evidence_id": state["observation"]["id"],
+                "url": state["observation"]["url"],
+            },
+            "result": {
+                "evidence_id": observation["id"],
+                "title": observation["title"][:200],
+                "url": observation["url"],
+            },
+        }
+        # Supersede execute's pending-observation feedback only after a fresh,
+        # usable observation. Bind the old target to its source, not to a newly
+        # visible control on the resulting page. Loop feedback below can override.
+        update["feedback"] = json.dumps(transition, ensure_ascii=False)
         # Attach actual resulting page evidence to the native call result. A URL-only
         # receipt loses the content needed to make the next multi-step decision.
         history = list(state.get("history", []))
         if history and state.get("call"):
             last = [dict(item) for item in history[-1]]
             result = json.loads(last[-1]["output"])
+            result["requires_observation"] = False
+            result["verified_transition"] = transition
             result["observation"] = {
                 "id": observation["id"],
                 "url": observation["url"],

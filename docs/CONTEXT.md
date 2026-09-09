@@ -630,6 +630,9 @@ A generic page-diversity regression additionally retains ten distinct observed d
 
 Eight cases in [test_risk_admission.py](../tests/acceptance/test_risk_admission.py) cover count rejection before generation/effects, removal of duplicated quote aid only, whole-source omissions at 24KB, preserved constraints and DOM metadata, exactly-once approval resume, exhausted admission, non-admission failures, active time and monotonic variants across semantic repair. Native transport is scripted; real browser/graph/SQLite boundaries are exercised. The affected selection passed 82 tests; fresh paid evaluations remain separate.
 
+
+Three cases in [test_verified_transition.py](../tests/acceptance/test_verified_transition.py) exercise a real browser A→B transition followed immediately by memory, exact prior target/source and fresh result binding, then an approved B→C action exactly once. Failed/challenged observations preserve pending state. The affected graph/context/recovery/loop selection passed82 tests. Scripted model behavior proves input provenance and dispatch boundaries, not semantic reliability.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -876,6 +879,23 @@ The pipeline stopped before generalization. Read-only diagnosis localized mail�
 
 Candidate `8b0283652130` implements original request → remove duplicate copy aid → 24KB whole-source packet. No model/token/spending cap changes. Eight new admission cases plus affected provider/context/scope/resume checks passed **82 tests**, with Ruff and diff checks passing. The documentation/interface audit found no blocking command discrepancies. Fresh ordered stages03/04 and subsequent actor evaluations remain required; the previous mail failure is retained.
 
+
+On `8b0283652130` / source commit `e5a9de6`, fresh ordered stages03/04 passed **271/32 tests**, no skips/failures. Preflight `8e4a5efd-4d2e-4162-ac59-911323448755` passed at $0.000058. Core experiment `eval-20260909T220038-3ef513da` passed **3/3**, all LangSmith traces verified and task ledgers closed with zero reserved/unknown:
+
+| Case | Run | Cost |
+| --- | --- | ---: |
+| Mail | `18265bb8-575e-4fc3-94a2-947f179c8a6e` | $0.236912 |
+| Food | `2f3153e4-232b-4b76-bb86-521067966703` | $0.047965 |
+| Jobs | `6ff4328a-ab01-4de8-ad09-567de10319b4` | $0.075148 |
+
+Mail exercised actual risk repacking after a 20,584-token count rejection; the reduced request was admitted without increasing the cap. Its first factual report was rejected, then corrected within the existing repair bound without replaying deletions. All independently inspected effects and final reports passed. Total core cost $0.360025. Generalization/recovery/failure checks and video/audit remain separate mandatory stages.
+
+
+Generalization `eval-20260909T221028-89446590` finished **1/2**, both traces verified: unfamiliar event `f5045a26-5089-4916-8f31-acbb9da1a28f` passed ($0.038636); food layout `1f63ba08-5b92-4590-a26c-324beac7dade` failed ($0.035757), with correct cart/total and no order/payment. It stopped at intermediate Checkout. The host receipt correctly records the prior click as “Proceed to checkout”, but the memory summary mislabeled it as “Continue to payment review” and advised against replay. The actor then reported partial. Successful verification attached the actual new snapshot to the native result while leaving `requires_observation=true` and the old URL-only runtime feedback; diagnosis is checking this contradictory handoff. Recovery/stage08/semantic failures/video did not run. No unchanged rerun or historical regrade was performed.
+
+
+Candidate `e51c37f8304d` now replaces stale pending-observation feedback after successful verification with an explicit host-bound source/target/result transition. Native result and feedback agree; failed observations and loop overrides are preserved. **82 focused tests passed**, including three new forced-memory/failed-observation cases; Ruff and diff checks passed. Fresh ordered validation remains required.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -953,6 +973,11 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `d84c8b15-cab6-4b1b-a050-b6e5b4dde236` | `mail_latest_10` / 101 | `1311f5860757` | FAIL | 8/10 | yes | 0.157649 | 0.000000 |
 | `1937db82-8215-4da1-aca9-61a57a93b813` | `food_previous_order` / 102 | `1311f5860757` | PASS | 14/14 | yes | 0.046713 | 0.000000 |
 | `e6de1420-d926-4528-9505-29a29d2ccb1f` | `jobs_resume_3` / 103 | `1311f5860757` | PASS | 16/16 | yes | 0.073333 | 0.000000 |
+| `18265bb8-575e-4fc3-94a2-947f179c8a6e` | `mail_latest_10` / 101 | `8b0283652130` | PASS | 13/13 | yes | 0.236912 | 0.000000 |
+| `2f3153e4-232b-4b76-bb86-521067966703` | `food_previous_order` / 102 | `8b0283652130` | PASS | 14/14 | yes | 0.047965 | 0.000000 |
+| `6ff4328a-ab01-4de8-ad09-567de10319b4` | `jobs_resume_3` / 103 | `8b0283652130` | PASS | 16/16 | yes | 0.075148 | 0.000000 |
+| `f5045a26-5089-4916-8f31-acbb9da1a28f` | `unfamiliar_event` / 201 | `8b0283652130` | PASS | 16/16 | yes | 0.038636 | 0.000000 |
+| `1f63ba08-5b92-4590-a26c-324beac7dade` | `food_layout_variant` / 202 | `8b0283652130` | FAIL | 9/11 | yes | 0.035757 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1398,6 +1423,9 @@ The nonacting evaluation judge receives explicit case/task-family context and th
 
 Risk-review admission tries the original request, then removes the optional duplicated quote-copy aid, then selects whole archived sources within 24,000 bytes with explicit omissions. Only exact input-count overflow triggers this progression; task constraints, resolved DOM/action metadata and semantic-repair feedback remain intact. The variant never resets during semantic repair, active time is checked before each request, and exhaustion stops without dispatch. Generation, retries and approvals retain their existing ledgers and bounds.
 
+
+After successful post-dispatch observation, the native result and current runtime feedback explicitly bind the original target/ref and source observation to the resulting observation/title/URL. `requires_observation` becomes false only on this successful path. This is evidence of dispatch followed by observation, not semantic proof that the user task succeeded. Failed/challenged observations keep the pending state; loop-recovery feedback may supersede the transition. This prevents stale URL-only execution feedback from contradicting the actual current page during memory checkpoints.
+
 ---
 
 <!-- Source: FINAL-TEST.md -->
@@ -1465,7 +1493,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_risk_admission.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_risk_admission.py tests/acceptance/test_verified_transition.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:

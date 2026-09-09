@@ -239,3 +239,20 @@ The pipeline stopped before generalization. Read-only diagnosis localized mail�
 ### Bounded risk-admission repair
 
 Candidate `8b0283652130` implements original request → remove duplicate copy aid → 24KB whole-source packet. No model/token/spending cap changes. Eight new admission cases plus affected provider/context/scope/resume checks passed **82 tests**, with Ruff and diff checks passing. The documentation/interface audit found no blocking command discrepancies. Fresh ordered stages03/04 and subsequent actor evaluations remain required; the previous mail failure is retained.
+
+
+On `8b0283652130` / source commit `e5a9de6`, fresh ordered stages03/04 passed **271/32 tests**, no skips/failures. Preflight `8e4a5efd-4d2e-4162-ac59-911323448755` passed at $0.000058. Core experiment `eval-20260909T220038-3ef513da` passed **3/3**, all LangSmith traces verified and task ledgers closed with zero reserved/unknown:
+
+| Case | Run | Cost |
+| --- | --- | ---: |
+| Mail | `18265bb8-575e-4fc3-94a2-947f179c8a6e` | $0.236912 |
+| Food | `2f3153e4-232b-4b76-bb86-521067966703` | $0.047965 |
+| Jobs | `6ff4328a-ab01-4de8-ad09-567de10319b4` | $0.075148 |
+
+Mail exercised actual risk repacking after a 20,584-token count rejection; the reduced request was admitted without increasing the cap. Its first factual report was rejected, then corrected within the existing repair bound without replaying deletions. All independently inspected effects and final reports passed. Total core cost $0.360025. Generalization/recovery/failure checks and video/audit remain separate mandatory stages.
+
+
+Generalization `eval-20260909T221028-89446590` finished **1/2**, both traces verified: unfamiliar event `f5045a26-5089-4916-8f31-acbb9da1a28f` passed ($0.038636); food layout `1f63ba08-5b92-4590-a26c-324beac7dade` failed ($0.035757), with correct cart/total and no order/payment. It stopped at intermediate Checkout. The host receipt correctly records the prior click as “Proceed to checkout”, but the memory summary mislabeled it as “Continue to payment review” and advised against replay. The actor then reported partial. Successful verification attached the actual new snapshot to the native result while leaving `requires_observation=true` and the old URL-only runtime feedback; diagnosis is checking this contradictory handoff. Recovery/stage08/semantic failures/video did not run. No unchanged rerun or historical regrade was performed.
+
+
+Candidate `e51c37f8304d` now replaces stale pending-observation feedback after successful verification with an explicit host-bound source/target/result transition. Native result and feedback agree; failed observations and loop overrides are preserved. **82 focused tests passed**, including three new forced-memory/failed-observation cases; Ruff and diff checks passed. Fresh ordered validation remains required.

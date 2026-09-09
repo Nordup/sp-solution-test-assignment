@@ -71,6 +71,11 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `d84c8b15-cab6-4b1b-a050-b6e5b4dde236` | `mail_latest_10` / 101 | `1311f5860757` | FAIL | 8/10 | yes | 0.157649 | 0.000000 |
 | `1937db82-8215-4da1-aca9-61a57a93b813` | `food_previous_order` / 102 | `1311f5860757` | PASS | 14/14 | yes | 0.046713 | 0.000000 |
 | `e6de1420-d926-4528-9505-29a29d2ccb1f` | `jobs_resume_3` / 103 | `1311f5860757` | PASS | 16/16 | yes | 0.073333 | 0.000000 |
+| `18265bb8-575e-4fc3-94a2-947f179c8a6e` | `mail_latest_10` / 101 | `8b0283652130` | PASS | 13/13 | yes | 0.236912 | 0.000000 |
+| `2f3153e4-232b-4b76-bb86-521067966703` | `food_previous_order` / 102 | `8b0283652130` | PASS | 14/14 | yes | 0.047965 | 0.000000 |
+| `6ff4328a-ab01-4de8-ad09-567de10319b4` | `jobs_resume_3` / 103 | `8b0283652130` | PASS | 16/16 | yes | 0.075148 | 0.000000 |
+| `f5045a26-5089-4916-8f31-acbb9da1a28f` | `unfamiliar_event` / 201 | `8b0283652130` | PASS | 16/16 | yes | 0.038636 | 0.000000 |
+| `1f63ba08-5b92-4590-a26c-324beac7dade` | `food_layout_variant` / 202 | `8b0283652130` | FAIL | 9/11 | yes | 0.035757 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 

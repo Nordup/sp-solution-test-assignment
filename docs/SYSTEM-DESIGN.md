@@ -433,3 +433,6 @@ The nonacting evaluation judge receives explicit case/task-family context and th
 
 
 Risk-review admission tries the original request, then removes the optional duplicated quote-copy aid, then selects whole archived sources within 24,000 bytes with explicit omissions. Only exact input-count overflow triggers this progression; task constraints, resolved DOM/action metadata and semantic-repair feedback remain intact. The variant never resets during semantic repair, active time is checked before each request, and exhaustion stops without dispatch. Generation, retries and approvals retain their existing ledgers and bounds.
+
+
+After successful post-dispatch observation, the native result and current runtime feedback explicitly bind the original target/ref and source observation to the resulting observation/title/URL. `requires_observation` becomes false only on this successful path. This is evidence of dispatch followed by observation, not semantic proof that the user task succeeded. Failed/challenged observations keep the pending state; loop-recovery feedback may supersede the transition. This prevents stale URL-only execution feedback from contradicting the actual current page during memory checkpoints.

@@ -291,3 +291,6 @@ A generic page-diversity regression additionally retains ten distinct observed d
 
 
 Eight cases in [test_risk_admission.py](../tests/acceptance/test_risk_admission.py) cover count rejection before generation/effects, removal of duplicated quote aid only, whole-source omissions at 24KB, preserved constraints and DOM metadata, exactly-once approval resume, exhausted admission, non-admission failures, active time and monotonic variants across semantic repair. Native transport is scripted; real browser/graph/SQLite boundaries are exercised. The affected selection passed 82 tests; fresh paid evaluations remain separate.
+
+
+Three cases in [test_verified_transition.py](../tests/acceptance/test_verified_transition.py) exercise a real browser A→B transition followed immediately by memory, exact prior target/source and fresh result binding, then an approved B→C action exactly once. Failed/challenged observations preserve pending state. The affected graph/context/recovery/loop selection passed82 tests. Scripted model behavior proves input provenance and dispatch boundaries, not semantic reliability.
