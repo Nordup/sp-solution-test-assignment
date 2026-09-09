@@ -294,3 +294,6 @@ Eight cases in [test_risk_admission.py](../tests/acceptance/test_risk_admission.
 
 
 Three cases in [test_verified_transition.py](../tests/acceptance/test_verified_transition.py) exercise a real browser A→B transition followed immediately by memory, exact prior target/source and fresh result binding, then an approved B→C action exactly once. Failed/challenged observations preserve pending state. The affected graph/context/recovery/loop selection passed82 tests. Scripted model behavior proves input provenance and dispatch boundaries, not semantic reliability.
+
+
+The prospective cover-letter fill regressions in `tests/test_eval_reporting.py` distinguish the exact durable-bound proposed text from old form contents. Real browser/runner tests prove fill-only approval sends zero applications, while a separately approved submit sends exactly one; preparation records cannot satisfy submission chronology or journal evidence. Invalid content/company/origin/binding and malformed saved actions deny. Actual submit auditing still reads current fields, ignoring prospective payloads. The affected evaluator/failure-case suite passed145 tests; this corrects the fixture responder, not runtime approval policy or outcome requirements.

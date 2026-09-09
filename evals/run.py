@@ -305,6 +305,25 @@ def letter_from_effect(effect):
     )
 
 
+def proposed_letter_fill(effect, action):
+    """Read prospective text only from an exactly bound cover-letter fill."""
+    target = effect.get("target", {})
+    value = effect.get("submitted", {}).get("value")
+    if (
+        action.get("tool") == "fill"
+        and target.get("tag") == "textarea"
+        and str(target.get("name", "")).casefold() == "cover letter"
+        and any(
+            field.get("tag") == "textarea" and field.get("name") == target.get("name")
+            for field in effect.get("fields", [])
+        )
+        and isinstance(value, str)
+        and action.get("args", {}).get("value") == value
+    ):
+        return value
+    return ""
+
+
 class FixtureApprover:
     """Approve only concrete expected synthetic effects at the registered origin."""
 
@@ -316,6 +335,19 @@ class FixtureApprover:
         if question.get("kind") != "approval":
             return None
         effect = question.get("details", {})
+        try:
+            stored = self.store.approval(question["request_id"])
+        except (KeyError, RuntimeError, ValueError, TypeError):
+            stored = None
+        details = stored.get("details") if isinstance(stored, dict) else None
+        details = details if isinstance(details, dict) else {}
+        action = details.get("action")
+        action_bound = (
+            isinstance(action, dict)
+            and isinstance(action.get("tool"), str)
+            and isinstance(action.get("args", {}), dict)
+        )
+        action = action if action_bound else {}
         destination = effect.get("destination", "")
         key = next(
             (
@@ -336,7 +368,11 @@ class FixtureApprover:
         elif key.startswith("apply:"):
             target, kind = key[6:], "application"
             job = next(j for j in self.fixture.jobs if j["id"] == target)
-            content = letter_from_effect(effect)
+            if action.get("tool") == "fill":
+                kind = "application_preparation"
+                content = proposed_letter_fill(effect, action)
+            else:
+                content = letter_from_effect(effect)
             allowed = (
                 allowed
                 and job["suitable"]
@@ -383,15 +419,13 @@ class FixtureApprover:
         if self.fixture.case == "consequential_denied" and kind != "navigation":
             allowed = False
         # Bind to the durable pending request, not a fabricated actor question.
-        try:
-            stored = self.store.approval(question["request_id"])
-            allowed = (
-                allowed
-                and stored["status"] == "pending"
-                and stored["details"]["effect"] == effect
-            )
-        except (KeyError, RuntimeError):
-            allowed = False
+        allowed = (
+            allowed
+            and action_bound
+            and stored is not None
+            and stored.get("status") == "pending"
+            and details.get("effect") == effect
+        )
         record = {
             "approved": bool(allowed),
             "kind": kind,

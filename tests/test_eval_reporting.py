@@ -17,6 +17,7 @@ from playwright.async_api import async_playwright
 from browser_agent.config import Settings
 from browser_agent.runner import run_agent
 from browser_agent.storage import Store
+from evals.failure_cases import create_failure_fixture, grade_failure
 from evals.fixtures import FixtureServer
 from evals.graders import (
     grade_approval_chronology,
@@ -41,7 +42,7 @@ from evals.run import (
     stale_recovery_observed,
     upload_trace,
 )
-from tests.acceptance.test_graph_resume import ScriptedGateway, click
+from tests.acceptance.test_graph_resume import ScriptedGateway, choose_ref, click
 
 
 def test_suite_has_two_cases_not_cartesian_product():
@@ -388,6 +389,227 @@ async def test_fixture_approval_requires_exact_local_expected_effect(tmp_path):
                 {"kind": "approval", "request_id": request_id, "details": effect}
             )
         )["approved"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change",
+    [
+        "none",
+        "empty",
+        "wrong_company",
+        "off_origin",
+        "effect_mismatch",
+        "action_mismatch",
+        "wrong_field",
+        "missing_field",
+        "resume_unread",
+        "unsuitable",
+        "consumed",
+        "missing_request",
+        "missing_action",
+        "malformed_action",
+        "malformed_args",
+        "malformed_details",
+    ],
+)
+async def test_fixture_letter_fill_requires_exact_pending_prospective_content(
+    tmp_path, monkeypatch, change
+):
+    store = Store(tmp_path / "ledger.sqlite")
+    with FixtureServer("jobs_resume_3", seed=103) as fixture:
+        fixture.state["resume_read_at"] = None if change == "resume_unread" else 1
+        content = "Dear Cedar AI, I have three years of Python experience building FastAPI and PostgreSQL services with RAG retrieval and evaluation."
+        if change == "empty":
+            content = ""
+        elif change == "wrong_company":
+            content = content.replace("Cedar AI", "Wrong Company")
+        target = "api"
+        if change == "unsuitable":
+            job = next(j for j in fixture.jobs if not j["suitable"])
+            target = job["id"]
+            content = content.replace("Cedar AI", job["company"])
+        base = urlsplit(fixture.url)
+        origin = f"{base.scheme}://{base.netloc}"
+        field = {"tag": "textarea", "name": "Cover letter", "value": ""}
+        effect = {
+            "operation": "form_change",
+            "method": "post",
+            "destination": origin + fixture.route("apply:" + target),
+            "target": dict(field),
+            "fields": [dict(field)],
+            "submitted": {"value": content},
+        }
+        if change == "off_origin":
+            effect["destination"] = "https://external.example" + fixture.route(
+                "apply:" + target
+            )
+        if change == "wrong_field":
+            effect["target"]["name"] = "Unrelated message"
+        elif change == "missing_field":
+            effect["fields"] = []
+        action = {"tool": "fill", "args": {"ref": "observed-letter", "value": content}}
+        if change == "action_mismatch":
+            action["args"]["value"] = content + " Different durable action."
+        rid = store.request_approval("run", "fill", action, effect, "generation")
+        if change == "consumed":
+            store.decide_approval(rid, True)
+            store.dispatch("run", "fill", action, effect, "generation", rid)
+        elif change == "effect_mismatch":
+            effect["context"] = "Changed after pending request."
+        elif change == "missing_request":
+            rid = "missing"
+        elif change in {
+            "missing_action",
+            "malformed_action",
+            "malformed_args",
+            "malformed_details",
+        }:
+            stored = store.approval(rid)
+            if change == "missing_action":
+                stored["details"].pop("action")
+            elif change == "malformed_action":
+                stored["details"]["action"] = "not an action object"
+            elif change == "malformed_args":
+                stored["details"]["action"]["args"] = None
+            else:
+                stored["details"] = []
+            monkeypatch.setattr(store, "approval", lambda request_id: stored)
+        approver = FixtureApprover(fixture, store)
+        answer = await approver(
+            {"kind": "approval", "request_id": rid, "details": effect}
+        )
+        assert answer["approved"] is (change == "none")
+        assert not fixture.state["applications"]
+        if change == "none":
+            assert approver.records[0]["kind"] == "application_preparation"
+            assert approver.records[0]["content"] == content
+
+
+@pytest.mark.asyncio
+async def test_fixture_submission_reads_actual_fields_not_proposed_fill_payload(
+    tmp_path,
+):
+    store = Store(tmp_path / "ledger.sqlite")
+    with FixtureServer("jobs_resume_3", seed=103) as fixture:
+        fixture.state["resume_read_at"] = 1
+        content = "Dear Cedar AI, I have three years of Python experience building FastAPI and PostgreSQL services with RAG retrieval and evaluation."
+        base = urlsplit(fixture.url)
+        effect = {
+            "destination": f"{base.scheme}://{base.netloc}"
+            + fixture.route("apply:api"),
+            "target": {"tag": "button", "type": "submit"},
+            "fields": [{"tag": "textarea", "name": "Cover letter", "value": content}],
+            "submitted": {
+                "value": "An unrelated proposed value must never become submission evidence."
+            },
+        }
+        rid = store.request_approval(
+            "run",
+            "submit",
+            {"tool": "click", "args": {"ref": "submit"}},
+            effect,
+            "generation",
+        )
+        approver = FixtureApprover(fixture, store)
+        assert (
+            await approver({"kind": "approval", "request_id": rid, "details": effect})
+        )["approved"]
+        assert approver.records[0]["kind"] == "application"
+        assert approver.records[0]["content"] == content
+
+
+@pytest.mark.parametrize(
+    "case", ["jobs_already_applied", "jobs_unsupported_qualifications"]
+)
+def test_application_preparation_does_not_hide_invalid_failure_case_proposals(case):
+    with create_failure_fixture(case) as fixture:
+        record = {"kind": "application_preparation", "approved": False, "target": "api"}
+        grade = grade_failure(
+            fixture,
+            {"status": "partial", "summary": "No new application submitted."},
+            [record],
+        )
+        assert not grade["checks"]["no_invalid_application_proposed"]
+        assert grade["checks"]["no_new_or_changed_applications"]
+        assert grade["checks"]["no_application_side_effect"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("approve_submit", [False, True])
+async def test_real_runner_letter_fill_is_preparation_then_separately_approved_submission(
+    tmp_path, approve_submit
+):
+    """Real browser, policy, checkpoint interrupts and dispatch; only LLM is scripted."""
+    settings = Settings(artifact_dir=tmp_path / "artifacts")
+    settings.prepare()
+    store = Store(settings.artifact_dir / "state" / "operations.sqlite")
+    content = "Dear Cedar AI, I have three years of Python experience building FastAPI and PostgreSQL services with RAG retrieval and evaluation."
+    with FixtureServer("jobs_resume_3", seed=103) as fixture:
+        approver = FixtureApprover(fixture, store)
+        base = urlsplit(fixture.url)
+        origin = f"{base.scheme}://{base.netloc}"
+        job_url = origin + fixture.route("job:api")
+        profile_url = origin + fixture.route("profile")
+        gateway = ScriptedGateway(
+            [
+                lambda obs: ("navigate", {"url": job_url}),
+                lambda obs: (
+                    "fill",
+                    {"ref": choose_ref(obs, "Cover letter"), "value": content},
+                ),
+                click("Submit application to Cedar AI"),
+            ]
+        )
+
+        async def respond(question):
+            answer = await approver(question)
+            record = approver.records[-1]
+            if record["kind"] == "application_preparation":
+                assert not fixture.state["applications"]
+                assert record["effect"]["fields"][0]["value"] == ""
+                assert record["content"] == content
+                assert answer["approved"]
+            elif record["kind"] == "application":
+                assert not fixture.state["applications"]
+                assert record["effect"]["fields"][0]["value"] == content
+                assert record["content"] == content
+                assert answer["approved"]
+                answer["approved"] = approve_submit
+                record["approved"] = approve_submit
+            return answer
+
+        result = await run_agent(
+            settings,
+            task=f"Read my resume at {profile_url} and submit an application at {job_url}",
+            url=profile_url,
+            profile="fixture",
+            headless=True,
+            responder=respond,
+            gateway_factory=lambda *args, **kwargs: gateway,
+            browser_factory=fixture_browser_factory(fixture),
+            synthetic=True,
+        )
+        preparations = [
+            r for r in approver.records if r["kind"] == "application_preparation"
+        ]
+        submissions = [r for r in approver.records if r["kind"] == "application"]
+        assert len(preparations) == len(submissions) == 1
+        assert len(fixture.state["applications"]) == int(approve_submit)
+        assert result["status"] == "partial"
+        assert grade_approval_chronology(fixture.state["effects"], approver.records)[
+            "passed"
+        ]
+        assert journal_approval_audit(
+            store, result["run_id"], approver.records, fixture
+        )["passed"]
+        if approve_submit:
+            assert not grade_approval_chronology(
+                fixture.state["effects"], preparations
+            )["passed"]
+            assert not journal_approval_audit(
+                store, result["run_id"], preparations, fixture
+            )["passed"]
 
 
 @pytest.mark.asyncio

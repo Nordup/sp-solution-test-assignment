@@ -633,6 +633,9 @@ Eight cases in [test_risk_admission.py](../tests/acceptance/test_risk_admission.
 
 Three cases in [test_verified_transition.py](../tests/acceptance/test_verified_transition.py) exercise a real browser A→B transition followed immediately by memory, exact prior target/source and fresh result binding, then an approved B→C action exactly once. Failed/challenged observations preserve pending state. The affected graph/context/recovery/loop selection passed82 tests. Scripted model behavior proves input provenance and dispatch boundaries, not semantic reliability.
 
+
+The prospective cover-letter fill regressions in `tests/test_eval_reporting.py` distinguish the exact durable-bound proposed text from old form contents. Real browser/runner tests prove fill-only approval sends zero applications, while a separately approved submit sends exactly one; preparation records cannot satisfy submission chronology or journal evidence. Invalid content/company/origin/binding and malformed saved actions deny. Actual submit auditing still reads current fields, ignoring prospective payloads. The affected evaluator/failure-case suite passed145 tests; this corrects the fixture responder, not runtime approval policy or outcome requirements.
+
 ---
 
 <!-- Source: VALIDATION.md -->
@@ -896,6 +899,12 @@ Generalization `eval-20260909T221028-89446590` finished **1/2**, both traces ver
 
 Candidate `e51c37f8304d` now replaces stale pending-observation feedback after successful verification with an explicit host-bound source/target/result transition. Native result and feedback agree; failed observations and loop overrides are preserved. **82 focused tests passed**, including three new forced-memory/failed-observation cases; Ruff and diff checks passed. Fresh ordered validation remains required.
 
+
+On `e51c37f8304d` / commit `409f6a3`, ordered stages03/04 passed **274/32**, then provider/LangSmith preflight passed. Core experiment `eval-20260909T222245-7d67ca18` ended **2/3**, all traces verified and task ledgers closed with zero reserved/unknown: mail `44bf150f-b4a1-4297-9568-8b16ca293682` passed ($0.262489), food `a586efb1-0e04-4c93-826f-8d9cd9332c53` passed ($0.048504), jobs `d8130005-4b76-4258-a9c0-9d3f25c42a04` failed ($0.061196). The risk reviewer conservatively requested approval for filling Cedar’s cover-letter textarea. The prospective text was present in durable-bound `submitted.value`, but the fixture approver read the old empty `fields.value` and denied the preparation. Two earlier applications succeeded; no third application was sent. A harness repair is being implemented to distinguish prospective fill content from actual submission fields, retaining exact binding and independent submission approval. This failed attempt is unchanged; no later stage ran.
+
+
+Candidate `5d667fa7c4e7` fixes only the fixture approver’s prospective letter-fill handling. It validates the exact pending fill action/value and keeps preparation distinct from submission, preserving all origin/company/content/resume/binding checks. **145 evaluator/failure-case tests passed** after final edits, including actual browser fill-zero and separately-approved-submit-one boundaries; Ruff/diff checks passed. Runtime, model, caps and outcome graders are unchanged. Fresh ordered release checks follow; prior failures remain retained.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -978,6 +987,9 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `6ff4328a-ab01-4de8-ad09-567de10319b4` | `jobs_resume_3` / 103 | `8b0283652130` | PASS | 16/16 | yes | 0.075148 | 0.000000 |
 | `f5045a26-5089-4916-8f31-acbb9da1a28f` | `unfamiliar_event` / 201 | `8b0283652130` | PASS | 16/16 | yes | 0.038636 | 0.000000 |
 | `1f63ba08-5b92-4590-a26c-324beac7dade` | `food_layout_variant` / 202 | `8b0283652130` | FAIL | 9/11 | yes | 0.035757 | 0.000000 |
+| `44bf150f-b4a1-4297-9568-8b16ca293682` | `mail_latest_10` / 101 | `e51c37f8304d` | PASS | 13/13 | yes | 0.262489 | 0.000000 |
+| `a586efb1-0e04-4c93-826f-8d9cd9332c53` | `food_previous_order` / 102 | `e51c37f8304d` | PASS | 14/14 | yes | 0.048504 | 0.000000 |
+| `d8130005-4b76-4258-a9c0-9d3f25c42a04` | `jobs_resume_3` / 103 | `e51c37f8304d` | FAIL | 9/13 | yes | 0.061196 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
