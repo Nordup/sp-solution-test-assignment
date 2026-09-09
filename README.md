@@ -2,7 +2,7 @@
 
 A Python agent that uses a visible Playwright browser to solve natural-language tasks. LangGraph coordinates observation, native OpenAI tool calls, independent risk review, exact approvals, execution and recovery. The default model is **GPT-5.6 Luna**.
 
-**Validation is in progress; the solution is not ready for submission.** The current candidate passed 274 contract tests, 32 browser tests, provider/LangSmith preflight and all three core tasks, with verified traces. Generalization and recovery passed; the five semantic failure cases finished 3/5, with evaluator repairs under validation. The complete ordered suite and final video remain pending; live Yandex still needs a genuine delivery address. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md).
+**Validation is in progress; the solution is not ready for submission.** The current candidate passed 284 contract tests, 32 browser tests and provider/LangSmith preflight. The latest core run finished 2/3 because cover-letter wording broadened source qualifications. Source-fidelity improvements are undergoing fresh validation. Earlier candidate results, including failures, remain recorded. The final video and audit are pending; live Yandex still needs a genuine delivery address. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md).
 
 ## Start
 
@@ -30,15 +30,15 @@ Log in manually in the opened browser, then press Enter in the terminal to close
 
 The terminal displays actual proposed tools, arguments, results and spending. A consequential action shows its destination, selected content and submitted values. Type `yes` to approve that exact action; anything else denies it. Denial ends the run as partial. At a clarification prompt, `/pause` saves and exits. Browser verification challenges pause automation and model calls until explicit continuation. Genuine missing facts still reach the user. A nonacting clarification reviewer redirects pure action-permission questions to the existing exact approval path, or grounded already-known questions back to the actor, at most twice under the same task budget; it never fabricates a user answer.
 
-## Optional browser console for recording
+## Terminal and browser demonstration
 
-When a visible browser-based console is useful for the video, run:
+Use a real terminal beside the visible Playwright browser, as in the three reference screenshots. Running without a task argument prompts for it in the terminal:
 
 ```bash
-uv run python scripts/demo_console.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate
+uv run browser-agent run --profile demo --budget-usd 5 --release-session final-candidate
 ```
 
-Open the private local link printed by the script, enter the task and keep the console beside the agent browser. It shows actual Rich events and exact approval/clarification forms through the unchanged runner; it never auto-approves. The fixture is visibly labeled synthetic, uses an isolated profile and remains alive for the task. Starting the console does not start a paid task. The existing release allowance and $5 task limit still apply. See [DEMO.md](docs/DEMO.md) for live-profile usage, recording, privacy and pause/resume boundaries.
+The task, actual tool calls/results, approval questions and final report stay in the terminal. See [DEMO.md](docs/DEMO.md) for the isolated synthetic launcher, live-account limits and recording instructions.
 
 ## How it works
 
@@ -64,7 +64,7 @@ Observations are paginated at 18 KB of UTF-8 text. Whole reads share a 10-second
 
 Structured memory runs before the first consequential effect and every four decisions. Original collection membership is frozen from observed evidence; durable notes and action receipts survive checkpoint rewind. Rejected completion returns precise feedback for up to two correction attempts under the same limits and approval rules. If verification still fails, the result explicitly says completion is unverified. An explicitly requested stopping point defines task completion; deliberately excluded later actions are not unfinished work. The host never silently changes a partial result to completed.
 
-Endpoint review receives up to 32 KB of actual archived observations with provenance and explicit omissions, still subject to whole-request token admission. A separate factual-report review checks the exact summary and claims against archived evidence and the current-run action journal, distinguishing pre-existing state from newly performed actions. It runs only after the endpoint check passes and shares the existing two-repair limit. Both final reviewers use medium reasoning; the acting agent, risk and clarification reviewers remain low. Unresolved review problems survive memory refreshes and checkpoint resume. Working notes are not treated as proof, and missing packet content is not treated as proof that an effect failed. Task-level successes on earlier versions are retained; the current candidate still needs its complete matching acceptance sequence.
+Endpoint review receives up to 32 KB of actual archived observations with provenance and explicit omissions, still subject to whole-request token admission. A separate factual-report review checks the exact summary and claims against archived evidence and the current-run action journal, distinguishing pre-existing state from newly performed actions. Completed reports receive factual review after the endpoint check passes; actor-authored partial reports receive factual review without requiring endpoint completion. Both statuses share the existing two-repair limit. Both final reviewers use medium reasoning; the acting agent, risk and clarification reviewers remain low. Unresolved review problems survive memory refreshes and checkpoint resume. Working notes are not treated as proof, and missing packet content is not treated as proof that an effect failed. Task-level successes on earlier versions are retained; the current candidate still needs its complete matching acceptance sequence.
 
 Every model request—including reviewers, evaluators and retries—uses a durable spending ledger. Each logical task is capped at **$5**; unknown billed attempts retain reservations. Only Luna currently has a verified price configuration. Model changes require explicit pricing support and evaluation. The local estimate uses a conservative cache-write premium; this is not an account-wide spending limit.
 
@@ -97,3 +97,6 @@ Risk assessment combines code-enforced invariants with a nonacting model reviewe
 The preserved [Russian assignment](docs/assignment.ru.md), [HR criteria](docs/hr-requirements.ru.md), [reference screenshots](docs/assets/ideal-solution-01.jpg), [design](docs/SYSTEM-DESIGN.md), [research](docs/LANGGRAPH-RESEARCH.md) and [setup record](docs/SETUP.md) explain the requirements and decisions. Original design documents describe intended release gates; [validation status](docs/VALIDATION.md) records what has actually been run.
 
 Repository: https://github.com/Nordup/sp-solution-test-assignment. Work directly on **main**; do not create another branch or worktree.
+
+
+Factual wording remains an LLM limitation: a retained-input risk-review calibration accepted two subtle source expansions. Drafting/memory instructions now preserve source scope, but the risk reviewer is not a proven factual filter. Review exact outbound text; current autonomous results and calibration failures are recorded in VALIDATION.md.

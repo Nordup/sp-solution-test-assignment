@@ -180,72 +180,71 @@ After the semantic-judge evidence repair, setup evidence was renewed by an expli
 
 <!-- Source: DEMO.md -->
 
-# Recording the actual agent console
+# Record the real terminal and browser
 
-`scripts/demo_console.py` is an optional local browser interface to the existing `run_agent` runner. It shows the runner’s actual Rich console stream, accepts an ordinary task, and displays the exact live approval or clarification request. It is explicitly labeled **Agent console**, not a native Terminal. No canned trajectory, automatic approval or hidden task script is used. This recording interface does not replace the CLI or certify an evaluation pass.
+Use a native Terminal window beside the visible Playwright-controlled browser, as shown in the three [reference screenshots](assets/ideal-solution-01.jpg). The terminal shows the typed task, actual tool calls/results, exact approval questions and the final result. The retired browser-based console is not part of the solution.
 
-The runtime, model, headed Playwright browser, profile lock, $5 task limit, release ledger, checkpointing and safety gate are unchanged. The console server itself makes no model call until a user submits a task. The existing release session must already exist; the interface never creates or raises its allowance. If it is exhausted, the agent cannot start another paid call.
+## Synthetic demonstration
 
-## Synthetic recording
-
-Use this when recording a clearly labeled fixture demonstration:
+Run this command in Terminal from the repository root:
 
 ```bash
-uv run python scripts/demo_console.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate
+uv run python scripts/demo_terminal.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate --viewport-width 640 --viewport-height 620
 ```
 
-Open the private `http://127.0.0.1:PORT/#TOKEN` link printed by the script in a supported browser. The session token stays in the URL fragment until the page reads and removes it; it is not sent as a URL query or included in access logs. Reopen the original link after reloading the page. Keep the link private and out of the published recording.
+The terminal displays **Synthetic evaluation — local fixture**, then prompts `Task:`. Enter an ordinary task, for example:
 
-The evaluator-owned fixture starts before the console and remains available until the script exits, including while the agent waits for answers. It supplies only its starting URL to the runner; reference answers, route maps and expected IDs are not passed to the actor. The fixture browser permits requests only to that fixture’s origin. The interface prominently labels the run **Synthetic evaluation — local fixture**. Its separate profile avoids using the prepared real-account profile.
+> Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе на этом сайте. Остановись перед финальным подтверждением оплаты; заказ не размещай.
 
-Type a short task yourself, for example:
+The typed task is forwarded unchanged. The fixture supplies only the starting URL and the isolated browser environment; its reference answers, task script and automatic evaluation approver are not supplied to the runner. The visible browser opens after task entry. The terminal uses the existing CLI's actual Rich output and `human` responder. There is no HTTP control panel.
 
-> Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе на этом сайте. Остановись до оплаты.
+Each launcher invocation starts fresh synthetic fixture state and a new logical run. The fixture stays alive while the runner waits for a terminal answer. Only its own origin is allowed by the existing fixture browser factory. The profile defaults to `demo-synthetic`; the prepared real-account profile `demo` is rejected by this synthetic launcher. Close any existing holder of the selected profile first.
 
-This wording is a labeled demonstration prompt. Preserve the exact source prompts and separate scored evaluation records for acceptance. The demo console does not run graders or export a LangSmith evaluation; its synthetic label is not a task-pass claim. Restarting the script creates fresh fixture state; clicking Start again in the same server reuses the existing fixture state. Never present a reused state as a fresh evaluation.
+The existing `final-candidate` release ledger must already exist. The launcher reads that allowance without creating or increasing it; all actor/reviewer/retry calls retain the same $5 logical-task and shared release limits. It makes no model call before task entry. It does not run graders or export a LangSmith evaluation. A synthetic demonstration is separate from the scored acceptance records and must remain labeled synthetic in the recording.
+
+## Terminal interaction and stopping
+
+- At an approval prompt, inspect the exact destination and submitted values. Type `yes` to approve that exact request; any other answer denies it. There is no approve-all mode. Denial stops the run as partial.
+- At a clarification prompt, supply only the genuinely missing fact or choice. `/pause` saves the run and exits. A synthetic launcher then closes its fixture: native CLI resume does not reconstruct that server or its origin isolation, so synthetic demonstration resume is unsupported. Answer the current question to continue this run, or deliberately start a new labeled demonstration.
+- Ctrl-C triggers normal runner cancellation and cleanup, then closes the fixture. Cancellation does not prove a website effect was rolled back. Inspect the private action journal before any further consequential operation.
+- A completed result exits with code 0; partial, needs-user, failed or cancelled results return code 2. An interrupt at the initial prompt returns 130. The displayed result is the runner's actual result, not a successful-outcome template.
+
+The optional viewport dimensions apply to the initial page after browser startup and isolation. Supply both: width 320–3840, height 240–2160. Omitting both preserves the default. They persist on that page through navigation but do not configure new tabs/popups or resize the native window. Tile and inspect the actual windows separately.
 
 ## Existing live account
 
-Close the current browser process holding `artifacts/profiles/demo` before the runner opens it. Reuse the prepared profile; do not create fresh logins or copy cookies:
+For a new live task, use the existing CLI directly in Terminal:
 
 ```bash
-uv run python scripts/demo_console.py --url https://eda.yandex.ru/ --profile demo --budget-usd 5 --release-session final-candidate
+uv run browser-agent run --profile demo --url https://eda.yandex.ru/ --budget-usd 5 --release-session final-candidate
 ```
 
-Use the actual prepared service URL if it differs. This does not establish that the live account or runtime works: verify the current browser state. Earlier read-only Yandex Eda checks showed authenticated order history from April 2025. Subsequent actual-runner resumes reopened the profile and reached the site; the latest saved live run is paused for the real delivery address. This establishes narrower authenticated access, not previous-week history or a completed food task. An adapted historical task must be labeled honestly. Automatic real-account LangSmith tracing remains disabled by the existing runner. Actual private account content can appear locally in the console and browser, so review and redact the recording before sharing.
-
-## Viewport for a tiled recording
-
-If the browser window is tiled to half the screen, its default Playwright viewport may be wider than the visible area. Supply both optional dimensions to size the initial agent page, for example:
+For the already saved Yandex task, resume its existing logical run and ledger:
 
 ```bash
-uv run python scripts/demo_console.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate --viewport-width 640 --viewport-height 620
+uv run browser-agent resume 9ad93502-a357-41e0-b888-b92413f295a5
 ```
 
-Width must be 320–3840 pixels and height 240–2160. Omitting both preserves the existing default. The console displays the selected initial viewport. The wrapper waits for the original browser startup and fixture isolation, then resizes the initial page before the runner proceeds; it does not change the safety gate, task, profile or budget. The setting remains on that page during navigation, but does not configure later tabs/popups or resize the native window. Arrange the native window separately and inspect that the whole page fits before recording. This option is for console-launched tasks; it does not alter native CLI resume behavior.
+Reuse the prepared profile and close any existing holder. Do not copy cookies or create another login unnecessarily. The saved task is paused for a genuine delivery address. Earlier authenticated history was dated April 2025; that does not establish previous-week history or a completed food task. Label any historical-task adaptation accurately. Automatic live-account LangSmith tracing remains disabled. Private account content can appear in the terminal and browser; review the recording before sharing.
 
-## Recording and interaction
+## Recording and review
 
-1. Open the console link, then arrange this browser console beside the agent’s headed browser. The latter opens after Start task. Start the screen recording before entering the task if possible, or explicitly identify any setup segment excluded from the recording.
-2. Enter the ordinary task and click **Start task**. Only one runner can be active in this console. It uses the CLI-selected URL, profile and release session; task text is never interpreted as a shell command.
-3. Watch actual tool calls and browser changes. The console mirrors the runtime’s existing event formatting, including its per-event display limits; private `events.jsonl` retains the runtime event records. The display retains a bounded recent output window and explicitly labels earlier omitted output.
-4. If asked, inspect the full concrete request. **Approve this exact action** sends its request ID and an explicit boolean approval to the existing runner. **Deny** sends an explicit denial. Stale, mismatched or duplicate answers are rejected; no approve-all control exists. Ordinary clarifications use the separate reply form.
-5. **Save and pause** is available at a pending question and returns the runner’s existing `needs_user` boundary. A paused task is not complete. For a live-account task, resume its saved run through `uv run browser-agent resume RUN_ID`. Synthetic console tasks do not have a supported resume command: native CLI resume does not restore the fixture server or its browser-origin isolation. Keep the fixture console running and answer its current question to continue, or deliberately start a new labeled demonstration. Starting another console task creates a new logical run, not a resume.
-6. Verify the final report against the browser. Stop before final payment unless the actual exact action was explicitly authorized. The console displays the actual returned result, including partial, needs-user or failure states.
-7. Stop and inspect the complete recording. Publish only a reviewed shareable copy showing both the console and actual browser, with the synthetic/live distinction visible. Recorder setup is in [SETUP.md](SETUP.md).
+1. Open a real Terminal window and prepare the command. Start screen recording before entering the task; if a setup segment is excluded, identify that honestly.
+2. Tile the controlled browser and terminal side by side once the browser opens. Keep both readable, with the synthetic/live distinction visible.
+3. Show actual exploration, proposed tools, browser changes and exact approvals. Answer necessary questions without supplying navigation scripts or coaching every step.
+4. Verify the final report against the browser and stop before payment/order placement. A partial or paused task must remain labeled incomplete.
+5. Stop the recorder, inspect the complete video for privacy and correctness, and publish only a reviewed shareable copy. Recorder commands are in [SETUP.md](SETUP.md).
 
-Ctrl-C closes the server and cancels its active runner through the runner’s existing cleanup. Cancellation does not mean an in-flight website action was rolled back; inspect the saved journal before any further consequential operation. Resume a live task on its saved run; synthetic fixture continuation has the limitation described above. Closing the console tab alone does not cancel a running task; reopen its private link to continue. Stop the script when finished.
-
-The HTTP server binds only to `127.0.0.1`. State reads require the unpredictable session bearer token. Mutations additionally require the exact loopback Host/Origin, a separate CSRF token, bounded JSON payloads and the pending-question binding. Page content is rendered as text, scripts/styles use CSP nonces, and no external assets are loaded. Credentials/environment configuration are not exposed as API fields. This is a private local control surface, not a deployable multi-user web service.
+Runtime events have their existing per-event terminal display limit; full private events remain in the run's `events.jsonl`. Do not replace missing video steps with a fabricated trajectory or publish credentials, browser profiles or raw private artifacts.
 
 ## Verification
 
 ```bash
-uv run ruff check scripts/demo_console.py tests/test_demo_console.py
-uv run pytest tests/test_demo_console.py -q
+uv run ruff check scripts/demo_terminal.py tests/test_demo_terminal.py
+uv run pytest tests/test_demo_terminal.py -q
 ```
 
-The tests exercise actual localhost HTTP admission, single-flight execution, exact approval/denial/replay rejection, clarification/pause delivery, exception-value redaction and cancellation using a fake runner. A real Playwright UI test checks authenticated polling, actual streamed output and approval-button binding without model calls. An actual Playwright fixture test checks the selected initial viewport, reload persistence and continued external-request isolation; validation rejects incomplete/out-of-range dimensions and the default factory stays unchanged. These tests verify the optional console; they do not substitute for the runtime acceptance suite, live compatibility or the final video review.
+These tests verify terminal argument/result forwarding, the real CLI approval and clarification responder, fixture lifetime during answers and cancellation, existing-release admission, and actual Playwright viewport/network isolation. Paid behavior, full task success and the final video still require their separate evidence.
 
 ---
 
@@ -262,7 +261,7 @@ Audit updated: 2026-09-10. This is the current implementation map for R01–R20,
 | ID | Requirement | Current implementation | Evidence and remaining scope |
 | --- | --- | --- | --- |
 | R01 | Programmatic browser control | [BrowserSession](../src/browser_agent/browser.py) owns a persistent Playwright Chromium context; headed by default; generic observed-ref actions. | **Implemented / deterministic coverage:** B01 tests open headed Chromium, click an observed ref and verify actual page state. Installation/start errors are typed. No claim of untested operating-system compatibility. |
-| R02 | Visible browser and text task entry | [CLI](../src/browser_agent/cli.py) accepts positional or prompted task text, displays Rich events/approval/result, and launches headed browser unless headless is explicitly selected. The optional [local browser console](DEMO.md) exposes the same runner, live Rich events and exact human-response forms for recording. | Headed browser/CLI tests and 30 optional console tests cover HTTP/UI/cleanup and initial-page recording viewport/isolation. The console had a manual visual check and subsequently hosted the retained live attempts. **Manual presentation evidence pending:** final recording must show actual task entry/events alongside matching real browser activity, clearly identifying the optional console as browser-based. A headless test or viewport-only video is insufficient. |
+| R02 | Visible browser and text task entry | [CLI](../src/browser_agent/cli.py) accepts positional or prompted task text, displays actual Rich events/approvals/results, and launches a headed browser. Use a real terminal beside the browser, matching the three supplied reference images and the user’s 2026-09-10 clarification. The [terminal demo launcher](DEMO.md) keeps an isolated fixture alive for the same runner. | Headed browser/CLI evidence is recorded in VALIDATION.md. **Presentation pending:** actual terminal task entry/events plus matching controlled-browser activity in the final recording; viewport-only video is insufficient. |
 | R03 | Persistent session and manual login | [BrowserSession](../src/browser_agent/browser.py), CLI `login`, and [runner](../src/browser_agent/runner.py) retain dedicated profiles; profile locks prevent concurrent ownership. `ask_user` pauses login without model polling. Password refs are excluded, snapshot values redacted, screenshots masked. | **Implemented / deterministic coverage:** B02/B11 test actual protected-page expiry, harness-simulated human login, fresh resume, absence of the synthetic password in model requests, and cookie-authenticated reopening. The actual live attempt `9ad93502` also reopened the prepared Yandex Eda profile and showed authenticated access in an actor screenshot, the latest resume accepted the previously supplied URL and paused for a real delivery address. Earlier stalls remain recorded; live complex-task compatibility remains unproven. |
 | R04 | Autonomous multi-step decisions | [AgentGraph](../src/browser_agent/graph.py) cycles observation, native tool decision, independent review, optional approval, execution, verification and recovery. Actor receives the ordinary task and observed evidence. | Graph integration is tested with a scripted model substitute. **Historical E01–E04 fixture passes:** all three core cases and both generalization cases passed on `ff8a5f1d1654`, including independent semantic review and verified traces. Later failure diagnostics prompted further repairs; the current candidate requires matching acceptance results. No live-task success is inferred. Mechanism implementation alone does not prove autonomy quality. |
 | R05 | Claude or OpenAI runtime model | [Gateway](../src/browser_agent/llm.py) uses native async OpenAI Responses. [Settings](../src/browser_agent/config.py) defaults to `gpt-5.6-luna`: low reasoning for actor/risk/clarification and medium for completion review. Only a model with a verified local pricing/count contract can dispatch; no silent upgrade. | Structured OpenAI preflight and token/usage verification are recorded in validation artifacts. Fake-wire provider tests verify failure handling. Runtime currently supports the documented OpenAI/Luna configuration; a Claude adapter is not implemented. |
@@ -275,7 +274,7 @@ Audit updated: 2026-09-10. This is the current implementation map for R01–R20,
 | R12 | Structured LLM/tool calls without regex JSON recovery | [Closed tool registry](../src/browser_agent/tools.py) uses native function calls and strict Pydantic JSON schemas. Exactly one valid call is accepted. Browser-effect descriptions explicitly define a guarded proposal: host review and any required exact approval precede dispatch. `ask_user` is for missing facts/choices or manual authentication, not a replacement approval path. A strict clarification-admission reviewer can return pure permission or exactly grounded already-known questions to the actor at most twice; genuine ambiguity/authentication and review failure still reach the human, without fabricated approval. Malformed/incomplete/refused output never produces partial tool dispatch. | **Implemented / deterministic coverage:** P01–P03/F08, including real graph repair limits and zero browser effects. Regex used to read Playwright ref annotations or redact historical refs does not parse model prose into actions. |
 | R13 | Actual bounded programmatic retry | Gateway retries selected connection/status failures at most three total attempts, applies bounded backoff/Retry-After, and reserves each attempt. Nonretryable authentication errors stop. Browser mutation execution is not blindly retried. | **Implemented / deterministic coverage:** P13/F06/F07 use real Gateway/Store with fake wire outcomes; browser 429 has separate persisted-deadline/manual-resume tests. Unknown billed attempts retain their reservation. |
 | R14 | Truthful docs and clean repository | Current code/evidence maps are [this file](REQUIREMENTS.md), [TEST-COVERAGE.md](TEST-COVERAGE.md) and [VALIDATION.md](VALIDATION.md). [Final report](../evals/report.py) checks actual artifact/test/evaluation evidence and flags missing/stale work. | **Final audit pending:** exact current stage runs, reproduction, secret/profile exclusion, clean worktree, commit/push and evidence review. Prepared design documents are not proof of implemented behavior; current validation must not label unfinished tasks passed. |
-| R15 | Short actual-run video and repository link | Public repository exists at [Nordup/sp-solution-test-assignment](https://github.com/Nordup/sp-solution-test-assignment). CLI/browser and the optional browser console provide the surfaces to record. | **Video pending:** one real complex-task run, actual task/event console plus browser with the console implementation identified, supported result, privacy review and playable shareable artifact. No final video PASS is asserted here. |
+| R15 | Short actual-run video and repository link | Public repository: [Nordup/sp-solution-test-assignment](https://github.com/Nordup/sp-solution-test-assignment). Record the real terminal beside the controlled browser. | **Video pending:** one actual complex-task run, supported outcome, clear synthetic/live label, privacy review and playable shareable artifact. No final video PASS is asserted. |
 | R16 | Research and technical decisions | [LangGraph research](LANGGRAPH-RESEARCH.md), [initial implementation research](IMPLEMENTATION-RESEARCH.md), [design](SYSTEM-DESIGN.md), [plan](IMPLEMENTATION-PLAN.md), and current validation preserve rationale and changes. | Documentation and compatibility probes are present. Current refinements—Luna default, byte/token limits, snapshot password redaction, recall, and conservative uncertainty—must remain reflected in final docs. |
 | R17 | Language/library/SDK selection | Python 3.12, Playwright, LangGraph StateGraph, SQLite checkpointing, native OpenAI, Pydantic, Rich/Typer and LangSmith; dependencies locked in [pyproject.toml](../pyproject.toml) and [uv.lock](../uv.lock). | Setup checks and actual browser/graph/provider integration exercise this combination. Final clean-install reproduction remains part of release sign-off. |
 | R18 | Page extraction and generic tool architecture | Accessibility snapshot refs, scoped/paginated `read`, historical `recall`, selective viewport `screenshot`, and typed navigation/click/fill/select/key/scroll/tab tools. | **Implemented / deterministic coverage:** actual long-page, UTF-8, scope, iframe, screenshot-mask and selection tests. Canvas-only interaction, coordinate clicking, arbitrary JS, uploads/downloads and unrestricted local file access are outside the supported tool set. A screenshot does not make an otherwise unsupported control actionable. |
@@ -512,9 +511,9 @@ The action-result and historical-evidence tests in [test_runtime_contracts.py](.
 
 ## Optional recording console
 
-[tests/test_demo_console.py](../tests/test_demo_console.py) contains 21 distinct HTTP/UI/cleanup cases. Twenty passed together and the additional driver-cleanup test passed separately; this is optional-console evidence, not a runtime model evaluation. The actual Playwright UI test verifies authenticated polling, streamed output rendered as text and exact approval-button binding. HTTP tests cover loopback Host, session token, Origin/CSRF admission, bounded task inputs, single active runner, stale/mismatched/duplicate approval rejection, clarification/pause delivery and exception-value redaction. Shutdown tests verify cancellation of the owned runner while allowing its driver cleanup to complete.
+The retired browser-console tests at commit 7741c60 contained 21 distinct HTTP/UI/cleanup cases. They were removed when the user confirmed the real-terminal interface on 2026-09-10; this paragraph records historical evidence only. Twenty passed together and the additional driver-cleanup test passed separately; this is optional-console evidence, not a runtime model evaluation. The actual Playwright UI test verifies authenticated polling, streamed output rendered as text and exact approval-button binding. HTTP tests cover loopback Host, session token, Origin/CSRF admission, bounded task inputs, single active runner, stale/mismatched/duplicate approval rejection, clarification/pause delivery and exception-value redaction. Shutdown tests verify cancellation of the owned runner while allowing its driver cleanup to complete.
 
-A manual visual inspection confirmed the console presentation; no billed console task or final recording has been completed. Stage 8 includes this file so the final post-core regression covers the shipped optional interface. [DEMO.md](DEMO.md) distinguishes the browser console from the native CLI and clearly labels fixture demonstrations.
+This retired interface had a historical manual visual inspection; it is no longer the submission interface. Stage 8 now includes terminal-launcher tests. [DEMO.md](DEMO.md) specifies the real-terminal layout and clearly labeled fixture demonstration.
 
 The food fixture constraint has separate assertions in `test_food_task_exposes_only_permitted_boundary_and_preserves_source` and `test_payment_boundary_is_not_added_to_other_task_families` ([test_fixtures.py](../tests/test_fixtures.py)), plus `test_food_failure_tasks_inherit_payment_boundary_without_failure_hints` ([test_failure_cases.py](../tests/test_failure_cases.py)). These prove source preservation and explicit permitted outcome constraints across food variants; the state graders still require correct checkout and no payment/order commit. They do not turn earlier needs_user food attempts into passes.
 
@@ -637,7 +636,10 @@ Three cases in [test_verified_transition.py](../tests/acceptance/test_verified_t
 The prospective cover-letter fill regressions in `tests/test_eval_reporting.py` distinguish the exact durable-bound proposed text from old form contents. Real browser/runner tests prove fill-only approval sends zero applications, while a separately approved submit sends exactly one; preparation records cannot satisfy submission chronology or journal evidence. Invalid content/company/origin/binding and malformed saved actions deny. Actual submit auditing still reads current fields, ignoring prospective payloads. The affected evaluator/failure-case suite passed145 tests; this corrects the fixture responder, not runtime approval policy or outcome requirements.
 
 
-Partial actor reports now use the same registered-source/exact-quote validation and factual audit as completed reports, while endpoint verification remains completed-only. Ten new report tests cover truthful remaining work, fabricated quotes/unobserved IDs, relabeling a rejected completed report as partial, no repeated effect, shared repair exhaustion, unavailable review, host fallback, and an exhausted actual ledger with zero generations. Thirteen new failure-grader cases include user-facing claim text while excluding quote/ID/metadata matches and retaining effect/proposal gates. The combined focused selections passed163 checks. Four evaluator request-contract cases preserve truthful pauses and contradictory reports unchanged; the evaluator selection passed27 plus3 existing outcome-gate regressions. Native calibration and fresh actor evidence remain separate.
+Partial actor reports now use the same registered-source/exact-quote validation and factual audit as completed reports, while endpoint verification remains completed-only. Ten new report tests cover truthful remaining work, fabricated quotes/unobserved IDs, relabeling a rejected completed report as partial, no repeated effect, shared repair exhaustion, unavailable review, host fallback, and an exhausted actual ledger with zero generations. Thirteen new failure-grader cases include user-facing claim text while excluding quote/ID/metadata matches and retaining effect/proposal gates. The combined focused selections passed 163 checks. Four evaluator request-contract cases preserve truthful pauses and contradictory reports unchanged; the evaluator selection passed 27 plus 3 existing outcome-gate regressions. Native calibration and fresh actor evidence remain separate.
+
+
+Two cases in [test_source_fidelity.py](../tests/acceptance/test_source_fidelity.py) pass original sources, misleading compressed notes and actual proposed field text through the real graph/browser review path. A scripted rejection yields zero effects and concrete redrafting feedback; a faithful paraphrase or explicit future intention then submits once with exact approval.30 focused source/scope/risk tests passed. These tests establish enforcement of a returned verdict, not semantic discrimination. Native reviewer calibration 3/5 and subsequent actor evidence are retained in VALIDATION.md.
 
 ---
 
@@ -865,12 +867,12 @@ A separate low-effort factual-only check (`corrected-mail-factual-calibration-c9
 The factual reviewer now shares the existing completion-effort setting, medium by default. Actor/risk/clarification/memory remain low; model, schemas, prompts, packet and token/spending limits are unchanged by this effort routing. This narrow calibration motivates the setting; it is not a reliability estimate or a replacement for fresh ordered actor evaluations.
 
 
-Candidate `1311f5860757` is frozen with shared medium final-review effort. The final affected provider/report/context selection passed **67 tests**; Ruff and diff checks passed. Fresh ordered stages03/04 are running before the provider/actor stages. Prior fingerprints and calibration failures remain historical evidence.
+Candidate `1311f5860757` is frozen with shared medium final-review effort. The final affected provider/report/context selection passed **67 tests**; Ruff and diff checks passed. Fresh ordered stages 03/04 are running before the provider/actor stages. Prior fingerprints and calibration failures remain historical evidence.
 
 
 ### Shared final-review effort candidate: core 2/3
 
-On `1311f5860757` / source commit `4341d34`, ordered stages03/04 passed **263/32 tests** with no skips; provider/LangSmith preflight `0c1dcb0a-01f8-4428-9f2e-da496fbc7957` passed at $0.000058. Core experiment `eval-20260909T214033-95ac71e2` completed all three cases with verified traces and closed task ledgers, zero reserved/unknown:
+On `1311f5860757` / source commit `4341d34`, ordered stages 03/04 passed **263/32 tests** with no skips; provider/LangSmith preflight `0c1dcb0a-01f8-4428-9f2e-da496fbc7957` passed at $0.000058. Core experiment `eval-20260909T214033-95ac71e2` completed all three cases with verified traces and closed task ledgers, zero reserved/unknown:
 
 | Case | Run | Result | Cost | Evidence |
 | --- | --- | --- | --- | --- |
@@ -883,10 +885,10 @@ The pipeline stopped before generalization. Read-only diagnosis localized mail�
 
 ### Bounded risk-admission repair
 
-Candidate `8b0283652130` implements original request → remove duplicate copy aid → 24KB whole-source packet. No model/token/spending cap changes. Eight new admission cases plus affected provider/context/scope/resume checks passed **82 tests**, with Ruff and diff checks passing. The documentation/interface audit found no blocking command discrepancies. Fresh ordered stages03/04 and subsequent actor evaluations remain required; the previous mail failure is retained.
+Candidate `8b0283652130` implements original request → remove duplicate copy aid → 24KB whole-source packet. No model/token/spending cap changes. Eight new admission cases plus affected provider/context/scope/resume checks passed **82 tests**, with Ruff and diff checks passing. The documentation/interface audit found no blocking command discrepancies. Fresh ordered stages 03/04 and subsequent actor evaluations remain required; the previous mail failure is retained.
 
 
-On `8b0283652130` / source commit `e5a9de6`, fresh ordered stages03/04 passed **271/32 tests**, no skips/failures. Preflight `8e4a5efd-4d2e-4162-ac59-911323448755` passed at $0.000058. Core experiment `eval-20260909T220038-3ef513da` passed **3/3**, all LangSmith traces verified and task ledgers closed with zero reserved/unknown:
+On `8b0283652130` / source commit `e5a9de6`, fresh ordered stages 03/04 passed **271/32 tests**, no skips/failures. Preflight `8e4a5efd-4d2e-4162-ac59-911323448755` passed at $0.000058. Core experiment `eval-20260909T220038-3ef513da` passed **3/3**, all LangSmith traces verified and task ledgers closed with zero reserved/unknown:
 
 | Case | Run | Cost |
 | --- | --- | ---: |
@@ -903,13 +905,13 @@ Generalization `eval-20260909T221028-89446590` finished **1/2**, both traces ver
 Candidate `e51c37f8304d` now replaces stale pending-observation feedback after successful verification with an explicit host-bound source/target/result transition. Native result and feedback agree; failed observations and loop overrides are preserved. **82 focused tests passed**, including three new forced-memory/failed-observation cases; Ruff and diff checks passed. Fresh ordered validation remains required.
 
 
-On `e51c37f8304d` / commit `409f6a3`, ordered stages03/04 passed **274/32**, then provider/LangSmith preflight passed. Core experiment `eval-20260909T222245-7d67ca18` ended **2/3**, all traces verified and task ledgers closed with zero reserved/unknown: mail `44bf150f-b4a1-4297-9568-8b16ca293682` passed ($0.262489), food `a586efb1-0e04-4c93-826f-8d9cd9332c53` passed ($0.048504), jobs `d8130005-4b76-4258-a9c0-9d3f25c42a04` failed ($0.061196). The risk reviewer conservatively requested approval for filling Cedar’s cover-letter textarea. The prospective text was present in durable-bound `submitted.value`, but the fixture approver read the old empty `fields.value` and denied the preparation. Two earlier applications succeeded; no third application was sent. A harness repair is being implemented to distinguish prospective fill content from actual submission fields, retaining exact binding and independent submission approval. This failed attempt is unchanged; no later stage ran.
+On `e51c37f8304d` / commit `409f6a3`, ordered stages 03/04 passed **274/32**, then provider/LangSmith preflight passed. Core experiment `eval-20260909T222245-7d67ca18` ended **2/3**, all traces verified and task ledgers closed with zero reserved/unknown: mail `44bf150f-b4a1-4297-9568-8b16ca293682` passed ($0.262489), food `a586efb1-0e04-4c93-826f-8d9cd9332c53` passed ($0.048504), jobs `d8130005-4b76-4258-a9c0-9d3f25c42a04` failed ($0.061196). The risk reviewer conservatively requested approval for filling Cedar’s cover-letter textarea. The prospective text was present in durable-bound `submitted.value`, but the fixture approver read the old empty `fields.value` and denied the preparation. Two earlier applications succeeded; no third application was sent. A harness repair is being implemented to distinguish prospective fill content from actual submission fields, retaining exact binding and independent submission approval. This failed attempt is unchanged; no later stage ran.
 
 
 Candidate `5d667fa7c4e7` fixes only the fixture approver’s prospective letter-fill handling. It validates the exact pending fill action/value and keeps preparation distinct from submission, preserving all origin/company/content/resume/binding checks. **145 evaluator/failure-case tests passed** after final edits, including actual browser fill-zero and separately-approved-submit-one boundaries; Ruff/diff checks passed. Runtime, model, caps and outcome graders are unchanged. Fresh ordered release checks follow; prior failures remain retained.
 
 
-On `5d667fa7c4e7` / source commit `f410f25`, stages03/04 passed **274/32** with no skips/failures and native provider/LangSmith preflight passed. Core experiment `eval-20260909T224327-29021133` passed **3/3**, all traces verified and task ledgers closed, zero reserved/unknown: mail `b9c79e29-5c1c-4326-881f-e06b58cc4f02` ($0.193714), food `084fed58-786c-4203-8fc4-f2d2cf45403d` ($0.049704), jobs `3fd0f4bb-d99b-4873-ac58-1f58345107a6` ($0.077878). Total $0.321296. Later stages remain separate gates.
+On `5d667fa7c4e7` / source commit `f410f25`, stages 03/04 passed **274/32** with no skips/failures and native provider/LangSmith preflight passed. Core experiment `eval-20260909T224327-29021133` passed **3/3**, all traces verified and task ledgers closed, zero reserved/unknown: mail `b9c79e29-5c1c-4326-881f-e06b58cc4f02` ($0.193714), food `084fed58-786c-4203-8fc4-f2d2cf45403d` ($0.049704), jobs `3fd0f4bb-d99b-4873-ac58-1f58345107a6` ($0.077878). Total $0.321296. Later stages remain separate gates.
 
 
 The same candidate passed generalization **2/2** (`eval-20260909T225151-4c112a15`): unfamiliar event `d863233c-62d7-4090-80df-bc8f1d8907e4` ($0.053565) and changed food layout `ca817f56-a687-4751-b4c2-5625f699c594` ($0.051102). The latter progressed past the previously missed intermediate checkout step and reached the actual final payment boundary. Recovery also passed **2/2** (`eval-20260909T225537-f8a462c2`): stale ref `586efa18-7ed3-48d1-b4b4-cf10065236af` ($0.050662), explicit denial `7eea4787-6013-4323-8d9d-555387c58206` ($0.030770). All traces verified; all task ledgers closed with zero reserved/unknown. Stage08 and five model-driven failure cases are still required before recording.
@@ -918,10 +920,27 @@ The same candidate passed generalization **2/2** (`eval-20260909T225151-4c112a15
 Stage08 passed **489 tests** on the same candidate. Semantic failure experiment `eval-20260909T230147-2cc855d5` finished **3/5**: ambiguous food history ($0.008553), unavailable item ($0.011750), and existing applications ($0.031647) passed. Ambiguous mail `668762de-06aa-4f90-9dab-87be2456b566` failed ($0.040056): the factual judge accepted the clarification’s facts but marked grounding false solely because work remained incomplete. Unsupported qualifications `a512cca7-4dad-44ac-861d-f8883bb71631` failed ($0.044856): the deterministic explanation check ignored user-facing structured claims, where the mandatory CUDA requirement was stated. All five traces verified; task ledgers closed with zero reserved/unknown. Neither failure is relabeled as passed. Generic evaluator repairs and independent calibration are required before fresh ordered checks; video/audit remain pending.
 
 
-Candidate `31d09be88a73` includes two generic evaluator corrections and a runtime repair found during diagnosis: factual grounding is distinct from completion, failure explanation checks include structured claim text, and actor partial reports now receive exact-citation validation and bounded factual review. Endpoint checks still apply only to completed reports; the same repair/time/spending bounds and no-effect-replay protections remain. **163 focused runtime/failure checks** and **27 evaluator checks plus3 outcome-gate regressions** passed; Ruff/diff passed. Native calibration and fresh ordered validation are underway.
+Candidate `31d09be88a73` includes two generic evaluator corrections and a runtime repair found during diagnosis: factual grounding is distinct from completion, failure explanation checks include structured claim text, and actor partial reports now receive exact-citation validation and bounded factual review. Endpoint checks still apply only to completed reports; the same repair/time/spending bounds and no-effect-replay protections remain. **163 focused runtime/failure checks** and **27 evaluator checks plus 3 outcome-gate regressions** passed; Ruff/diff passed. Native calibration and fresh ordered validation are underway.
 
 
 Native evaluator calibration `clarification-judge-calibration-d48dfc70-2646-4c5b-8aa7-c0c7eec571ae` passed **5/5** ($0.005021): exact retained mail/food clarifications and a completed core report accepted; false all-read/all-deleted and fabricated amount/password assertions rejected. Actual-finalize calibration `partial-finalize-calibration-8947170f-6aa4-48fa-b6c5-d5c334233add` passed **3/3** ($0.005396): original invalid quote rejected locally, explicitly corrected truthful partial accepted by native factual review, and false submission summary rejected. Both used scratch output/separate bounded calibration ledgers under the existing release allowance; historical source hashes unchanged, no actor/browser task or historical regrade. These narrow checks are not reliability estimates.
+
+
+On `31d09be88a73` / source commit `7741c60`, ordered stages 03/04 passed **284/32 tests**, no skips/failures. Provider/LangSmith preflight completed at 2026-09-09T23:22:07Z. Fresh autonomous stages are running sequentially; no new actor pass is claimed yet. Read-only repository precheck scanned 567 reachable Git objects with no exact configured credential matches/private tracked paths, preserved image hashes and `.env.local`0600; this is not the final video/repository sign-off.
+
+
+Core experiment `eval-20260909T232208-a89cb55a` on `31d09be88a73` finished **2/3**, all traces verified and task ledgers closed with zero reserved/unknown: mail `49d7e6dd-572e-4aba-ae49-493a5a1d8a2c` passed ($0.236677), food `8ba23e93-aa84-41d7-9513-f6447845a766` passed ($0.049615), jobs `f7a8be74-90b5-4413-87ed-1b36cd4bd95d` failed ($0.131726). All jobs destination, approval, delivered-evidence, completion and final-report checks passed; semantic letter grounding failed because drafted wording broadened the resume’s stated experience. Examples include attaching three years of Python experience to AI engineering generally and broader claims about services/tool-interaction design. Three actual synthetic applications were submitted; the failed record remains unchanged. Later stages did not run. Generic source-bound drafting is being reviewed before any fresh attempt.
+
+
+Candidate `15261073452a` adds generic source-fidelity instructions to actor, memory and the existing risk reviewer, without schema/helper/model/cap changes. **30 focused tests passed**, including two new actual-browser rejection→redraft→exact-approved-once cases; Ruff/diff passed. Native risk-review calibration `draft-fidelity-calibration-8ddd764b-2d23-4a8f-824b-9b3c2df108ff` returned **3/5 expected decisions**, costing $0.019143 under a $0.10 calibration cap/shared release ledger, closed with zero reserved/unknown. It accepted all three faithful/prospective variants but also accepted both original broadened drafts. The original source/checkpoint hashes remain unchanged; no browser effect or historical regrade occurred. This is a documented semantic reviewer limitation, not a pass or proof of factual blocking. The actor/memory correction must be assessed by fresh autonomous tasks with unchanged independent grading, rather than repeating the reviewer until it returns a preferred verdict.
+
+
+### User correction: real terminal presentation — 2026-09-10
+
+The user reattached all three original screenshots and explicitly required the agent console to be a terminal, not a browser session. All three show the controlled browser beside native terminal task/tool/result output. The extra web-console wrapper is being retired in favor of the existing interactive CLI and a small isolated-fixture terminal launcher. Historical optional-console tests and live-attempt records above remain historical evidence; they do not certify the corrected terminal demo. CUA refused control of macOS Terminal, so a real Codex terminal panel was requested through the app’s terminal tool. No terminal/browser video has yet been recorded.
+
+
+The terminal replacement is implemented: `scripts/demo_terminal.py` reuses CLI task entry, exact responses and Rich output while retaining fixture lifetime, network isolation, profile separation and the existing release ledger. **25 terminal-launcher tests passed** in8.11s, with Ruff/diff/help checks passing. Retired web-console code/tests were removed. No model call or recording was made by this interface verification. The source-fidelity candidate’s ordered stages03/04 passed **286/32 tests**; preflight passed at2026-09-09T23:45:13Z and fresh core evaluation is running.
 
 ---
 
@@ -1020,6 +1039,9 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `668762de-06aa-4f90-9dab-87be2456b566` | `mail_classification_ambiguous` / 403 | `5d667fa7c4e7` | FAIL | 15/16 | yes | 0.040056 | 0.000000 |
 | `b220854d-1f03-4043-8f61-f328fe437bcf` | `jobs_already_applied` / 404 | `5d667fa7c4e7` | PASS | 16/16 | yes | 0.031647 | 0.000000 |
 | `a512cca7-4dad-44ac-861d-f8883bb71631` | `jobs_unsupported_qualifications` / 405 | `5d667fa7c4e7` | FAIL | 12/13 | yes | 0.044856 | 0.000000 |
+| `49d7e6dd-572e-4aba-ae49-493a5a1d8a2c` | `mail_latest_10` / 101 | `31d09be88a73` | PASS | 13/13 | yes | 0.236677 | 0.000000 |
+| `8ba23e93-aa84-41d7-9513-f6447845a766` | `food_previous_order` / 102 | `31d09be88a73` | PASS | 14/14 | yes | 0.049615 | 0.000000 |
+| `f7a8be74-90b5-4413-87ed-1b36cd4bd95d` | `jobs_resume_3` / 103 | `31d09be88a73` | FAIL | 15/16 | yes | 0.131726 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1328,7 +1350,7 @@ Unresolved completion problems and packet omissions remain in a separate `comple
 
 The product interface is a visible browser beside a readable terminal. No custom web dashboard is needed. It must resemble the reference's clarity: a short user task, visible tools and arguments, browser changes and a final result.
 
-The optional `scripts/demo_console.py` provides a browser-based recording surface for the same runner when a native terminal cannot be controlled. It shows actual Rich events, keeps the task visible and forwards exact human approval/clarification responses; it does not introduce another agent loop, auto-approval or fabricated output. Its UI is labeled Agent console with a synthetic/live mode indicator. This is an explicitly identified browser console, not a claim that the recording contains a native Terminal. See DEMO.md for loopback/session/Origin/CSRF controls, fixture isolation and recording instructions. Its 21 tested HTTP/UI/cleanup cases and manual visual inspection are interface evidence; a completed complex-task recording is still required.
+The interface is a real terminal beside the controlled browser, matching all three supplied ideal-solution screenshots. The user explicitly reconfirmed this on 2026-09-10. Task entry, actual tool arguments/results, exact approvals, clarification and final output use the CLI. A terminal fixture launcher keeps the synthetic website alive for the same runner; it adds no browser control-panel interface. See DEMO.md. The earlier optional web-console wrapper was retired following this correction; historical test counts remain historical evidence.
 
 ### Terminal information hierarchy
 
@@ -1468,6 +1490,11 @@ Risk-review admission tries the original request, then removes the optional dupl
 
 After successful post-dispatch observation, the native result and current runtime feedback explicitly bind the original target/ref and source observation to the resulting observation/title/URL. `requires_observation` becomes false only on this successful path. This is evidence of dispatch followed by observation, not semantic proof that the user task succeeded. Failed/challenged observations keep the pending state; loop-recovery feedback may supersede the transition. This prevents stale URL-only execution feedback from contradicting the actual current page during memory checkpoints.
 
+
+## Source fidelity in drafted content
+
+Actor and memory instructions preserve names, durations, technologies, project boundaries and achievement scope from actual sources. Recipient requirements, prior drafts and compressed notes do not establish new personal facts. Faithful paraphrases and clearly prospective intentions remain allowed. The existing risk reviewer is instructed to reject clearly unsupported factual expansions before dispatch through normal recovery; its semantic judgment is fallible. A retained-input native calibration accepted two subtly broadened drafts despite these instructions, while accepting three faithful/future-intention variants. This is a known limitation, not a proven factual firewall. Exact human review of outbound content and independent evaluation remain necessary; fresh actor results are documented separately.
+
 ---
 
 <!-- Source: FINAL-TEST.md -->
@@ -1535,7 +1562,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_risk_admission.py tests/acceptance/test_verified_transition.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_risk_admission.py tests/acceptance/test_verified_transition.py tests/acceptance/test_source_fidelity.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:
@@ -1713,7 +1740,7 @@ G04's safe partial result is a PASS for the denial test, not a PASS for completi
 ## 8. Extended failure regression — run after core tasks
 
 ```bash
-BROWSER_AGENT_FINAL_SESSION=final-candidate uv run pytest tests/acceptance tests/test_runner.py tests/test_failure_cases.py tests/test_eval_reporting.py tests/test_demo_console.py tests/test_live_evidence.py -q --junitxml=artifacts/final/08-failures.xml
+BROWSER_AGENT_FINAL_SESSION=final-candidate uv run pytest tests/acceptance tests/test_runner.py tests/test_failure_cases.py tests/test_eval_reporting.py tests/test_demo_terminal.py tests/test_live_evidence.py -q --junitxml=artifacts/final/08-failures.xml
 ```
 
 These tests are deterministic/no paid model unless explicitly moved into a separately budgeted experiment. Use real browser fixtures where page effects matter. They deliberately rerun important boundaries after the end-to-end path has been exercised.

@@ -61,7 +61,7 @@ Source: A/U; maps R01, R05, R14, R17, U02–U05.
 
 ```bash
 uv run ruff check .
-uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_risk_admission.py tests/acceptance/test_verified_transition.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
+uv run pytest tests/acceptance/test_protocol.py tests/acceptance/test_context_budget.py tests/acceptance/test_action_safety.py tests/acceptance/test_graph_resume.py tests/acceptance/test_provider.py tests/acceptance/test_runtime_contracts.py tests/acceptance/test_clarification_admission.py tests/acceptance/test_navigation_provenance.py tests/acceptance/test_scope_obligations.py tests/acceptance/test_completion_boundary.py tests/acceptance/test_report_review.py tests/acceptance/test_risk_admission.py tests/acceptance/test_verified_transition.py tests/acceptance/test_source_fidelity.py tests/acceptance/test_failure_regression.py -q --junitxml=artifacts/final/03-contracts.xml
 ```
 
 The harness creates the output directory if needed. Tests use fake model responses/transport, never paid APIs. Required cases:
@@ -239,7 +239,7 @@ G04's safe partial result is a PASS for the denial test, not a PASS for completi
 ## 8. Extended failure regression — run after core tasks
 
 ```bash
-BROWSER_AGENT_FINAL_SESSION=final-candidate uv run pytest tests/acceptance tests/test_runner.py tests/test_failure_cases.py tests/test_eval_reporting.py tests/test_demo_console.py tests/test_live_evidence.py -q --junitxml=artifacts/final/08-failures.xml
+BROWSER_AGENT_FINAL_SESSION=final-candidate uv run pytest tests/acceptance tests/test_runner.py tests/test_failure_cases.py tests/test_eval_reporting.py tests/test_demo_terminal.py tests/test_live_evidence.py -q --junitxml=artifacts/final/08-failures.xml
 ```
 
 These tests are deterministic/no paid model unless explicitly moved into a separately budgeted experiment. Use real browser fixtures where page effects matter. They deliberately rerun important boundaries after the end-to-end path has been exercised.

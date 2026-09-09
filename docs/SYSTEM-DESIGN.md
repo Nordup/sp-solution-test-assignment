@@ -297,7 +297,7 @@ Unresolved completion problems and packet omissions remain in a separate `comple
 
 The product interface is a visible browser beside a readable terminal. No custom web dashboard is needed. It must resemble the reference's clarity: a short user task, visible tools and arguments, browser changes and a final result.
 
-The optional `scripts/demo_console.py` provides a browser-based recording surface for the same runner when a native terminal cannot be controlled. It shows actual Rich events, keeps the task visible and forwards exact human approval/clarification responses; it does not introduce another agent loop, auto-approval or fabricated output. Its UI is labeled Agent console with a synthetic/live mode indicator. This is an explicitly identified browser console, not a claim that the recording contains a native Terminal. See DEMO.md for loopback/session/Origin/CSRF controls, fixture isolation and recording instructions. Its 21 tested HTTP/UI/cleanup cases and manual visual inspection are interface evidence; a completed complex-task recording is still required.
+The interface is a real terminal beside the controlled browser, matching all three supplied ideal-solution screenshots. The user explicitly reconfirmed this on 2026-09-10. Task entry, actual tool arguments/results, exact approvals, clarification and final output use the CLI. A terminal fixture launcher keeps the synthetic website alive for the same runner; it adds no browser control-panel interface. See DEMO.md. The earlier optional web-console wrapper was retired following this correction; historical test counts remain historical evidence.
 
 ### Terminal information hierarchy
 
@@ -436,3 +436,8 @@ Risk-review admission tries the original request, then removes the optional dupl
 
 
 After successful post-dispatch observation, the native result and current runtime feedback explicitly bind the original target/ref and source observation to the resulting observation/title/URL. `requires_observation` becomes false only on this successful path. This is evidence of dispatch followed by observation, not semantic proof that the user task succeeded. Failed/challenged observations keep the pending state; loop-recovery feedback may supersede the transition. This prevents stale URL-only execution feedback from contradicting the actual current page during memory checkpoints.
+
+
+## Source fidelity in drafted content
+
+Actor and memory instructions preserve names, durations, technologies, project boundaries and achievement scope from actual sources. Recipient requirements, prior drafts and compressed notes do not establish new personal facts. Faithful paraphrases and clearly prospective intentions remain allowed. The existing risk reviewer is instructed to reject clearly unsupported factual expansions before dispatch through normal recovery; its semantic judgment is fallible. A retained-input native calibration accepted two subtly broadened drafts despite these instructions, while accepting three faithful/future-intention variants. This is a known limitation, not a proven factual firewall. Exact human review of outbound content and independent evaluation remain necessary; fresh actor results are documented separately.

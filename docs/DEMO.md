@@ -1,66 +1,65 @@
-# Recording the actual agent console
+# Record the real terminal and browser
 
-`scripts/demo_console.py` is an optional local browser interface to the existing `run_agent` runner. It shows the runner’s actual Rich console stream, accepts an ordinary task, and displays the exact live approval or clarification request. It is explicitly labeled **Agent console**, not a native Terminal. No canned trajectory, automatic approval or hidden task script is used. This recording interface does not replace the CLI or certify an evaluation pass.
+Use a native Terminal window beside the visible Playwright-controlled browser, as shown in the three [reference screenshots](assets/ideal-solution-01.jpg). The terminal shows the typed task, actual tool calls/results, exact approval questions and the final result. The retired browser-based console is not part of the solution.
 
-The runtime, model, headed Playwright browser, profile lock, $5 task limit, release ledger, checkpointing and safety gate are unchanged. The console server itself makes no model call until a user submits a task. The existing release session must already exist; the interface never creates or raises its allowance. If it is exhausted, the agent cannot start another paid call.
+## Synthetic demonstration
 
-## Synthetic recording
-
-Use this when recording a clearly labeled fixture demonstration:
+Run this command in Terminal from the repository root:
 
 ```bash
-uv run python scripts/demo_console.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate
+uv run python scripts/demo_terminal.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate --viewport-width 640 --viewport-height 620
 ```
 
-Open the private `http://127.0.0.1:PORT/#TOKEN` link printed by the script in a supported browser. The session token stays in the URL fragment until the page reads and removes it; it is not sent as a URL query or included in access logs. Reopen the original link after reloading the page. Keep the link private and out of the published recording.
+The terminal displays **Synthetic evaluation — local fixture**, then prompts `Task:`. Enter an ordinary task, for example:
 
-The evaluator-owned fixture starts before the console and remains available until the script exits, including while the agent waits for answers. It supplies only its starting URL to the runner; reference answers, route maps and expected IDs are not passed to the actor. The fixture browser permits requests only to that fixture’s origin. The interface prominently labels the run **Synthetic evaluation — local fixture**. Its separate profile avoids using the prepared real-account profile.
+> Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе на этом сайте. Остановись перед финальным подтверждением оплаты; заказ не размещай.
 
-Type a short task yourself, for example:
+The typed task is forwarded unchanged. The fixture supplies only the starting URL and the isolated browser environment; its reference answers, task script and automatic evaluation approver are not supplied to the runner. The visible browser opens after task entry. The terminal uses the existing CLI's actual Rich output and `human` responder. There is no HTTP control panel.
 
-> Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе на этом сайте. Остановись до оплаты.
+Each launcher invocation starts fresh synthetic fixture state and a new logical run. The fixture stays alive while the runner waits for a terminal answer. Only its own origin is allowed by the existing fixture browser factory. The profile defaults to `demo-synthetic`; the prepared real-account profile `demo` is rejected by this synthetic launcher. Close any existing holder of the selected profile first.
 
-This wording is a labeled demonstration prompt. Preserve the exact source prompts and separate scored evaluation records for acceptance. The demo console does not run graders or export a LangSmith evaluation; its synthetic label is not a task-pass claim. Restarting the script creates fresh fixture state; clicking Start again in the same server reuses the existing fixture state. Never present a reused state as a fresh evaluation.
+The existing `final-candidate` release ledger must already exist. The launcher reads that allowance without creating or increasing it; all actor/reviewer/retry calls retain the same $5 logical-task and shared release limits. It makes no model call before task entry. It does not run graders or export a LangSmith evaluation. A synthetic demonstration is separate from the scored acceptance records and must remain labeled synthetic in the recording.
+
+## Terminal interaction and stopping
+
+- At an approval prompt, inspect the exact destination and submitted values. Type `yes` to approve that exact request; any other answer denies it. There is no approve-all mode. Denial stops the run as partial.
+- At a clarification prompt, supply only the genuinely missing fact or choice. `/pause` saves the run and exits. A synthetic launcher then closes its fixture: native CLI resume does not reconstruct that server or its origin isolation, so synthetic demonstration resume is unsupported. Answer the current question to continue this run, or deliberately start a new labeled demonstration.
+- Ctrl-C triggers normal runner cancellation and cleanup, then closes the fixture. Cancellation does not prove a website effect was rolled back. Inspect the private action journal before any further consequential operation.
+- A completed result exits with code 0; partial, needs-user, failed or cancelled results return code 2. An interrupt at the initial prompt returns 130. The displayed result is the runner's actual result, not a successful-outcome template.
+
+The optional viewport dimensions apply to the initial page after browser startup and isolation. Supply both: width 320–3840, height 240–2160. Omitting both preserves the default. They persist on that page through navigation but do not configure new tabs/popups or resize the native window. Tile and inspect the actual windows separately.
 
 ## Existing live account
 
-Close the current browser process holding `artifacts/profiles/demo` before the runner opens it. Reuse the prepared profile; do not create fresh logins or copy cookies:
+For a new live task, use the existing CLI directly in Terminal:
 
 ```bash
-uv run python scripts/demo_console.py --url https://eda.yandex.ru/ --profile demo --budget-usd 5 --release-session final-candidate
+uv run browser-agent run --profile demo --url https://eda.yandex.ru/ --budget-usd 5 --release-session final-candidate
 ```
 
-Use the actual prepared service URL if it differs. This does not establish that the live account or runtime works: verify the current browser state. Earlier read-only Yandex Eda checks showed authenticated order history from April 2025. Subsequent actual-runner resumes reopened the profile and reached the site; the latest saved live run is paused for the real delivery address. This establishes narrower authenticated access, not previous-week history or a completed food task. An adapted historical task must be labeled honestly. Automatic real-account LangSmith tracing remains disabled by the existing runner. Actual private account content can appear locally in the console and browser, so review and redact the recording before sharing.
-
-## Viewport for a tiled recording
-
-If the browser window is tiled to half the screen, its default Playwright viewport may be wider than the visible area. Supply both optional dimensions to size the initial agent page, for example:
+For the already saved Yandex task, resume its existing logical run and ledger:
 
 ```bash
-uv run python scripts/demo_console.py --fixture food_previous_order --seed 102 --profile demo-synthetic --budget-usd 5 --release-session final-candidate --viewport-width 640 --viewport-height 620
+uv run browser-agent resume 9ad93502-a357-41e0-b888-b92413f295a5
 ```
 
-Width must be 320–3840 pixels and height 240–2160. Omitting both preserves the existing default. The console displays the selected initial viewport. The wrapper waits for the original browser startup and fixture isolation, then resizes the initial page before the runner proceeds; it does not change the safety gate, task, profile or budget. The setting remains on that page during navigation, but does not configure later tabs/popups or resize the native window. Arrange the native window separately and inspect that the whole page fits before recording. This option is for console-launched tasks; it does not alter native CLI resume behavior.
+Reuse the prepared profile and close any existing holder. Do not copy cookies or create another login unnecessarily. The saved task is paused for a genuine delivery address. Earlier authenticated history was dated April 2025; that does not establish previous-week history or a completed food task. Label any historical-task adaptation accurately. Automatic live-account LangSmith tracing remains disabled. Private account content can appear in the terminal and browser; review the recording before sharing.
 
-## Recording and interaction
+## Recording and review
 
-1. Open the console link, then arrange this browser console beside the agent’s headed browser. The latter opens after Start task. Start the screen recording before entering the task if possible, or explicitly identify any setup segment excluded from the recording.
-2. Enter the ordinary task and click **Start task**. Only one runner can be active in this console. It uses the CLI-selected URL, profile and release session; task text is never interpreted as a shell command.
-3. Watch actual tool calls and browser changes. The console mirrors the runtime’s existing event formatting, including its per-event display limits; private `events.jsonl` retains the runtime event records. The display retains a bounded recent output window and explicitly labels earlier omitted output.
-4. If asked, inspect the full concrete request. **Approve this exact action** sends its request ID and an explicit boolean approval to the existing runner. **Deny** sends an explicit denial. Stale, mismatched or duplicate answers are rejected; no approve-all control exists. Ordinary clarifications use the separate reply form.
-5. **Save and pause** is available at a pending question and returns the runner’s existing `needs_user` boundary. A paused task is not complete. For a live-account task, resume its saved run through `uv run browser-agent resume RUN_ID`. Synthetic console tasks do not have a supported resume command: native CLI resume does not restore the fixture server or its browser-origin isolation. Keep the fixture console running and answer its current question to continue, or deliberately start a new labeled demonstration. Starting another console task creates a new logical run, not a resume.
-6. Verify the final report against the browser. Stop before final payment unless the actual exact action was explicitly authorized. The console displays the actual returned result, including partial, needs-user or failure states.
-7. Stop and inspect the complete recording. Publish only a reviewed shareable copy showing both the console and actual browser, with the synthetic/live distinction visible. Recorder setup is in [SETUP.md](SETUP.md).
+1. Open a real Terminal window and prepare the command. Start screen recording before entering the task; if a setup segment is excluded, identify that honestly.
+2. Tile the controlled browser and terminal side by side once the browser opens. Keep both readable, with the synthetic/live distinction visible.
+3. Show actual exploration, proposed tools, browser changes and exact approvals. Answer necessary questions without supplying navigation scripts or coaching every step.
+4. Verify the final report against the browser and stop before payment/order placement. A partial or paused task must remain labeled incomplete.
+5. Stop the recorder, inspect the complete video for privacy and correctness, and publish only a reviewed shareable copy. Recorder commands are in [SETUP.md](SETUP.md).
 
-Ctrl-C closes the server and cancels its active runner through the runner’s existing cleanup. Cancellation does not mean an in-flight website action was rolled back; inspect the saved journal before any further consequential operation. Resume a live task on its saved run; synthetic fixture continuation has the limitation described above. Closing the console tab alone does not cancel a running task; reopen its private link to continue. Stop the script when finished.
-
-The HTTP server binds only to `127.0.0.1`. State reads require the unpredictable session bearer token. Mutations additionally require the exact loopback Host/Origin, a separate CSRF token, bounded JSON payloads and the pending-question binding. Page content is rendered as text, scripts/styles use CSP nonces, and no external assets are loaded. Credentials/environment configuration are not exposed as API fields. This is a private local control surface, not a deployable multi-user web service.
+Runtime events have their existing per-event terminal display limit; full private events remain in the run's `events.jsonl`. Do not replace missing video steps with a fabricated trajectory or publish credentials, browser profiles or raw private artifacts.
 
 ## Verification
 
 ```bash
-uv run ruff check scripts/demo_console.py tests/test_demo_console.py
-uv run pytest tests/test_demo_console.py -q
+uv run ruff check scripts/demo_terminal.py tests/test_demo_terminal.py
+uv run pytest tests/test_demo_terminal.py -q
 ```
 
-The tests exercise actual localhost HTTP admission, single-flight execution, exact approval/denial/replay rejection, clarification/pause delivery, exception-value redaction and cancellation using a fake runner. A real Playwright UI test checks authenticated polling, actual streamed output and approval-button binding without model calls. An actual Playwright fixture test checks the selected initial viewport, reload persistence and continued external-request isolation; validation rejects incomplete/out-of-range dimensions and the default factory stays unchanged. These tests verify the optional console; they do not substitute for the runtime acceptance suite, live compatibility or the final video review.
+These tests verify terminal argument/result forwarding, the real CLI approval and clarification responder, fixture lifetime during answers and cancellation, existing-release admission, and actual Playwright viewport/network isolation. Paid behavior, full task success and the final video still require their separate evidence.
