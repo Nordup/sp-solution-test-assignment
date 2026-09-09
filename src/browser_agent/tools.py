@@ -27,8 +27,14 @@ class Navigate(Strict):
 
 
 class Read(Strict):
-    offset: int = Field(ge=0, le=1000000)
-    scope: str | None
+    offset: int = Field(
+        ge=0,
+        le=1000000,
+        description="Start at 0; for continuation use the observation's next_offset exactly.",
+    )
+    scope: str | None = Field(
+        description="Use null for the whole page, or an exact current element ref from the observation to read its subtree. Never use a CSS selector, role, label, or description such as 'menu'. If the wanted content is beyond a truncated excerpt, use scope=null and its next_offset.",
+    )
 
 
 class Scroll(Strict):
@@ -81,7 +87,11 @@ class Note(Strict):
 class Claim(Strict):
     claim: str = Field(min_length=1, max_length=1500)
     evidence_id: str
-    quote: str = Field(min_length=3, max_length=1500)
+    quote: str = Field(
+        min_length=3,
+        max_length=1500,
+        description="Exact short substring of the supporting saved page content. Quote its actual words, excluding element refs or host-added recall annotations such as '[historical; not actionable]'.",
+    )
 
 
 class Recall(Strict):
@@ -146,7 +156,7 @@ REGISTRY = {
     "back": (Empty, "Propose going back one page in current tab." + _PROPOSAL_GATE),
     "read": (
         Read,
-        "Read a bounded page excerpt or observed scope. Continue with next_offset.",
+        "Read a bounded page excerpt. scope is null or an exact current element ref, never a selector or descriptive label. Continue a truncated excerpt using next_offset.",
     ),
     "scroll": (
         Scroll,

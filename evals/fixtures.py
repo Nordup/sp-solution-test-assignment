@@ -321,6 +321,7 @@ class FixtureServer:
             {
                 "id": "match",
                 "name": "Practical Retrieval Workshop",
+                "description": "Hands-on AI workshop on vector search and retrieval-augmented generation for large language models. Participants build a document retrieval prototype and evaluate its answers.",
                 "city": "Hanoi",
                 "date": "2026-09-12",
                 "time": "18:30",
@@ -331,6 +332,7 @@ class FixtureServer:
             {
                 "id": "early",
                 "name": "AI Morning Lab",
+                "description": "Beginner AI workshop on training and evaluating a text classifier. Guided exercises cover labelled examples, model predictions and common classification errors.",
                 "city": "Hanoi",
                 "date": "2026-09-12",
                 "time": "09:00",
@@ -341,6 +343,7 @@ class FixtureServer:
             {
                 "id": "cost",
                 "name": "Advanced AI Evening",
+                "description": "Advanced AI workshop on evaluating language-model agents. Participants design tool-use experiments and compare reliability, latency and model cost.",
                 "city": "Hanoi",
                 "date": "2026-09-12",
                 "time": "19:00",
@@ -351,6 +354,7 @@ class FixtureServer:
             {
                 "id": "online",
                 "name": "Remote AI Workshop",
+                "description": "Interactive AI workshop on prompt design and evaluating language-model outputs. Remote participants complete practical exercises with shared example datasets.",
                 "city": "Hanoi",
                 "date": "2026-09-12",
                 "time": "18:00",

@@ -88,7 +88,7 @@ PASS only if all required cases execute and assert effects/cost/state. A test th
 ## 4. Actual browser and lifecycle integration
 
 ```bash
-uv run pytest tests/acceptance/test_browser.py tests/acceptance/test_browser_failures.py tests/test_runner.py tests/acceptance/test_failure_regression.py::test_login_expires_midtask_manual_login_resumes_without_secret_observation -q --junitxml=artifacts/final/04-browser.xml
+uv run pytest tests/acceptance/test_browser.py tests/acceptance/test_browser_failures.py tests/acceptance/test_observation_deadline.py tests/test_runner.py tests/acceptance/test_failure_regression.py::test_login_expires_midtask_manual_login_resumes_without_secret_observation -q --junitxml=artifacts/final/04-browser.xml
 ```
 
 Use actual Playwright and local fixture pages; a scripted/fake actor is allowed to target exact boundary conditions in this stage. Runtime selector discovery still goes through current observations. These are integration tests, not proof of autonomous decisions.

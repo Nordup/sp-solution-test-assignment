@@ -119,3 +119,9 @@ ffmpeg -f avfoundation -framerate 10 -capture_cursor 1 -pixel_format nv12 -i "3:
 ```
 
 The example has no audio and a two-minute limit; change the duration deliberately for the actual run. Arrange the visible agent browser and terminal together before capture, then inspect the entire recording and redact private information in a separate shareable copy. Do not publish the raw screen recording or describe the recorder smoke as a completed demo.
+
+## Actual actor live attempt — 2026-09-09
+
+Run `9ad93502-a357-41e0-b888-b92413f295a5` reopened the prepared profile through the actual runner; a private actor screenshot confirmed authenticated Yandex Eda access. A native location prompt was declined manually. This goes beyond the earlier Computer Use-only checks, but it did not complete a task: an observation stalled for about 217 seconds and later invalid human-readable read scopes produced `unknown_ref` and manual handover. The console was stopped normally at 15:26:54 UTC, with no unresolved action recorded. No cart/order change or final video resulted.
+
+The authenticated screenshot remains private in that run's evidence directory. Do not publish account details or infer that historical order/product requirements passed. The implementation now bounds whole observations to 10 seconds and describes exact-ref/null read scopes. Twenty-six focused browser/runner tests passed; full new staged/live evidence remains separate. Timeout asks for manual recovery, without automated reload or effect replay. Use the current validation record before retrying the live task.

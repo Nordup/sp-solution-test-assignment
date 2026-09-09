@@ -92,6 +92,8 @@ def _bounded(value: Any, limit: int = 1600) -> Any:
 class BrowserSession:
     MAX_OBSERVATION_CHARS = 18000
     ACTION_TIMEOUT_MS = 5000
+    OBSERVATION_TIMEOUT_SECONDS = 10
+    OBSERVATION_BATCH_SIZE = 16
 
     def __init__(
         self, profile: Path, headless: bool = False, artifact_dir: Path | None = None
@@ -314,6 +316,24 @@ class BrowserSession:
         return context
 
     async def observe(self, offset: int = 0, scope: str | None = None) -> dict:
+        # Playwright page snapshots/evaluation have no aggregate deadline. Bound
+        # the entire read, including lock acquisition, every frame/ref and title.
+        # Cancellation releases the lock; no partial or stale registry is usable.
+        try:
+            async with asyncio.timeout(self.OBSERVATION_TIMEOUT_SECONDS):
+                return await self._observe(offset, scope)
+        except (TimeoutError, BrowserError, asyncio.CancelledError) as exc:
+            self._registry = {}
+            self._observation = None
+            self._snapshot_text = ""
+            if isinstance(exc, TimeoutError):
+                raise BrowserError(
+                    "observation_timeout",
+                    "Browser observation exceeded its deadline. Check for a native permission prompt or an unresponsive page, then take a fresh observation; do not repeat the preceding effect.",
+                ) from exc
+            raise
+
+    async def _observe(self, offset: int, scope: str | None) -> dict:
         async with self.lock:
             self._ensure_open()
             if offset < 0:
@@ -325,7 +345,7 @@ class BrowserSession:
                     if scope not in self._registry:
                         raise BrowserError(
                             "unknown_ref",
-                            "Read scope must be a ref delivered in the current observation",
+                            "Read scope must be an exact ref from the current observation, or null for the whole page. A label or CSS selector is not a scope ref.",
                         )
                     await self._describe_unlocked(scope, self._observation["id"])
                     snapshot = await self.page.locator(
@@ -339,15 +359,27 @@ class BrowserSession:
                 # Taking a second scoped AI snapshot would replace Playwright's
                 # reference registry. Inspect the refs in THIS snapshot instead.
                 password_refs = set()
-                for candidate in dict.fromkeys(_REF.findall(snapshot)):
-                    try:
-                        is_password = await self.page.locator(
-                            "aria-ref=" + candidate
-                        ).evaluate("el => el.type === 'password'")
-                        if is_password:
-                            password_refs.add(candidate)
-                    except PlaywrightError:
-                        continue
+                candidates = list(dict.fromkeys(_REF.findall(snapshot)))
+                for start in range(0, len(candidates), self.OBSERVATION_BATCH_SIZE):
+                    batch = candidates[start : start + self.OBSERVATION_BATCH_SIZE]
+                    # Read only type, never password values. AI refs must resolve
+                    # through locator.evaluate; evaluate_all does not resolve this
+                    # Playwright registry. Bounded gather overlaps protocol waits.
+                    kinds = await asyncio.gather(
+                        *(
+                            self.page.locator("aria-ref=" + ref).evaluate(
+                                "el => el.type === 'password'"
+                            )
+                            for ref in batch
+                        ),
+                        return_exceptions=True,
+                    )
+                    if any(kind is not True and kind is not False for kind in kinds):
+                        raise BrowserError(
+                            "stale_observation",
+                            "Page changed while identifying protected controls; discard this snapshot and observe again.",
+                        )
+                    password_refs.update(ref for ref, kind in zip(batch, kinds) if kind)
                 if password_refs:
                     snapshot = "\n".join(
                         "  - textbox [password redacted]"
@@ -374,14 +406,19 @@ class BrowserSession:
                 end = offset + len(text)
                 refs = list(dict.fromkeys(_REF.findall(text)))
                 registry = {}
-                for ref in refs:
-                    try:
-                        meta = await self._metadata(ref)
+                for start in range(0, len(refs), self.OBSERVATION_BATCH_SIZE):
+                    batch = refs[start : start + self.OBSERVATION_BATCH_SIZE]
+                    metadata = await asyncio.gather(
+                        *(self._metadata(ref) for ref in batch), return_exceptions=True
+                    )
+                    for ref, meta in zip(batch, metadata):
+                        if isinstance(meta, BrowserError):
+                            # Detached nodes are deliberately not actionable.
+                            continue
+                        if isinstance(meta, BaseException):
+                            raise meta
                         if meta.get("type") != "password":
                             registry[ref] = meta
-                    except BrowserError:
-                        # Detached nodes are deliberately not actionable.
-                        continue
                 self.revision += 1
                 self._registry = registry
                 self._observation = {

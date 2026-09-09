@@ -106,6 +106,8 @@ flowchart TD
 
 Implemented refinement: denial ends the current run as partial, so the actor cannot seek a different route to the denied effect. Unsupported completion returns precise native-tool feedback for at most two correction attempts under the existing budget, decision and active-time limits. The actor may inspect evidence or complete missing in-scope work through normal approvals; journal protections continue to prevent duplicate effects. Exhausted or unavailable verification produces an explicitly unverified partial summary, without presenting rejected claims as established facts. The user can explicitly start a revised task; it does not retroactively approve a denied action.
 
+`read.scope` is null or an exact element ref from the current observation, never a CSS selector, role or label such as “Profile menu.” Evidence quotes contain actual saved page words, excluding element refs and host-added historical annotations. These schema descriptions reinforce existing adapter/evidence validation.
+
 Native browser-tool descriptions explicitly describe proposed effects: the host reviews and obtains any required exact approval before dispatch. The actor should propose the concrete observed action instead of asking broad conversational permission through `ask_user`; that tool remains available for missing facts, necessary choices, login and challenges. This description change does not bypass independent policy or guarantee the model will choose correctly.
 
 Completion status is relative to the user’s requested outcome and explicit stopping boundary. An intentionally excluded later action is not unfinished requested work: explain that boundary in the summary and keep `remaining` for actual unmet requirements. These are schema/prompt semantics, not automatic host promotion of a partial result; every completed claim still needs observed evidence and independent verification.
@@ -165,11 +167,13 @@ Keep Browser/Page objects, locks, SDK clients and database connections outside s
 
 ## 6. Observation and browser tool design
 
+The entire observation has a 10-second deadline, including lock acquisition, snapshot extraction, password classification, metadata, title and tab reads. Ref metadata is read in bounded batches of at most 16; security classification failures do not reveal password nodes. Timeout invalidates the partial registry/observation/pagination cache, cancels pending reads and releases the lock. It produces `observation_timeout` and the graph's manual browser-handover path. There is no automatic page reload, observation polling or replay of the preceding effect. A user may resume after resolving the obstruction; adapter-level tests verify fresh observation recovery without reload.
+
 Use Playwright's version-pinned AI snapshot adapter verified during research. Start with a bounded overview, then allow scoped expansion and continuation. Read only rendered/accessible content relevant to the observation, not hidden application stores or fixture grading endpoints. General DOM metadata extraction is allowed inside trusted browser code; the model cannot execute arbitrary JavaScript.
 
 | Tool family | Contract | Failure behavior |
 | --- | --- | --- |
-| Observe/read | page + optional current scope/ref + bounded continuation | Truncation explicit; invalid continuation re-observes |
+| Observe/read | page + null scope or exact current element ref + bounded continuation | CSS, role names and descriptive labels are not scopes; use the observed next_offset for continuation |
 | Screenshot | current viewport; evidence ID and optional image input | Screenshot failure falls back to semantic observation or reports unsupported visual task |
 | Navigate/back | validated HTTP(S) destination or history movement; policy checked | Disallowed scheme rejected; timeout yields fresh state, not assumed navigation failure |
 | Click | current page/generation/revision/ref | Missing, stale, obscured or ambiguous target rejected; no force |
