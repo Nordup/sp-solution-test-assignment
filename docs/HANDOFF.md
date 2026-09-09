@@ -7,7 +7,8 @@ Prepared 2026-09-09. This repository contains source material and planning conte
 1. [Assignment in Russian](assignment.ru.md): complete retained task text, expanded requirements, ideal-solution description, and all three nested example tasks.
 2. [HR evaluation clarification in Russian](hr-requirements.ru.md): engineering priorities and concrete rejection reasons.
 3. [Reference 1](assets/ideal-solution-01.jpg), [reference 2](assets/ideal-solution-02.jpg), [reference 3](assets/ideal-solution-03.jpg): original downloaded screenshots supplied by the employer.
-4. [Capture verification](evidence/VERIFICATION.md): source provenance, coverage, and limitations.
+4. [Implementation research](IMPLEMENTATION-RESEARCH.md) and [execution plan / next-agent goal](IMPLEMENTATION-PLAN.md): cited architecture recommendation and concrete milestones.
+5. [Capture verification](evidence/VERIFICATION.md): source provenance, coverage, and limitations.
 
 ## User decisions and schedule
 
@@ -16,7 +17,8 @@ Source: user instructions, 2026-09-09; two-day turnaround also confirmed in the 
 - Public GitHub repository; work directly on `main`. **Never create a second branch or a separate worktree.**
 - Browser automation: **Playwright**.
 - Communicate in English; source documents may remain Russian.
-- Prepare context first, then discuss implementation choices with the user. Do not treat this handoff as approval of a particular language, SDK, provider, model, or architecture.
+- Confirmed in the research discussion: **Python**, **OpenAI API keys available**, **LangSmith evaluations**, **$5 per logical run**. The cap includes helper/retry/evaluator model calls, and persists across pauses/resume.
+- Recommended baseline: native OpenAI Responses SDK, Pydantic, Playwright, explicit agent loop, independent risk review, Rich/Typer CLI. See the research for model pricing and tradeoffs. These are recommendations, not claims of an implemented system.
 - Reported employer turnaround: two days; Friday, 2026-09-11, about 17:00. Deadline timezone is unconfirmed.
 - User's target: finish Thursday, 2026-09-10, by end of day. User's current local timezone is Asia/Ho_Chi_Minh; this does not establish the employer's deadline timezone.
 - Deliver a repository link and a short video of the agent actually solving one complex task. The assignment does not specify repository visibility; public visibility is the user's choice.
@@ -63,15 +65,12 @@ Suggested cross-cutting checks:
 - Tool results and observable page state support the final answer; incomplete work is reported as incomplete.
 - Repository instructions reproduce the observed demo on a clean setup.
 
-## Decisions to discuss next
+## Implementation readiness
 
-- Language and runtime: Python versus TypeScript, based on SDK ergonomics and the two-day timebox.
-- SDK and provider: native OpenAI/Anthropic SDK versus an orchestration library; required structured tools, validation, retry control, and observability.
-- Page representation: bounded DOM/accessibility extraction, element handles/references, screenshot use, and refresh after mutations.
-- Context policy: page budget, conversation compaction, retained task state, and evidence storage.
-- Recovery and security: action classification, concrete approval payloads, retry budgets, idempotency safeguards, and failure reporting.
-- Whether a DOM subagent adds enough value to justify its complexity; it is shown in the reference, but not mandatory.
-- Demo scenario and controlled evaluation setup; capture browser and terminal together.
-- Confirm employer deadline timezone if necessary. Both relevant HR messages are captured. The full local-only text is in `docs/private/hr-messages.ru.md`.
+The research and execution plan now specify the recommended stack, page representation, context policy, safety/recovery, evaluation design, milestones and a copy-paste goal. Do not reopen settled language/browser/evaluation choices without a concrete reason.
 
-Record decisions with rationale and tradeoffs as they are made. Keep this handoff current and replace proposed checks with actual evaluation results only after execution.
+Still unverified: OpenAI model entitlement, LangSmith credentials/workspace, suitable logged-in real-site account/history, and screen-recording access. The user has OpenAI keys; do not ask them to paste secrets into chat or documentation. Finish independent implementation and fixture tests if account login blocks a real-site demo.
+
+No runtime, paid model calls, remote LangSmith datasets/experiments or final video have been produced in this preparation phase. The isolated Playwright capability probe passed for snapshot refs, iframe refs and stale-ref rejection; its narrow scope is documented in `research/PLAYWRIGHT-PROBE.md`.
+
+Keep this handoff current and replace proposed checks with actual results only after execution. Employer deadline timezone remains unconfirmed. Full HR messages, including optional course/VPN information, are local-only in `docs/private/hr-messages.ru.md`.

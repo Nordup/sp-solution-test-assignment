@@ -6,7 +6,9 @@ For a single copy-paste document, use [complete context](docs/CONTEXT.md).
 
 Start with [the implementation handoff](docs/HANDOFF.md), [the Russian assignment](docs/assignment.ru.md), and [HR's evaluation criteria](docs/hr-requirements.ru.md). Original reference images and captured page evidence are in `docs/`.
 
-Browser automation will use Playwright. Language, AI SDK, runtime provider/model, and detailed architecture remain to be discussed.
+Confirmed: **Python, Playwright, OpenAI API access, LangSmith evals, $5 per task run**. Recommended: native OpenAI Responses SDK + Pydantic with an explicit agent loop and central safety gate.
+
+Read the [full cited implementation analysis](docs/IMPLEMENTATION-RESEARCH.md) and [execution plan with a copy-paste next-agent goal](docs/IMPLEMENTATION-PLAN.md). The plan includes budget enforcement, state-based evaluations, recovery, approvals and demo acceptance criteria. No paid model/evaluation run has been performed; a narrow [Playwright snapshot capability probe](docs/research/PLAYWRIGHT-PROBE.md) was verified.
 
 **Branch policy: work directly on `main`; never create a second branch or a separate worktree.**
 
