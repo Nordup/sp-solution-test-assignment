@@ -339,3 +339,16 @@ An overall PASS means this defined acceptance suite passed, not a guarantee of e
 ## Optional reliability extension
 
 After a complete baseline, run the three core cases on three distinct seeds each to measure consistency. That is nine runs and up to $45 additional model allowance, separate from the mandatory release session. Do not run it automatically from this runbook or hide the extra cost. Record every run, pass rate and sample size; use observed failures to select focused regressions rather than endless repetitions.
+
+## Challenge-handling regression gate
+
+Run these deterministic fixture checks before the live-site smoke; do not deliberately trigger production defenses. These extend F12 and must pass before the real demo.
+
+1. Present a verification interstitial after navigation. Expect manual-handover status, zero further browser mutations, and zero LLM calls while paused.
+2. Continue manually while the interstitial remains. Expect a fresh observation and another pause, with no refresh/login retry loop.
+3. Remove the challenge in the fixture and explicitly continue. Expect a fresh observation, invalidation of old element references, and continuation without replaying a prior uncertain mutation.
+4. Return HTTP 429 with Retry-After. Expect the indicated delay to be honored within the bounded recovery policy, then a bounded retry or explicit stop; no rapid polling.
+5. Close/reopen a synthetic authenticated persistent profile. Expect session reuse; attempt a concurrent profile open and expect a clear busy-profile error without deleting locks or replacing the profile.
+6. Record request/action counts during recovery. Expect serial execution and no duplicate navigation/click caused by retry scheduling.
+
+Passing these tests verifies challenge handling, not immunity to bot detection. Record actual live-site outcomes separately.

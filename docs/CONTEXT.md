@@ -89,6 +89,10 @@ Current manual-login status: **user confirmed successful Shopee login on 2026-09
 
 Official login instructions: https://help.shopee.vn/portal/4/article/79436
 
+## Live-browser operating preference
+
+The user requests minimizing bot-check triggers. Reuse the logged-in demo profile, keep actions sequential, and avoid repeated login/reload attempts. Challenge-aware behavior and regression checks are specified in SYSTEM-DESIGN.md and FINAL-TEST.md; they still need implementation. If challenged, pause for manual verification rather than polling or trying to evade detection. No guarantee of avoiding site challenges has been established.
+
 ---
 
 <!-- Source: SYSTEM-DESIGN.md -->
@@ -483,6 +487,12 @@ Source documents/screenshots are already preserved. Isolated Playwright and Lang
 
 Open external dependencies: configured OpenAI model access, LangSmith workspace/key, suitable logged-in real-site account/history, and capture permissions. They do not block writing code and deterministic tests. They can block a truthful live demonstration, and must not be disguised as completed deliverables.
 
+## 14. Challenge-aware live browsing
+
+User requirement (2026-09-09): minimize bot-check triggers during real-site use. This is a reliability objective, not a promise that websites will accept automation. Reuse the dedicated authenticated persistent profile with exclusive process ownership; do not create fresh contexts or repeat logins for each task. Run one sequential actor, wait for relevant page readiness, and prevent duplicate navigation/click requests. Honor explicit server retry delays and bounded backoff; do not refresh or retry-loop a challenge. Develop and evaluate primarily against local fixtures to avoid repeated real-account traffic. These controls reduce unnecessary requests; they do not establish live-site compatibility.
+
+Treat an observed CAPTCHA, verification interstitial, access denial or login-security rejection as a manual-handover state. Stop automated actions and LLM polling, explain the blocker, and resume only on explicit user continuation with a fresh observation. If the challenge persists, remain paused. Do not automatically rotate proxies/identities, alter browser fingerprints or repeatedly recreate sessions as recovery. Never claim a blocked task passed. The Google OAuth rejection encountered during setup is a login-security limitation, not proof of its exact detection cause.
+
 ---
 
 <!-- Source: FINAL-TEST.md -->
@@ -828,6 +838,19 @@ An overall PASS means this defined acceptance suite passed, not a guarantee of e
 ## Optional reliability extension
 
 After a complete baseline, run the three core cases on three distinct seeds each to measure consistency. That is nine runs and up to $45 additional model allowance, separate from the mandatory release session. Do not run it automatically from this runbook or hide the extra cost. Record every run, pass rate and sample size; use observed failures to select focused regressions rather than endless repetitions.
+
+## Challenge-handling regression gate
+
+Run these deterministic fixture checks before the live-site smoke; do not deliberately trigger production defenses. These extend F12 and must pass before the real demo.
+
+1. Present a verification interstitial after navigation. Expect manual-handover status, zero further browser mutations, and zero LLM calls while paused.
+2. Continue manually while the interstitial remains. Expect a fresh observation and another pause, with no refresh/login retry loop.
+3. Remove the challenge in the fixture and explicitly continue. Expect a fresh observation, invalidation of old element references, and continuation without replaying a prior uncertain mutation.
+4. Return HTTP 429 with Retry-After. Expect the indicated delay to be honored within the bounded recovery policy, then a bounded retry or explicit stop; no rapid polling.
+5. Close/reopen a synthetic authenticated persistent profile. Expect session reuse; attempt a concurrent profile open and expect a clear busy-profile error without deleting locks or replacing the profile.
+6. Record request/action counts during recovery. Expect serial execution and no duplicate navigation/click caused by retry scheduling.
+
+Passing these tests verifies challenge handling, not immunity to bot detection. Record actual live-site outcomes separately.
 
 ---
 

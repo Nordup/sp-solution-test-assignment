@@ -79,3 +79,7 @@ Proposed demo task: identify a product from recent completed order history, insp
 Current manual-login status: **user confirmed successful Shopee login on 2026-09-09** in the dedicated demo browser. The launcher is still running; close that browser normally before the implementation agent reuses `artifacts/profiles/demo`. Authentication persistence after reopening and compatibility with the final actor remain to be verified. Google OAuth initially rejected the automated browser; the successful login method was not specified. Do not copy cookies from another browser.
 
 Official login instructions: https://help.shopee.vn/portal/4/article/79436
+
+## Live-browser operating preference
+
+The user requests minimizing bot-check triggers. Reuse the logged-in demo profile, keep actions sequential, and avoid repeated login/reload attempts. Challenge-aware behavior and regression checks are specified in SYSTEM-DESIGN.md and FINAL-TEST.md; they still need implementation. If challenged, pause for manual verification rather than polling or trying to evade detection. No guarantee of avoiding site challenges has been established.
