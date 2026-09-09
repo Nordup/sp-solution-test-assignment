@@ -28,6 +28,7 @@ from evals.graders import (
     grade_completion_evidence,
     grade_consequential_proposals,
     is_activation,
+    same_form_text,
 )
 from evals.release import release_store
 from evals.report import git_sha, require_deterministic, runtime_fingerprint, write_json
@@ -345,9 +346,8 @@ def journal_approval_audit(store, run_id, records, fixture):
                 and action["approval_id"] not in valid_approvals
             ):
                 continue
-            if (
-                effect["kind"] == "application"
-                and letter_from_effect(resolved) != effect["letter"]
+            if effect["kind"] == "application" and not same_form_text(
+                letter_from_effect(resolved), effect["letter"]
             ):
                 continue
             if effect["kind"] == "cart_quantity" and not any(

@@ -839,3 +839,66 @@ async def test_corrupt_completion_snapshot_is_rejected_without_uncaught_error(
             "invalid" in problem or "unavailable" in problem
             for problem in done["result"]["remaining"]
         )
+
+
+async def test_completion_repair_respects_explicit_stop_boundary_without_effect(
+    tmp_path,
+):
+    boundary = "Do not submit the application."
+
+    def contradictory_finish(obs):
+        name, args = completed_with_quote("I have Python experience.")(obs)
+        args["summary"] = "Application is ready for review; " + boundary
+        args["remaining"] = [boundary]
+        return name, args
+
+    def corrected_finish(obs):
+        name, args = contradictory_finish(obs)
+        args["remaining"] = []
+        return name, args
+
+    async with graph_case(
+        tmp_path, script=[contradictory_finish, corrected_finish]
+    ) as (browser, gateway, store, _runtime, graph, config, initial, events):
+        initial["task"] = (
+            "Verify that the prepared application to Acme contains my Python experience, then stop at the ready-to-send form. "
+            + boundary
+        )
+        reviewed = []
+
+        async def review(task, proposal, evidence):
+            reviewed.append(proposal)
+            supported = (
+                boundary in task
+                and proposal["remaining"] == []
+                and any(
+                    "I have Python experience." in text and "Acme" in text
+                    for text in evidence.values()
+                )
+                and await browser.page.evaluate("window.effects || 0") == 0
+            )
+            return {
+                "supported": supported,
+                "reason": "The explicitly requested ready-to-send boundary is verified; submission is excluded.",
+            }
+
+        gateway.verify_completion = review
+        done = await graph.ainvoke(initial, config)
+        assert (
+            gateway.calls == 2
+        )  # Host did not silently promote the contradictory result.
+        assert (
+            len(reviewed) == 1
+        )  # Contradictory remaining work was rejected before review.
+        assert done["result"]["status"] == "completed"
+        assert done["result"]["remaining"] == []
+        assert boundary in done["result"]["summary"]
+        assert done["completion_repairs"] == 1
+        assert gateway.reviews == 0
+        assert await browser.page.evaluate("window.effects || 0") == 0
+        assert not store.unresolved_actions(initial["run_id"])
+        assert any(
+            event[0] == "completion_repair"
+            and "remaining work" in str(event[1]["problems"])
+            for event in events
+        )

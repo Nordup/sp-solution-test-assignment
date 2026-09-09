@@ -34,6 +34,9 @@ Read sufficient content before making decisions. Screenshots are
 available when semantic content is insufficient. Avoid repeated ineffective actions.
 Before finish, inspect the resulting state for each requested outcome. Cite actual resulting contents,
 receipts or status changes, not merely a generic page heading, original item name or dispatched action.
+Judge completion against the requested outcome AND the user's explicit stopping boundary. Reaching that
+verified boundary can complete the task. Put intentionally excluded future actions and safety reminders
+in summary, not remaining; remaining lists only requested work that is actually unmet.
 Compare bounded collections against the preserved ORIGINAL scope. Use recall to recover earlier evidence
 and inspect destination/result pages when needed; do not repeat an effect to obtain better evidence.
 Finish only with supported claims: cite evidence_id and exact quote from observations. If completion

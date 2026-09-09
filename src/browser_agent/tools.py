@@ -97,10 +97,15 @@ class Reconcile(Strict):
 
 
 class Finish(Strict):
-    status: Literal["completed", "partial", "failed"]
+    status: Literal["completed", "partial", "failed"] = Field(
+        description="Completion is relative to the user's requested outcome AND explicit stopping boundary. Completed means all requested work within that boundary is verified; deliberately excluded future actions do not make the task partial."
+    )
     summary: str = Field(min_length=1, max_length=4000)
     claims: list[Claim] = Field(max_length=20)
-    remaining: list[str] = Field(max_length=20)
+    remaining: list[str] = Field(
+        max_length=20,
+        description="Only unmet requested requirements belong here. Use [] when the requested outcome and explicit stopping boundary are satisfied. Never list deliberately excluded/prohibited future actions or safety reminders as unfinished work; state those boundaries in summary instead.",
+    )
 
 
 _PROPOSAL_GATE = " The host resolves the effect, reviews it and requests exact approval when needed BEFORE dispatch. Calling this tool never grants approval."

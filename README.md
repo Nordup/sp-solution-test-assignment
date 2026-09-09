@@ -2,7 +2,7 @@
 
 A Python agent that uses a visible Playwright browser to solve natural-language tasks. LangGraph coordinates observation, native OpenAI tool calls, independent risk review, exact approvals, execution and recovery. The default model is **GPT-5.6 Luna**.
 
-**Implementation and validation are in progress.** Deterministic browser, approval, budget and checkpoint tests are running; task evaluation results and the final video are not yet submission-ready. See [validation status](docs/VALIDATION.md) and [all retained evaluation attempts](docs/EVALUATION-RESULTS.md). One older-version mail attempt passed; later mail, food and jobs attempts failed, and current-candidate release gates remain incomplete.
+**Implementation and validation are in progress.** Deterministic browser, approval, budget and checkpoint tests are running; task evaluation results and the final video are not yet submission-ready. See [validation status](docs/VALIDATION.md) and [all retained evaluation attempts](docs/EVALUATION-RESULTS.md). Current controlled mail and food cases have passed with verified semantic grading and traces. Earlier failures remain retained; current jobs, generalization/recovery, semantic failure cases and the final video are not yet certified.
 
 ## Start
 
@@ -62,7 +62,7 @@ The browser adapter exposes current accessibility references, bounded reading, s
 
 Observations are paginated at 18 KB of UTF-8 text. The gateway counts the exact request, including tools and any current screenshot, and refuses inputs above 20,000 tokens. Six complete tool/result groups and bounded working notes are retained. User constraints remain separate from page data. The initial limits are 60 decisions, 2,048 output tokens per call and 20 minutes of active execution.
 
-Structured memory runs before the first consequential effect and every four decisions. Original collection membership is frozen from observed evidence; durable notes and action receipts survive checkpoint rewind. Rejected completion returns precise feedback for up to two correction attempts under the same limits and approval rules. If verification still fails, the result explicitly says completion is unverified.
+Structured memory runs before the first consequential effect and every four decisions. Original collection membership is frozen from observed evidence; durable notes and action receipts survive checkpoint rewind. Rejected completion returns precise feedback for up to two correction attempts under the same limits and approval rules. If verification still fails, the result explicitly says completion is unverified. An explicitly requested stopping point defines task completion; deliberately excluded later actions are not unfinished work. The host never silently changes a partial result to completed.
 
 Completion review receives up to 32 KB of actual archived observations with provenance and explicit omissions, still subject to whole-request token admission. Unresolved review problems survive memory refreshes and checkpoint resume. Working notes are not treated as proof, and missing packet content is not treated as proof that an effect failed. These current repairs still need fresh task-level evaluation.
 

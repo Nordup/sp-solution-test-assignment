@@ -1077,7 +1077,7 @@ class AgentGraph:
                 )
             if result["remaining"]:
                 problems.append(
-                    "A completed result cannot have remaining work: "
+                    "A completed result cannot have remaining work. remaining lists unmet requested work only; deliberately excluded future actions and stopping constraints belong in summary and do not make the requested task partial. Recheck the original requested outcome and boundary before correcting this result. Reported remaining work: "
                     + "; ".join(result["remaining"])
                 )
             if self.store.unresolved_actions(state["run_id"]):

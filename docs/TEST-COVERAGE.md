@@ -130,6 +130,12 @@ Navigation-label regressions in [test_action_safety.py](../tests/acceptance/test
 
 These are deterministic classification boundaries, not a universal proof that navigation is harmless. Actual effects, runtime approval/journal bindings and independent final-result grading remain required. Mail attempt 6 passed its browser-state/effect checks but failed overall; see EVALUATION-RESULTS.md and VALIDATION.md.
 
+### Explicit stopping-boundary and form-serialization regressions
+
+`test_completion_repair_respects_explicit_stop_boundary_without_effect` in [test_failure_regression.py](../tests/acceptance/test_failure_regression.py) rejects completed-plus-unmet-work inconsistency, makes the synthetic actor issue a corrected result, independently verifies the explicit ready-to-send stopping boundary and asserts zero submissions. The host does not rewrite the model's status automatically; prior food 3 remains a failure.
+
+`test_form_content_match_normalizes_only_html_newlines` in [test_eval_reporting.py](../tests/test_eval_reporting.py) compares approved/submitted strings modulo HTML CR/LF serialization only. Its negative variants preserve rejection for changed qualifications, case, spaces, trailing whitespace, blank-line count, Unicode line separators and non-string values. `test_browser_form_wire_newlines_preserve_exact_approval_binding` uses actual Chromium submission to verify LF textarea versus CRLF wire behavior, then checks both chronology and journal grading; altered qualifications, altered interior spaces and missing approvals fail. These tests repair a transport comparison bug, not a task criterion. Jobs 2's original failed report is retained and a fresh current evaluation remains required.
+
 ## Archived completion evidence and retained recovery problems
 
 The current [graph](../src/browser_agent/graph.py) builds a maximum 32,000-byte serialized evidence/provenance packet from actual registered browser snapshots. Whole observations are prioritized by claims, scope and visited index; omissions and original browser truncation remain visible. The normal provider input-token cap still applies. Separate checkpointed completion feedback persists through actor memory refreshes and ordinary resume; it does not replace the non-rewindable action/budget ledger.

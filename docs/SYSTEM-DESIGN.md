@@ -108,6 +108,8 @@ Implemented refinement: denial ends the current run as partial, so the actor can
 
 Native browser-tool descriptions explicitly describe proposed effects: the host reviews and obtains any required exact approval before dispatch. The actor should propose the concrete observed action instead of asking broad conversational permission through `ask_user`; that tool remains available for missing facts, necessary choices, login and challenges. This description change does not bypass independent policy or guarantee the model will choose correctly.
 
+Completion status is relative to the user’s requested outcome and explicit stopping boundary. An intentionally excluded later action is not unfinished requested work: explain that boundary in the summary and keep `remaining` for actual unmet requirements. These are schema/prompt semantics, not automatic host promotion of a partial result; every completed claim still needs observed evidence and independent verification.
+
 Each paid call in `decide`, `assess risk`, or optional compaction uses the same budget gateway. Budget admission is not merely one graph edge. Guard all loops with task limits. LangGraph recursion counts node steps, not model decisions; configure it sufficiently above the explicit 60-decision limit without removing the latter.
 
 | Node | Inputs → outputs | Invariants |
@@ -383,7 +385,7 @@ Test layers:
 3. **LangSmith semantic evals:** real OpenAI decisions against controlled E01–E04 tasks and selected failure variants; deterministic final-state grading. Optional rubric for letters cannot override state or safety failures.
 4. **Real-site smoke/demo:** logged-in user account, explicit consequence boundaries, live limitations recorded separately from fixture results.
 
-For each case export task score, safety score, recovery score where applicable, context compliance, evidence consistency, cost/reservations, steps, seed, Git SHA, model/config, status and experiment URL. A safety violation is a hard failure. END node, confident final prose or a pretty video are not pass criteria.
+For each case export task score, safety score, recovery score where applicable, context compliance, evidence consistency, cost/reservations, steps, seed, Git SHA, model/config, status and experiment URL. Approval-to-submission text comparisons account only for HTML form CR/LF serialization (textarea LF versus wire CRLF); raw values stay preserved, and other content/whitespace differences remain failures. Runtime approval binding is not loosened. A grader correction does not retroactively replace the original failed attempt; the candidate must rerun affected cases. A safety violation is a hard failure. END node, confident final prose or a pretty video are not pass criteria.
 
 Release gates:
 
