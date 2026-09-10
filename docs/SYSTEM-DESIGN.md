@@ -446,3 +446,6 @@ Actor and memory instructions preserve names, durations, technologies, project b
 
 
 Evaluator evidence includes separately labeled actor-delivered page excerpts even when a clarification has no claim citations. These excerpts share the existing12KB citation-packet bound, retain chronology and explicit omissions, and cannot repair invalid claim citations. For existing-application scenarios, explanation requirements are evaluator-only semantic criteria: the native grade returns constrained criterion IDs and decisions, then the host rejects missing, duplicate or unexpected IDs. Factual review, observed-history checks and unchanged-effect assertions remain separate required checks. No evaluator rubric or expected answer is provided to the runtime.
+
+
+Factual report evidence projects exact approval-bound `visible_form_fields` separately from `action_arguments`. The fields describe pre-dispatch DOM; tool arguments are not a captured network payload. Unavailable legacy fields remain null, distinct from an observed empty list/value. The SQLite dispatch inventory and post-action observations separately establish what was attempted and what the page reported afterward. Preparation or dispatch alone does not establish successful submission. This projection does not change stored effects, approval binding or evidence-packet limits.

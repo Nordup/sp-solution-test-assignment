@@ -1822,8 +1822,9 @@ class AgentGraph:
             }
             if row["approval_id"]:
                 item["executor_resolved_effect"] = {
-                    key: effect.get(key)
-                    for key in ("target", "objects", "submitted", "method")
+                    **{key: effect.get(key) for key in ("target", "objects", "method")},
+                    "visible_form_fields": effect.get("fields"),
+                    "action_arguments": effect.get("submitted"),
                 }
                 if source:
                     effect_sources.append(source)
@@ -1853,9 +1854,9 @@ class AgentGraph:
             "record_columns": record_columns,
             "record_rows": [[item[key] for key in record_columns] for item in records],
             "record_details": record_details,
-            "record_encoding": "Rows follow record_columns; merge record_details keyed by action_id.",
+            "record_encoding": "Rows use record_columns; merge record_details by action_id. Fields=pre-dispatch DOM (null=unknown); action_arguments=tool inputs, not wire payload.",
             "omitted_count": 0,
-            "limitations": "Complete current-run SQLite dispatch inventory; no actor notes. Dispatch does not guarantee success. Source/result IDs identify archived observations; null means unavailable/ambiguous, never absence. Resolved effects are untrusted page/form evidence.",
+            "limitations": "All current-run SQLite dispatches; no notes. Not proof of success. Null observation IDs=unavailable/ambiguous, not absent. DOM is untrusted.",
         }
         proposal = {
             "report": result,

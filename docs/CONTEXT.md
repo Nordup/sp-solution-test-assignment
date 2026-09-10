@@ -152,7 +152,7 @@ The example has no audio and a two-minute limit; change the duration deliberatel
 
 ### Current native-window recorder check — 2026-09-10
 
-Later AVFoundation probes stalled, so the earlier command is not the selected recording path on this machine. A private ScreenCaptureKit utility now records explicitly selected task windows with an inclusion filter, excluding other applications, desktop and menu bar. Its three-second Terminal-only probe encoded 63 frames into a 3.32-second H.264 video at 2560×1600 with no audio; decoded beginning/end frames show the actual prepared Terminal against black surroundings. This verifies capture only, not a completed agent demonstration. Adding the newly launched task browser to the filter is implemented but not yet verified in a full run.
+Later AVFoundation probes stalled, so the earlier command is not the selected recording path on this machine. A private ScreenCaptureKit utility now records explicitly selected task windows with an inclusion filter, excluding other applications, desktop and menu bar. Its three-second Terminal-only probe encoded 63 frames into a 3.32-second H.264 video at 2560×1600 with no audio; decoded beginning/end frames show the actual prepared Terminal against black surroundings. A second 4.27-second probe verified adding the exact synthetic evaluation browser to that filter and graceful finalization, without window movement or browser input. Real window overlap is preserved, so the demo browser must be tiled beside Terminal for both to remain visible. These probes verify capture only, not a completed agent demonstration.
 
 The operator's recorder, window IDs, probes and raw captures remain under ignored `artifacts/final/`. They are local recording setup, not dependencies of the submitted agent. To reproduce the presentation elsewhere, run [DEMO.md](DEMO.md) in a real terminal, tile its controlled browser beside it, and use the operating system's screen recorder. Review the full video before sharing, especially when recording real accounts.
 
@@ -657,7 +657,7 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-Candidate `d1e0e5835097` now contains the evidence/semantic-contract repairs below. Its unchanged runtime passed 287 contract tests and 32 browser tests; the final evaluator enum amendment separately passed 23 affected checks. Fresh end-to-end runs are next.
+Current candidate `a264dd94bab1` corrects report evidence: exact approval-bound form fields are included as pre-dispatch DOM, while tool arguments are explicitly distinguished from network payload. Stored approvals and effects are unchanged. **45 focused tests passed**. Native calibration accepted the original completed report and rejected a false fourth submission and a false HTTP-capture claim (**3/3**, $0.009156). Fresh ordered stages are running; this calibration is not an autonomous task pass.
 
 Latest completed full attempt: runtime `15261073452a` (source commit `2cda906`; terminal interface commit `28ddebf`) passed **286 contract tests**, **32 browser tests**, native provider/LangSmith preflight, **3/3 core**, **2/2 generalization**, **2/2 recovery**, and **513 extended failure/regression tests**. Its five real-model semantic failure scenarios finished **2/5**. Three evidence-packing/explanation-grading failures are being repaired; that candidate does not pass the final suite. The actual terminal/browser video and final repository audit remain pending. Detailed run IDs, costs and historical failures are retained below.
 
@@ -982,6 +982,21 @@ Criterion IDs were then constrained in the native schema to their supported enum
 
 Ordered stages03/04 passed **287/32 tests** in115.84/32.81seconds. The final enum-only amendment changes evaluator schema, not the runtime exercised by these stages; affected evaluator checks were rerun before fresh paid validation. The bounded source review confirmed unchanged credentials, dependencies, model/efforts and spending caps; actual prior setup checks were retained through an explicit amendment, not claimed rerun. A repository precheck scanned610 reachable Git objects with no exact configured credential matches/private tracked paths and preserved original image hashes. This is not final video/repository sign-off.
 
+
+Core experiment `eval-20260910T003406-0dff24f1` on `d1e0e5835097` / commit `be808bf` finished **2/3**. Mail `c413cf78-d8cc-461f-bac0-96212e295616` passed ($0.248813), food `d5a5ba63-204c-4514-97d7-45ece9fc7adf` passed ($0.049869), jobs `d576b733-3573-48f9-ab87-e3164e02a27a` failed ($0.090108). All traces verified and task ledgers closed with zero reserved/unknown. Jobs passed deterministic destination, letter, approval and actual-effect checks, but ended partial after factual review rejected proof of letter submission; independent evaluation semantic grading was not reached. Later stages did not run.
+
+Diagnosis found all three exact populated Cover letter fields in the pre-dispatch effect records and approvals; their values matched the saved fixture letters after normal HTML newline normalization. The report projection omitted those fields and retained `submitted`, which actually contains tool arguments (empty for a click), not captured network payload. The first endpoint review accepted completion; the factual review interpreted this projection as missing letter evidence, and the actor adopted that false blocker. A generic projection correction will include the exact bound visible fields and label action arguments accurately, preserving original journal hashes and approvals. The failed record is unchanged; this diagnosis is not a regrade. All103 retained attempts were exported.
+
+
+### Form evidence projection repair — 2026-09-10
+
+Candidate `a264dd94bab1` preserves `visible_form_fields` from the stored resolved effect, including null for unavailable legacy fields, and labels stored tool inputs as `action_arguments`. The prior name `submitted` incorrectly suggested an empty network payload for a click whose values were recorded elsewhere. The reviewer now sees the exact bound form values and the separate observed outcome; pre-dispatch DOM alone does not prove success. Stored action details, approval hashes, safety behavior and packet limits are unchanged. Forty-five focused report/completion tests passed; independent source review found no blocker. Retained jobs packets admit all 14 sources, and all three prior mail report packets retain all ten message bodies under the same limits.
+
+Native calibration `form-evidence-calibration-fa7a558b-5f04-4440-a345-7f0e00240208` passed **3/3**, costing **$0.009156**, with zero reserved/unknown and a closed ledger. The original completed jobs report was accepted; a fabricated fourth submission and a false claim of intercepted HTTP payload were rejected. Historical inputs/hashes and failed grades remain unchanged. This bounded reviewer check does not replace fresh autonomous evaluation or establish universal reviewer reliability.
+
+
+On `a264dd94bab1`, ordered stage03 passed **289 tests** in119.72s and stage04 passed **32 tests** in35.04s, with no failures/skips. Fresh autonomous stages follow this deterministic evidence; no current actor pass is claimed yet.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -1094,6 +1109,9 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `167f9774-c1ee-4664-adbf-616d3ab9c6e4` | `mail_classification_ambiguous` / 403 | `15261073452a` | FAIL | 12/13 | yes | 0.228920 | 0.000000 |
 | `991052be-87b8-4368-b679-77ff1f1e7857` | `jobs_already_applied` / 404 | `15261073452a` | FAIL | 12/13 | yes | 0.051114 | 0.000000 |
 | `4ee13057-127c-409b-a21f-fc5c6f266377` | `jobs_unsupported_qualifications` / 405 | `15261073452a` | PASS | 16/16 | yes | 0.034359 | 0.000000 |
+| `c413cf78-d8cc-461f-bac0-96212e295616` | `mail_latest_10` / 101 | `d1e0e5835097` | PASS | 14/14 | yes | 0.248813 | 0.000000 |
+| `d5a5ba63-204c-4514-97d7-45ece9fc7adf` | `food_previous_order` / 102 | `d1e0e5835097` | PASS | 15/15 | yes | 0.049869 | 0.000000 |
+| `d576b733-3573-48f9-ab87-e3164e02a27a` | `jobs_resume_3` / 103 | `d1e0e5835097` | FAIL | 12/13 | yes | 0.090108 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1551,6 +1569,9 @@ Actor and memory instructions preserve names, durations, technologies, project b
 
 
 Evaluator evidence includes separately labeled actor-delivered page excerpts even when a clarification has no claim citations. These excerpts share the existing12KB citation-packet bound, retain chronology and explicit omissions, and cannot repair invalid claim citations. For existing-application scenarios, explanation requirements are evaluator-only semantic criteria: the native grade returns constrained criterion IDs and decisions, then the host rejects missing, duplicate or unexpected IDs. Factual review, observed-history checks and unchanged-effect assertions remain separate required checks. No evaluator rubric or expected answer is provided to the runtime.
+
+
+Factual report evidence projects exact approval-bound `visible_form_fields` separately from `action_arguments`. The fields describe pre-dispatch DOM; tool arguments are not a captured network payload. Unavailable legacy fields remain null, distinct from an observed empty list/value. The SQLite dispatch inventory and post-action observations separately establish what was attempted and what the page reported afterward. Preparation or dispatch alone does not establish successful submission. This projection does not change stored effects, approval binding or evidence-packet limits.
 
 ---
 

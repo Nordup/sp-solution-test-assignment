@@ -91,6 +91,12 @@ async def test_actual_dispatch_provenance_and_prior_state_reports_are_distinct(
                     item["executor_resolved_effect"]["target"]["name"]
                     == "Send application"
                 )
+                projected = item["executor_resolved_effect"]
+                stored = json.loads(row["details"])["effect"]
+                assert projected["visible_form_fields"] == stored["fields"]
+                assert projected["action_arguments"] == stored["submitted"] == {}
+                assert any(field["value"] == "I have Python experience." for field in projected["visible_form_fields"])
+                assert "submitted" not in projected
             return {
                 "issues": []
                 if accurate
@@ -559,7 +565,9 @@ def test_tabular_dispatch_inventory_preserves_facts_and_admits_source_bodies(tmp
         })
         if approved:
             expected[-1]["executor_resolved_effect"] = {
-                key: effect[key] for key in ("target", "objects", "submitted", "method")
+                **{key: effect[key] for key in ("target", "objects", "method")},
+                "visible_form_fields": None,
+                "action_arguments": effect["submitted"],
             }
     runtime.store = SimpleNamespace(actions_for_run=lambda _run: rows)
     scope = {"items": [{"evidence_id": source_ids[0], "identity": "Original collection", "quote": "Actual original source 0."}]}
@@ -589,3 +597,49 @@ def test_tabular_dispatch_inventory_preserves_facts_and_admits_source_bodies(tmp
     )} | {"records": expected}
     expanded_packet = {"proposal": proposal | {"current_run_dispatches": expanded}, "evidence": evidence}
     assert len(json.dumps(expanded_packet, ensure_ascii=False).encode()) > 24000
+
+
+@pytest.mark.parametrize("success", [False, True])
+async def test_bound_form_preparation_is_distinct_from_observed_submission(tmp_path, success):
+    html = FORM if success else FORM.replace(
+        "document.querySelector('output').textContent='Application recorded'", "void 0"
+    )
+    summary = "Application recorded with the prepared letter." if success else "Letter prepared; submission outcome unconfirmed."
+
+    def report(obs):
+        return "finish", {
+            "status": "completed" if success else "partial", "summary": summary,
+            "claims": [{"claim": summary, "evidence_id": obs["id"],
+                        "quote": "Application recorded" if success else "I have Python experience."}],
+            "remaining": [] if success else ["Confirm the submission outcome."],
+        }
+
+    async with graph_case(tmp_path, html, [click("Send application"), report]) as (
+        browser, actor, store, _runtime, graph, config, initial, _events
+    ):
+        reviewed = []
+
+        async def audit(_task, proposal, evidence):
+            record = dispatch_records(proposal["current_run_dispatches"])[0]
+            effect = record["executor_resolved_effect"]
+            stored = store.action(record["action_id"])
+            stored_before = stored["details"]
+            assert effect["action_arguments"] == {}
+            assert effect["visible_form_fields"] == json.loads(stored_before)["effect"]["fields"]
+            assert any(field["value"] == "I have Python experience." for field in effect["visible_form_fields"])
+            assert "I have Python experience." in evidence[record["source_evidence_id"]]
+            assert ("Application recorded" in evidence[record["result_evidence_id"]]) is success
+            assert "not wire payload" in proposal["current_run_dispatches"]["record_encoding"]
+            assert proposal["report"]["status"] == ("completed" if success else "partial")
+            assert store.action(record["action_id"])["details"] == stored_before
+            reviewed.append(record)
+            return {"issues": [], "supported": True, "reason": "Prepared values and observed result are independently represented."}
+
+        actor.verify_report = audit
+        paused = await graph.ainvoke(initial, config)
+        assert pending(paused)["kind"] == "approval"
+        result = await graph.ainvoke(approval_answer(paused), config)
+        assert result["result"]["status"] == ("completed" if success else "partial")
+        assert len(reviewed) == 1
+        assert await browser.page.evaluate("window.effects") == 1
+        assert len(store.actions_for_run(initial["run_id"])) == 1
