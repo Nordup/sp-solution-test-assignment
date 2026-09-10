@@ -56,6 +56,38 @@ _CONTEXT_JS = """el => {
 _PAGE_JS = """() => ({text:document.body ? document.body.innerText : '',
  fields:Array.from(document.querySelectorAll('input,textarea,select')).filter(x=>x.getClientRects().length && getComputedStyle(x).visibility !== 'hidden').map(x=>({name:x.getAttribute('aria-label') || x.name || '',type:x.type,value:x.type==='password'?'[REDACTED]':x.value,checked:!!x.checked}))})"""
 _REF = re.compile(r"\[ref=([A-Za-z0-9]+)\]")
+_BOX = re.compile(
+    r"\[box=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),"
+    r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\]"
+)
+_SNAPSHOT_ROLE = re.compile(r"^\s*-\s+([A-Za-z][A-Za-z0-9_-]*)\b")
+_INTERACTIVE_ROLES = {
+    "button",
+    "checkbox",
+    "combobox",
+    "link",
+    "listbox",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "option",
+    "radio",
+    "searchbox",
+    "slider",
+    "spinbutton",
+    "switch",
+    "tab",
+    "textbox",
+    "treeitem",
+}
+_FOREGROUND_ROLES = {
+    "alertdialog",
+    "dialog",
+    "grid",
+    "menu",
+    "tooltip",
+    "tree",
+}
 _KEYS = {
     "Enter",
     "Tab",
@@ -88,6 +120,10 @@ def _bounded(value: Any, limit: int = 1600) -> Any:
     if isinstance(value, dict):
         return {k: _bounded(v, limit) for k, v in value.items()}
     return value
+
+
+def _strip_snapshot_boxes(snapshot: str) -> str:
+    return "\n".join(_BOX.sub("", line).rstrip() for line in snapshot.splitlines())
 
 
 class BrowserSession:
@@ -519,7 +555,9 @@ class BrowserSession:
                         "aria-ref=" + scope
                     ).aria_snapshot(mode="ai", depth=30)
                 else:
-                    snapshot = await self.page.aria_snapshot(mode="ai", depth=30)
+                    snapshot = await self.page.aria_snapshot(
+                        mode="ai", depth=30, boxes=True
+                    )
                 # Playwright AI snapshots DO include password values. Redact the
                 # entire password-node line before pagination, registry, or output.
                 # Generic type selectors are trusted adapter internals, never actor tools.
@@ -555,6 +593,10 @@ class BrowserSession:
                         else line
                         for line in snapshot.splitlines()
                     )
+                foreground = "" if scope else await self._foreground_snapshot(snapshot)
+                snapshot = _strip_snapshot_boxes(snapshot)
+                if foreground:
+                    snapshot = foreground + snapshot
                 if offset > len(snapshot):
                     raise BrowserError(
                         "invalid_offset",
@@ -678,6 +720,106 @@ class BrowserSession:
             {"context": context["fingerprint"], "tool": tool, "args": args}
         )
         return context
+
+    async def _foreground_snapshot(self, snapshot: str) -> str:
+        """Return a small prefix for visible controls late in a long snapshot.
+
+        A single full-page AI snapshot owns all refs. Long application pages may
+        portal a menu or dialog after the main listing, so its actionable refs
+        can fall beyond the bounded first page. Boxes let us promote only
+        current-viewport interactive nodes while keeping one ref registry and a
+        canonical snapshot for continuation. Password lines are redacted before
+        this helper is called.
+        """
+        lines = snapshot.splitlines()
+        if not lines:
+            return ""
+        try:
+            viewport = await self.page.evaluate(
+                "() => ({width: window.innerWidth, height: window.innerHeight})"
+            )
+            width, height = float(viewport["width"]), float(viewport["height"])
+        except (PlaywrightError, TypeError, KeyError, ValueError):
+            return ""
+        if width <= 0 or height <= 0:
+            return ""
+
+        records = []
+        offset = 0
+        for line in lines:
+            ref_match = _REF.search(line)
+            box_match = _BOX.search(line)
+            role_match = _SNAPSHOT_ROLE.match(line)
+            role = role_match.group(1).lower() if role_match else ""
+            if ref_match and box_match:
+                x, y, box_width, box_height = map(float, box_match.groups())
+                intersects = (
+                    box_width > 0
+                    and box_height > 0
+                    and x < width
+                    and y < height
+                    and x + box_width > 0
+                    and y + box_height > 0
+                )
+                # Only refs that would be outside the normal bounded prefix need
+                # promotion; controls already delivered retain their normal tree
+                # position and do not consume budget twice.
+                if intersects and offset >= self.MAX_OBSERVATION_CHARS:
+                    records.append(
+                        {
+                            "offset": offset,
+                            "ref": ref_match.group(1),
+                            "role": role,
+                            "box": (x, y, box_width, box_height),
+                            "line": line,
+                        }
+                    )
+            clean_line = _BOX.sub("", line)
+            offset += len((clean_line + "\n").encode("utf-8"))
+        if not records:
+            return ""
+
+        foreground = []
+        for record in records:
+            role = record["role"]
+            actionable = (
+                role in _INTERACTIVE_ROLES
+                or role in _FOREGROUND_ROLES
+                or "[cursor=pointer]" in record["line"]
+            )
+            if actionable:
+                foreground.append(record)
+        if not foreground:
+            return ""
+
+        # Keep the prefix small and deterministic. Top-of-viewport controls come
+        # first; ties prefer the later DOM subtree where portals normally live.
+        foreground.sort(
+            key=lambda item: (
+                item["box"][1],
+                item["box"][0],
+                -item["offset"],
+            )
+        )
+        prefix_limit = min(6000, self.MAX_OBSERVATION_CHARS // 3)
+        selected = []
+        used = 0
+        for record in foreground:
+            line = _BOX.sub("", record["line"]).rstrip()
+            encoded = len((line + "\n").encode())
+            if encoded > prefix_limit - used:
+                continue
+            selected.append(line)
+            used += encoded
+            if used >= prefix_limit:
+                break
+        if not selected:
+            return ""
+        return (
+            "Visible foreground controls (current viewport; refs are from this observation):\n"
+            + "\n".join(selected)
+            + "\n\n"
+        )
 
     async def _tabs(self):
         return [

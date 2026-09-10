@@ -1,7 +1,9 @@
 """Actual Chromium adapter conformance (no paid models or external accounts)."""
 
 import asyncio
+import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -104,6 +106,46 @@ async def test_bounded_observation_pagination_and_ref_membership(browser):
     assert err.value.code == "stale_observation"
 
 
+async def test_visible_late_portal_control_is_actionable_in_initial_observation(browser):
+    await browser.page.set_content(
+        "<main>"
+        + "".join(f"<p>Restaurant listing {i} {'x' * 240}</p>" for i in range(100))
+        + "</main>"
+        + '<div style="position:fixed;left:12px;top:24px;z-index:1000">'
+        + '<button onclick="this.textContent=\'Orders opened\'">Orders</button>'
+        + "</div>"
+    )
+    observation = await browser.observe()
+    assert observation["truncated"]
+    orders_ref = ref_for(observation, "Orders")
+    await browser.execute("click", {"ref": orders_ref}, observation["id"])
+    assert await browser.page.get_by_role("button", name="Orders opened").count() == 1
+
+
+async def test_unlabelled_late_portal_click_target_is_promoted(browser):
+    listings = "".join(
+        f"<p>Ресторан {i} " + "описание " * 12 + "</p>" for i in range(90)
+    )
+    await browser.page.set_content(
+        "<main>"
+        + listings
+        + "</main>"
+        + '<div style="position:fixed;left:12px;top:24px;z-index:1000;cursor:pointer" '
+        + 'onclick="this.textContent=\'Orders opened\'">Orders</div>'
+        + '<input type="password" value="LATE_PRIVATE_VALUE" '
+        + 'style="position:fixed;left:12px;top:64px;z-index:1000">'
+    )
+    observation = await browser.observe()
+    assert len(browser._snapshot_text) < 18000
+    assert len(browser._snapshot_text.encode()) > 18000
+    assert "LATE_PRIVATE_VALUE" not in str(observation)
+    orders_ref = re.search(
+        r"\[ref=([^\]]+)\]", next(line for line in observation["text"].splitlines() if "Orders" in line)
+    ).group(1)
+    await browser.execute("click", {"ref": orders_ref}, observation["id"])
+    assert await browser.page.get_by_text("Orders opened", exact=True).count() == 1
+
+
 async def test_profile_cookie_persistence_and_exclusive_lock(tmp_path):
     profile = tmp_path / "persistent"
     session = BrowserSession(profile, headless=True)
@@ -167,6 +209,52 @@ async def test_start_blank_and_actor_chosen_navigation(browser):
     destination = await browser.observe()
     assert destination["url"] == "https://fixture.test/public"
     assert "Chosen destination" in destination["text"]
+
+
+async def test_owned_window_resize_updates_page_viewport(tmp_path):
+    if sys.platform.startswith("linux") and not (
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    ):
+        pytest.skip("headed Chromium needs a Linux display")
+    session = BrowserSession(tmp_path / "resize-profile", headless=False)
+    try:
+        await session.start()
+        await session.page.set_content(
+            "<style>"
+            "@media (max-width: 700px) { body { background: rgb(255, 0, 0); } }"
+            "@media (min-width: 701px) { body { background: rgb(0, 0, 255); } }"
+            "</style><main>responsive fixture</main>"
+        )
+        cdp = await session.context.new_cdp_session(session.page)
+        window = await cdp.send("Browser.getWindowForTarget")
+        original = dict(window["bounds"])
+        await cdp.send(
+            "Browser.setWindowBounds",
+            {
+                "windowId": window["windowId"],
+                "bounds": {**original, "windowState": "normal", "width": 1200, "height": 700},
+            },
+        )
+        await session.page.wait_for_function("window.innerWidth >= 701", timeout=3000)
+        wide = await session.page.evaluate(
+            "() => ({width: innerWidth, narrow: matchMedia('(max-width: 700px)').matches, background: getComputedStyle(document.body).backgroundColor})"
+        )
+        await cdp.send(
+            "Browser.setWindowBounds",
+            {
+                "windowId": window["windowId"],
+                "bounds": {**original, "windowState": "normal", "width": 600, "height": 500},
+            },
+        )
+        await session.page.wait_for_function("window.innerWidth <= 700", timeout=3000)
+        narrow = await session.page.evaluate(
+            "() => ({width: innerWidth, narrow: matchMedia('(max-width: 700px)').matches, background: getComputedStyle(document.body).backgroundColor})"
+        )
+        assert wide["width"] >= 701 and not wide["narrow"]
+        assert narrow["width"] <= 700 and narrow["narrow"]
+        assert wide["background"] != narrow["background"]
+    finally:
+        await session.close()
 
 
 async def test_new_tab_close_last_tab_and_tab_identity(browser):
