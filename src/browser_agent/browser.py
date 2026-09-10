@@ -46,6 +46,8 @@ _CONTEXT_JS = """el => {
    type:el.type || '', name:el.getAttribute('aria-label') || Array.from(el.labels || []).map(l=>l.innerText).join(' ') || el.innerText || el.getAttribute('title') || '',
    text:el.innerText || '', href:el.href || '', disabled:!!el.disabled || el.getAttribute('aria-disabled') === 'true',
    editable:el.isContentEditable, target:el.target || '',
+   expanded:el.getAttribute('aria-expanded'), haspopup:el.getAttribute('aria-haspopup'),
+   search_form:!!(form && (form.getAttribute('role') === 'search' || form.querySelector('input[type=search]'))),
    value:el.type === 'password' ? '[REDACTED]' : el.value,
    checked:!!el.checked, form_action:form ? form.action : '', form_method:form ? form.method : '',
    context:region.innerText || '', fields:fields(form || doc),
@@ -95,7 +97,7 @@ class BrowserSession:
     OBSERVATION_TIMEOUT_SECONDS = 10
     OBSERVATION_BATCH_SIZE = 16
     OBSERVATION_MAX_ATTEMPTS = 3
-    CLASSIFICATION_TIMEOUT_MS = 250
+    CLASSIFICATION_TIMEOUT_MS = 1000
 
     def __init__(
         self, profile: Path, headless: bool = False, artifact_dir: Path | None = None

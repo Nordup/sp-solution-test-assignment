@@ -1,9 +1,11 @@
-"""Bounded actor input: original task, notebook, three recent tool exchanges, current page."""
+"""Bounded actor input: original task, notebook, recent tool exchanges, current page."""
 
 import json
 
 from .prompts import ACTOR
 from .tools import tool_specs
+
+HISTORY_MESSAGES = 20  # Ten exchanges; the notebook carries longer-lived facts.
 
 
 class ContextOverflow(RuntimeError):
@@ -33,7 +35,7 @@ def build_request(task, observation, notebook, history, image=None, feedback="")
             + notebook,
         }
     ]
-    messages.extend(history[-6:])
+    messages.extend(history[-HISTORY_MESSAGES:])
     content = [
         {
             "type": "input_text",

@@ -63,7 +63,12 @@ class ScriptedGateway:
                     "type": "function_call",
                     "name": tool,
                     "call_id": str(uuid4()),
-                    "arguments": json.dumps(args),
+                    "arguments": json.dumps(
+                        {
+                            "notebook": "Test task facts; next action as proposed.",
+                            **args,
+                        }
+                    ),
                 }
             ],
         }
@@ -280,3 +285,104 @@ async def test_cancelled_run_keeps_actual_effect_and_cleans_up(tmp_path, monkeyp
     assert saved == result
     assert "did not start" not in result["summary"]
     assert gateway.closed and gateway.calls == 1
+
+
+@pytest.mark.parametrize("becomes_enabled", [True, False])
+async def test_disabled_target_reobserves_before_approval_or_stops_at_retry_bound(
+    tmp_path, becomes_enabled
+):
+    state, questions = {}, []
+    base = browser_factory(
+        FORM.replace('type="submit"', 'type="submit" disabled'), state
+    )
+
+    class LoadingBrowser(base):
+        async def action_context(self, *args, **kwargs):
+            try:
+                return await super().action_context(*args, **kwargs)
+            except BrowserError as exc:
+                if exc.code == "disabled":
+                    assert await self.page.evaluate("window.effects || 0") == 0
+                    assert questions == []
+                    if becomes_enabled:
+                        await self.page.get_by_role("button", name="Send").evaluate(
+                            "el => el.disabled = false"
+                        )
+                raise
+
+    async def respond(question):
+        questions.append(question)
+        return {"request_id": question["request_id"], "approved": True}
+
+    gateway = ScriptedGateway(
+        [click("Send"), click("Send"), finish()]
+        if becomes_enabled
+        else [click("Send")] * 3
+    )
+    result = await run_agent(
+        Settings(artifact_dir=tmp_path, max_retries=2),
+        "Send the message",
+        headless=True,
+        browser_factory=LoadingBrowser,
+        gateway_factory=lambda *_args, **_kwargs: gateway,
+        responder=respond,
+    )
+    assert result["status"] == ("completed" if becomes_enabled else "needs_user")
+    assert gateway.calls == 3
+    assert state["effects"] == (1 if becomes_enabled else 0)
+    assert len(questions) == (1 if becomes_enabled else 0)
+    assert '"code": "disabled"' in json.dumps(gateway.requests[1]).replace('\\"', '"')
+    first = gateway.requests[0]["input"][-1]["content"][0]["text"]
+    second = gateway.requests[1]["input"][-1]["content"][0]["text"]
+    assert first != second
+
+
+async def test_required_notebook_survives_expired_history_on_next_real_request(
+    tmp_path,
+):
+    from browser_agent.context import HISTORY_MESSAGES
+
+    html = '<p id="fact">Original item identity: Q19</p><button onclick="document.querySelector(\'#fact\').remove()">Hide fact</button>'
+    notebook = "Original item Q19 was observed. Do not reselect shifted items."
+
+    def initial(observation):
+        assert "Original item identity: Q19" in observation["text"]
+        return "click", {"ref": ref(observation, "Hide fact"), "notebook": notebook}
+
+    def read_after(index):
+        def proposal(observation):
+            assert "Original item identity: Q19" not in observation["text"]
+            return "read", {
+                "offset": 0,
+                "scope": None,
+                "notebook": notebook
+                + f" Completed observation {index}; report remains.",
+            }
+
+        return proposal
+
+    def responder(_state):
+        async def respond(question):
+            return {"request_id": question["request_id"], "approved": True}
+
+        return respond
+
+    count = HISTORY_MESSAGES // 2 + 2
+    result, _state, gateway = await run_case(
+        tmp_path,
+        [initial] + [read_after(i) for i in range(count)] + [finish()],
+        html=html,
+        responder=responder,
+    )
+    assert result["status"] == "completed" and gateway.calls == count + 2
+    request = gateway.requests[-1]
+    assert notebook in request["input"][0]["content"]
+    assert result["details"] == "Test task facts; next action as proposed."
+    assert f"Completed observation {count - 1}" in request["input"][0]["content"]
+    history = request["input"][1:-1]
+    assert len(history) == HISTORY_MESSAGES
+    assert all(item.get("name") != "click" for item in history)
+    assert "Original item identity: Q19" not in json.dumps(request["input"][-1])
+    for item in history:
+        if item.get("type") == "function_call":
+            assert json.loads(item["arguments"])["notebook"].startswith(notebook)

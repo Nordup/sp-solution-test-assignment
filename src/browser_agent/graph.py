@@ -14,7 +14,7 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from .browser import BrowserError
-from .context import ContextOverflow, build_request
+from .context import HISTORY_MESSAGES, ContextOverflow, build_request
 from .llm import ProviderFailure
 from .safety import assess
 from .storage import BudgetExceeded
@@ -105,7 +105,7 @@ class AgentGraph:
             if item.get("call_id") != state["call"]["call_id"]
         ]
         history += protocol_pair(state["call"], result)
-        return history[-6:]
+        return history[-HISTORY_MESSAGES:]
 
     async def observe(self, state):
         try:
@@ -200,8 +200,22 @@ class AgentGraph:
                 "image": None,
             }
         tool, args = call["name"], call["arguments"]
-        self.emit("tool_proposed", {"step": step, "tool": tool, "arguments": args})
-        updates = {"call": call, "steps": step, "image": None, "feedback": ""}
+        self.emit(
+            "tool_proposed",
+            {
+                "step": step,
+                "tool": tool,
+                "arguments": args,
+                "notebook": call["notebook"],
+            },
+        )
+        updates = {
+            "call": call,
+            "steps": step,
+            "image": None,
+            "feedback": "",
+            "notebook": call["notebook"],
+        }
         current = state | updates
         if tool == "finish":
             if args["status"] == "completed" and args["remaining"]:
@@ -209,13 +223,9 @@ class AgentGraph:
                     "route": "decide",
                     "feedback": "A completed report cannot contain unmet requested work. Use partial or complete that work.",
                 }
-            return updates | {"route": "end", "result": args}
-        if tool == "remember":
             return updates | {
-                "route": "decide",
-                "notebook": args["notes"],
-                "history": self.append_result(current, {"saved": True}),
-                "failures": 0,
+                "route": "end",
+                "result": args | {"details": call["notebook"]},
             }
         if tool == "ask_user":
             answer = await self.ask(args)

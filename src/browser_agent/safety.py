@@ -1,7 +1,7 @@
 """Small, conservative approval gate based on the actual browser target.
 
 The actor cannot mark its own action safe. Unknown buttons and form submissions
-require confirmation; ordinary links and local text editing do not. A denied or
+require confirmation; observed navigation controls and local editing do not. A denied or
 uncertain consequential action ends the run instead of being replayed.
 """
 
@@ -54,7 +54,7 @@ _CRITICAL = (
     "загруз",
     "сброс",
 )
-_READ_ONLY = {"read", "tabs", "screenshot", "remember", "finish", "ask_user"}
+_READ_ONLY = {"read", "tabs", "screenshot", "finish", "ask_user"}
 _VIEWING = {"back", "scroll", "switch_tab"}
 
 
@@ -161,9 +161,27 @@ def assess(action, context):
         )
         if link:
             critical = _action_link(context)
-        elif tool == "click" and (
-            context.get("tag") in {"textarea", "select"}
-            or context.get("type") in {"text", "search", "email", "number"}
+        elif (
+            not _action_link(context)
+            and (
+                # Browser-resolved semantics for local selection, disclosure and search.
+                context.get("tag") == "summary"
+                or context.get("type") in {"checkbox", "radio"}
+                or context.get("role") in {"tab", "checkbox", "radio"}
+                or (
+                    not context.get("form_action")
+                    and (
+                        context.get("expanded") in {"true", "false"}
+                        or context.get("haspopup") in {"true", "menu", "listbox"}
+                    )
+                )
+                or (context.get("search_form") and context.get("form_method") == "get")
+            )
+            or tool == "click"
+            and (
+                context.get("tag") in {"textarea", "select"}
+                or context.get("type") in {"text", "search", "email", "number"}
+            )
         ):
             critical = False
         else:

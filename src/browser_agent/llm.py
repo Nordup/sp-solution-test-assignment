@@ -45,12 +45,12 @@ class Gateway:
             reasoning={"effort": self.settings.reasoning},
         )
         rates = PRICES[self.settings.model]
-        try:
-            count = await self.client.responses.input_tokens.count(**req)
-        except (APIConnectionError, APIStatusError) as exc:
-            raise ProviderFailure(
-                "Input-token admission failed; no generation sent."
-            ) from exc
+        for attempt in range(self.settings.max_retries + 1):
+            try:
+                count = await self.client.responses.input_tokens.count(**req)
+                break
+            except (APIConnectionError, APIStatusError) as exc:
+                await self._wait_to_retry(exc, attempt, purpose="input_count")
         tokens = count.input_tokens
         if not isinstance(tokens, int) or tokens < 0:
             raise ProviderFailure("Provider returned an invalid input count.")
@@ -80,35 +80,7 @@ class Gateway:
                 )
             except (APIConnectionError, APIStatusError) as exc:
                 # Unknown usage remains fully charged; never refund a lost response.
-                retryable = isinstance(exc, APIConnectionError) or getattr(
-                    exc, "status_code", 0
-                ) in {408, 409, 429, 500, 502, 503, 504}
-                if not retryable or attempt == self.settings.max_retries:
-                    raise ProviderFailure(
-                        f"Provider request failed after {attempt + 1} attempt(s): {type(exc).__name__}."
-                    ) from exc
-                delay = min(8, 2**attempt)
-                retry_after = getattr(
-                    getattr(exc, "response", None), "headers", {}
-                ).get("retry-after")
-                if retry_after:
-                    try:
-                        delay = max(delay, float(retry_after))
-                    except ValueError:
-                        pass
-                if delay > 30:
-                    raise ProviderFailure(
-                        "Provider requests a long wait; stopped without retry."
-                    ) from exc
-                self.emit(
-                    "provider_retry",
-                    {
-                        "attempt": attempt + 1,
-                        "delay_seconds": delay,
-                        "error_type": type(exc).__name__,
-                    },
-                )
-                await self.sleep(delay)
+                await self._wait_to_retry(exc, attempt, purpose=purpose)
                 continue
             usage = getattr(response, "usage", None)
             if usage is None:
@@ -134,6 +106,38 @@ class Gateway:
             )
             return response
         raise ProviderFailure("Retries exhausted.")
+
+    async def _wait_to_retry(self, exc, attempt, *, purpose):
+        retryable = isinstance(exc, APIConnectionError) or getattr(
+            exc, "status_code", 0
+        ) in {408, 409, 429, 500, 502, 503, 504}
+        if not retryable or attempt == self.settings.max_retries:
+            raise ProviderFailure(
+                f"{purpose} request failed after {attempt + 1} attempt(s): {type(exc).__name__}."
+            ) from exc
+        delay = min(8, 2**attempt)
+        retry_after = getattr(getattr(exc, "response", None), "headers", {}).get(
+            "retry-after"
+        )
+        if retry_after:
+            try:
+                delay = max(delay, float(retry_after))
+            except ValueError:
+                pass
+        if delay > 30:
+            raise ProviderFailure(
+                "Provider requests a long wait; stopped without retry."
+            ) from exc
+        self.emit(
+            "provider_retry",
+            {
+                "attempt": attempt + 1,
+                "purpose": purpose,
+                "delay_seconds": delay,
+                "error_type": type(exc).__name__,
+            },
+        )
+        await self.sleep(delay)
 
     async def close(self):
         if hasattr(self.client, "close"):

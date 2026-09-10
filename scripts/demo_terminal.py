@@ -16,9 +16,7 @@ from evals.run import CORE, fixture_browser_factory
 
 
 def recording_browser_factory(factory, width=None, height=None):
-    if width is None and height is None:
-        return factory
-    if (
+    if (width is not None or height is not None) and (
         not isinstance(width, int)
         or not isinstance(height, int)
         or not 320 <= width <= 3840
@@ -32,7 +30,13 @@ def recording_browser_factory(factory, width=None, height=None):
         async def start(self, url=None):
             await super().start(url)
             try:
-                await self.page.set_viewport_size({"width": width, "height": height})
+                if width is not None:
+                    await self.page.set_viewport_size(
+                        {"width": width, "height": height}
+                    )
+                await asyncio.to_thread(
+                    input, "Arrange browser and Terminal, then press Enter to start: "
+                )
             except BaseException:
                 await self.close()
                 raise

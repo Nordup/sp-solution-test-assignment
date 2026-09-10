@@ -10,11 +10,19 @@ class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-class Empty(Strict):
+class Action(Strict):
+    notebook: str = Field(
+        min_length=1,
+        max_length=6000,
+        description="Cumulative factual task notebook: original constraints, item identities, observed facts, completed actions and remaining checklist. Preserve prior useful facts. No reasoning or invented progress.",
+    )
+
+
+class Empty(Action):
     pass
 
 
-class Ref(Strict):
+class Ref(Action):
     ref: str = Field(min_length=1, max_length=80)
 
 
@@ -26,35 +34,31 @@ class Press(Ref):
     key: Literal["Enter", "Tab", "Escape", "ArrowDown", "ArrowUp", "Space", "Backspace"]
 
 
-class Navigate(Strict):
+class Navigate(Action):
     url: str = Field(min_length=8, max_length=3000)
 
 
-class Read(Strict):
+class Read(Action):
     offset: int = Field(ge=0, le=1000000)
     scope: str | None = Field(
         description="Null for whole page, or an exact current element ref. Never a selector. Use next_offset for continuation."
     )
 
 
-class Scroll(Strict):
+class Scroll(Action):
     direction: Literal["up", "down"]
 
 
-class Tab(Strict):
+class Tab(Action):
     page_id: str
 
 
-class Ask(Strict):
+class Ask(Action):
     question: str = Field(min_length=1, max_length=1500)
     kind: Literal["clarification", "login", "challenge"]
 
 
-class Note(Strict):
-    notes: str = Field(min_length=1, max_length=6000)
-
-
-class Finish(Strict):
+class Finish(Action):
     status: Literal["completed", "partial", "failed"]
     summary: str = Field(min_length=1, max_length=4000)
     remaining: list[str] = Field(max_length=20)
@@ -79,17 +83,13 @@ REGISTRY = {
     "switch_tab": (Tab, "Switch to an observed tab ID."),
     "close_tab": (Tab, "Close an observed tab ID."),
     "screenshot": (Empty, "Inspect the actual current viewport visually."),
-    "remember": (
-        Note,
-        "Replace your cumulative notebook with observed facts, selected original items, completed actions and remaining work. Older conversation expires.",
-    ),
     "ask_user": (
         Ask,
         "Ask for missing information or manual login/challenge. Action approval is handled by the host; propose the action instead.",
     ),
     "finish": (
         Finish,
-        "Report the observed outcome honestly. Completed means the requested work and stopping boundary are reached; remaining lists only unmet requested work.",
+        "Report the observed outcome honestly. Completed requires the requested stopping boundary: finish permitted preparation/review stages before stopping at a final consequential action. Include actual counts and identities, including retained items. Remaining lists unmet requested work.",
     ),
 }
 
@@ -138,20 +138,23 @@ def parse_call(response, registry=None):
         arguments = registry[call["name"]][0].model_validate_json(call["arguments"])
     except (ValueError, TypeError, KeyError) as exc:
         raise ProtocolError("Native arguments failed strict validation.") from exc
-    return {
-        "name": call["name"],
-        "arguments": arguments.model_dump(),
-        "call_id": call["call_id"],
-    }
+    payload = arguments.model_dump()
+    parsed = {"name": call["name"], "arguments": payload, "call_id": call["call_id"]}
+    if isinstance(arguments, Action):
+        parsed["notebook"] = payload.pop("notebook")
+    return parsed
 
 
 def protocol_pair(call, result):
+    arguments = dict(call["arguments"])
+    if "notebook" in call:
+        arguments["notebook"] = call["notebook"]
     return [
         {
             "type": "function_call",
             "name": call["name"],
             "call_id": call["call_id"],
-            "arguments": json.dumps(call["arguments"], ensure_ascii=False),
+            "arguments": json.dumps(arguments, ensure_ascii=False),
         },
         {
             "type": "function_call_output",

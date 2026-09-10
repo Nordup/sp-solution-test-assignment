@@ -31,7 +31,7 @@ flowchart LR
 | Autonomous multi-page decisions | One model repeatedly chooses a typed tool from the latest observation. LangGraph controls transitions. |
 | Generic navigation | Tools use references discovered from current accessibility snapshots. Runtime has no mail/order/job recipe, site selector or expected route. |
 | Structured model interaction | Native strict function schemas plus Pydantic validation. No regex extraction of JSON from model prose. |
-| Bounded context | Current bounded snapshot, scoped/paged reads, recent tool results and a small notebook maintained by the actor. Older raw snapshots leave the model context. |
+| Bounded context | Current bounded snapshot, scoped/paged reads, ten recent tool exchanges and a cumulative notebook required in every tool call (up to 6,000 characters). The notebook records facts and progress; it does not require another model call. Older raw snapshots leave context. |
 | Critical-action confirmation | Host policy examines the actual target/form; shows destination, values and proposed action. Exact affirmative response is required, and the browser revalidates the target before dispatch. |
 | Adaptive recovery | Transient model errors use bounded backoff; stale references trigger a fresh observation and a new decision. Repeated failure stops honestly. |
 | Uncertain side effect | Stop for human inspection rather than automatically repeating a potentially completed mutation. |
@@ -41,11 +41,11 @@ flowchart LR
 
 ## Deliberate limits
 
-Confirmation is conservative: a form submission or an unknown JavaScript button may require approval even if it turns out to be harmless. The gate is not a proof of arbitrary website JavaScript behavior. Manual review of the displayed destination and content matters.
+Confirmation is conservative: an unknown JavaScript button or a consequential form submission requires approval. Browser-resolved search forms, menu expansion and local selection can run autonomously; critical labels override that exemption. The gate is not a proof of arbitrary website JavaScript behavior. Manual review of the displayed destination and content matters.
 
 Browser login persists between runs. Resuming an arbitrary interrupted program checkpoint, exactly-once execution across crashes, and production operation accounting are outside this assignment. An uncertain consequential operation must be inspected before starting another task.
 
-The actor verifies the latest browser state and writes a concise final report. No additional runtime model audits the actor's memory, questions or report. Evaluations check actual fixture outcomes independently.
+The actor verifies the latest browser state and writes a concise final report. Its final factual notebook is included as report details, preserving concrete item identities even when the summary is brief. No additional runtime model audits the actor's memory, questions or report. Evaluations check actual fixture outcomes independently.
 
 Synthetic success demonstrates the agent loop and controlled task behavior. It does not certify compatibility with every live service or bypass login/security challenges. Current results belong in [VALIDATION.md](VALIDATION.md).
 

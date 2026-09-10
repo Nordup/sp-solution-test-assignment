@@ -2,7 +2,7 @@
 
 A Python agent that uses **LangGraph + Playwright** to carry out natural-language tasks in a visible browser. A real terminal shows the task, tool calls, approvals and final report. The acting model is **GPT-5.6 Luna** through the OpenAI API.
 
-**Status:** the simplified LangGraph implementation passes 39 focused tests and lint. The three model-driven task evaluations and demo remain pending. See [validation](docs/VALIDATION.md) for actual results.
+**Status:** 54 focused tests and the three model-driven synthetic task checks pass. LangSmith uploads have been read back and verified. See [validation](docs/VALIDATION.md) for results and limitations.
 
 ## Run
 
@@ -31,7 +31,7 @@ Log in manually in the opened browser, then press Enter in Terminal to save and 
 
 LangGraph connects observation, one model decision, host safety checks, execution and recovery. Tools reference elements discovered from the current accessibility snapshot; there are no site-specific selectors or task scripts. OpenAI native tool calls are validated by Pydantic.
 
-The actor sees a bounded current snapshot, recent tool results and a small notebook. It can read long content in segments. Stale elements trigger a fresh observation and replanning; provider errors have bounded retry/backoff. An uncertain consequential action stops for inspection instead of being repeated.
+The actor sees a bounded current snapshot, ten recent tool exchanges and a cumulative notebook required in every tool call. This keeps completed work and earlier source facts available without a helper model. It can read long content in segments. Stale elements trigger a fresh observation and replanning; provider errors have bounded retry/backoff. An uncertain consequential action stops for inspection instead of being repeated.
 
 Critical actions show the actual destination, target and form values. Type `yes` to approve that exact action; a denial ends the task. The browser checks that the target has not changed before executing. Unknown JavaScript buttons are conservatively confirmed. This is a practical safety gate, not a guarantee about arbitrary website code.
 
@@ -45,12 +45,12 @@ uv run pytest -q
 uv run python -m evals.run --headed --langsmith
 ```
 
-The evaluation runner uses isolated synthetic versions of the three supplied task families: reading mail/removing spam, history-based food checkout, and resume-based job applications. LangSmith records synthetic inputs, outputs and scores. Fixture expectations are not available to the actor. The current command interface has been checked; task outcomes remain pending until the new evaluations run. Old-version results are not new passes.
+The evaluation runner uses isolated synthetic versions of the three supplied task families: reading mail/removing spam, history-based food checkout, and resume-based job applications. LangSmith records synthetic inputs, outputs and scores. Fixture expectations are not available to the actor. [Evaluation attempts](docs/EVALUATION-RESULTS.md) include failures as well as passes.
 
 Use [FINAL-TEST.md](docs/FINAL-TEST.md) for the focused acceptance checks and [SYSTEM-DESIGN.md](docs/SYSTEM-DESIGN.md) for requirement mapping. The exact Russian [assignment](docs/assignment.ru.md) and [HR criteria](docs/hr-requirements.ru.md) are preserved.
 
 ## Demo and limitations
 
-The final video must show the real terminal and browser together. It is still pending. A synthetic demonstration will be labeled explicitly. The prepared Yandex session previously reached a request for a genuine delivery address; a complete live food task and useful last-week history remain unverified.
+[Watch the synthetic terminal-and-browser demo](docs/assets/synthetic-agent-demo.mp4) (2 minutes 20 seconds). It shows the real actor, human approvals and final payment review without placing an order. The prepared Yandex session previously reached a request for a genuine delivery address; a complete live food task and useful last-week history remain unverified.
 
 Credentials, profiles, account evidence and raw run artifacts are ignored by Git. Live account content is not automatically exported to LangSmith. Do not submit payments, delete real mail or send real applications merely to produce a demonstration.

@@ -22,7 +22,7 @@ The runner uses fresh isolated fixture state and a $5 maximum for each task:
 uv run python -m evals.run --headed --langsmith
 ```
 
-It runs mail → food → jobs. The command interface has been checked; the current task outcomes remain pending until execution. Use `--case food_previous_order` to rerun only a relevant case after a diagnosed fix. `--judge-letters` adds an optional model quality check within the jobs task's remaining budget.
+It runs mail → food → jobs. All three synthetic task checks have passed; see [VALIDATION.md](VALIDATION.md) for the inspected results. Use `--case food_previous_order` to rerun only a relevant case after a diagnosed fix. `--judge-letters` adds an optional model quality check within the jobs task's remaining budget.
 
 1. **Mail:** `Прочитай последние 10 писем в этом почтовом сервисе и удали спам` — inspect all ten message bodies, remove only approved spam, keep legitimate/older messages and report the actual counts.
 2. **Food:** `Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе. Остановись перед финальным подтверждением оплаты; заказ не размещай.` — discover the restaurant from history, distinguish products, verify cart, reach the allowed checkout boundary without placing/paying for an order.
