@@ -94,15 +94,15 @@ async def test_provider_retries_transient_error_and_charges_unknown_attempt():
 async def test_security_review_uses_same_budgeted_client_at_medium_effort():
     client = fake_client()
     events = []
-    gateway = Gateway(Settings(reasoning="low"), client=client, emit=lambda e, d: events.append((e, d)))
+    gateway = Gateway(Settings(), client=client, emit=lambda e, d: events.append((e, d)))
     await gateway.call({"input": "actor"})
     await gateway.call({"input": "security"}, purpose="security")
     calls = client.responses.create.await_args_list
-    assert calls[0].kwargs["reasoning"] == {"effort": "low"}
+    assert calls[0].kwargs["reasoning"] == {"effort": "max"}
     assert calls[1].kwargs["reasoning"] == {"effort": "medium"}
     usages = [data for event, data in events if event == "model_usage"]
     assert [item["purpose"] for item in usages] == ["actor", "security"]
-    assert [item["effort"] for item in usages] == ["low", "medium"]
+    assert [item["effort"] for item in usages] == ["max", "medium"]
     assert gateway.cost_usd > 0
 
 

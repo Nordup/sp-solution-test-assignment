@@ -18,7 +18,7 @@ class Settings(BaseModel):
     max_decisions: int = Field(default=60, ge=1, le=120)
     active_seconds: int = Field(default=1200, ge=1, le=1200)
     max_retries: int = Field(default=2, ge=0, le=3)
-    reasoning: str = "low"
+    reasoning: str = "max"
 
     @classmethod
     def load(cls, **overrides):
