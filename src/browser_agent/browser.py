@@ -146,7 +146,10 @@ class BrowserSession:
             try:
                 self._pw = await async_playwright().start()
                 self.context = await self._pw.chromium.launch_persistent_context(
-                    str(self.profile), headless=self.headless, accept_downloads=False
+                    str(self.profile),
+                    headless=self.headless,
+                    no_viewport=True,
+                    accept_downloads=False,
                 )
                 self.context.set_default_timeout(self.ACTION_TIMEOUT_MS)
                 self.context.set_default_navigation_timeout(15000)
