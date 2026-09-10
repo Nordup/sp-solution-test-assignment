@@ -72,6 +72,21 @@ class Finish(Action):
     remaining: list[str] = Field(max_length=20)
 
 
+class SecurityReview(Strict):
+    """The private reviewer has no notebook or browser-action fields."""
+
+    decision: Literal["allow", "approval", "deny"]
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+SECURITY_REGISTRY = {
+    "security_review": (
+        SecurityReview,
+        "Classify one host-resolved browser action as ordinary reversible work, requiring exact user approval, or unsafe to execute.",
+    )
+}
+
+
 REGISTRY = {
     "list_browsers": (Empty, "Discover local connectable browsers and list managed browser IDs, ownership and tabs."),
     "launch_browser": (Empty, "Launch a new owned browser with a persistent profile and make it active."),

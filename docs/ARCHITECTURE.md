@@ -1,6 +1,6 @@
 # Architecture
 
-The [assignment](assignment.ru.md) and [HR criteria](hr-requirements.ru.md) require a visible, autonomous browser agent with generic navigation, bounded context, structured model calls, recovery and safety checks. The runtime keeps those concerns in one LangGraph actor and lets the task determine how a browser is obtained.
+The [assignment](assignment.ru.md) and [HR criteria](hr-requirements.ru.md) require a visible, autonomous browser agent with generic navigation, bounded context, structured model calls, recovery and safety checks. The runtime keeps those concerns in one LangGraph actor and lets the task determine how a browser is obtained. The selected advanced patterns are adaptive error handling and a narrow security layer for real side effects.
 
 ## Browser workspace
 
@@ -34,7 +34,7 @@ Discovery intentionally has a narrow trust boundary. On macOS and Linux the host
 
 Python 3.12, LangGraph `StateGraph`, native OpenAI Responses function calls validated by Pydantic, Playwright and Rich terminal input. The runtime model is `gpt-5.6-luna` with low reasoning effort. LangSmith remains a dependency for explicit tracing boundaries; live tasks disable tracing and do not export account content automatically.
 
-Once a browser is active, one LangGraph loop connects observation, a typed model decision, host safety checks, execution and recovery. The model receives no site-specific selectors, navigation recipes or expected task answers.
+Once a browser is active, one LangGraph loop connects observation, a typed model decision, host-side classification, an independent structured security-review call through the same Gateway and budget ledger when a control is ambiguous, execution and recovery. Clear destructive or committing targets go directly to exact approval; the independent reviewer receives the current observed target/form evidence and proposed effect for ambiguous controls, then returns allow, approval or deny. Routine navigation, search, menu expansion and cart preparation proceed without a user prompt; deleting a message, sending a message, submitting an application, placing or paying for an order and similar external effects require exact approval. The reviewer is a narrow safety component, not a general multi-agent framework or second planner. The model receives no site-specific selectors, navigation recipes or expected task answers.
 
 ## Requirement decisions
 
@@ -49,11 +49,12 @@ Once a browser is active, one LangGraph loop connects observation, a typed model
 | Browser controls | Native tools cover browser discovery/ownership plus `navigate`, `new_tab`, `tabs`, `switch_tab`, `close_tab`, `back`, `forward`, `reload`, `hover`, vertical and horizontal `scroll`, reads, screenshots, forms, keyboard input, questions and reports. |
 | Structured model interaction | Native strict function schemas plus Pydantic validation are used. The runtime does not parse JSON from model prose with regular expressions. |
 | Bounded context | The actor receives a bounded current accessibility snapshot, scoped or paged reads, ten recent tool exchanges and a cumulative factual notebook required in every tool call (up to 6,000 characters). |
-| Critical-action confirmation | Host policy examines the observed target and form, shows destination, values and proposed action, and requires an exact affirmative response. The browser revalidates the target before dispatch. |
-| Adaptive recovery | Transient provider errors use bounded backoff; stale references trigger a fresh observation and new decision; repeated failure produces an honest partial or failed report. |
+| Security layer and critical-action confirmation | Host classification recognizes clear destructive/committing targets; ambiguous controls go to an independent structured reviewer. Routine navigation, search, menu and cart preparation remain autonomous; deleting, sending, submitting an application, placing or paying for an order and similar external effects require an exact affirmative response showing destination, values and action. Reload is reviewed when the current form action/method could resubmit work; a no-form reload may remain ordinary. The browser revalidates the target before dispatch. |
+| Adaptive recovery | Provider errors use bounded backoff/retry; browser errors trigger a fresh observation and new decision; stale references and stale review details are rejected. An unavailable reviewer or uncertain classification stops safely, and repeated failure produces an honest partial or failed report. |
+| Advanced patterns | The implementation uses adaptive error handling plus the narrow security reviewer above. It does not add a general fleet of specialized sub-agents or a second autonomous planner. |
 | Uncertain side effect | If an action may already have taken effect, the actor stops for inspection instead of automatically replaying it. |
 | Login or challenge | Passwords and credentials are not model tools. Login, CAPTCHA and security challenges pause for manual handling in the visible browser. |
-| Cost | The runtime enforces a maximum $5 model budget per task, including retries. Unknown billed attempts consume the conservative estimate. |
+| Cost | The runtime enforces a maximum $5 model budget per task across actor calls, independent security-review calls and retries. Unknown billed attempts consume the conservative estimate. |
 | Acceptance | Focused automated tests cover the graph, browser adapter, context, safety and retry boundaries. Human acceptance uses the same CLI with task-only existing-browser and new-browser scenarios plus the three assignment tasks. |
 
 ## Deliberate limits

@@ -40,12 +40,34 @@ def finish(status="completed"):
     )
 
 
-class ScriptedGateway:
-    def __init__(self, script):
-        self.script, self.calls, self.cost_usd = list(script), 0, 0
-        self.requests, self.closed, self.trace_enabled = [], False, None
+def security_review(decision="allow", reason="Synthetic security decision"):
+    return {"decision": decision, "reason": reason}
 
-    async def call(self, request):
+
+class ScriptedGateway:
+    def __init__(self, script, security_script=()):
+        self.script, self.calls, self.cost_usd = list(script), 0, 0
+        self.security_script = list(security_script)
+        self.security_calls = 0
+        self.requests, self.security_requests = [], []
+        self.closed, self.trace_enabled = False, None
+
+    async def call(self, request, purpose="actor"):
+        if purpose == "security":
+            self.security_calls += 1
+            self.security_requests.append(request)
+            decision = self.security_script.pop(0)
+            return {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "security_review",
+                        "call_id": str(uuid4()),
+                        "arguments": json.dumps(decision),
+                    }
+                ],
+            }
         self.calls += 1
         self.requests.append(request)
         self.trace_enabled = get_tracing_context().get("enabled")
@@ -122,9 +144,17 @@ def browser_factory(
     return TestBrowser
 
 
-async def run_case(tmp_path, script, *, html=FORM, responder=None, **browser_options):
+async def run_case(
+    tmp_path,
+    script,
+    *,
+    html=FORM,
+    responder=None,
+    security_script=(),
+    **browser_options,
+):
     state = {}
-    gateway = ScriptedGateway(script)
+    gateway = ScriptedGateway(script, security_script=security_script)
     result = await run_isolated(
         Settings(artifact_dir=tmp_path),
         "Perform the requested test action",
@@ -248,6 +278,83 @@ async def test_exact_approval_controls_one_actual_effect(tmp_path, answer):
     assert result["status"] == ("completed" if answer == "approve" else "partial")
 
 
+async def test_login_button_uses_security_reviewer_without_human_prompt(tmp_path):
+    questions = []
+
+    async def responder(question):
+        questions.append(question)
+        return {"request_id": question["request_id"], "approved": True}
+
+    html = '<form onsubmit="event.preventDefault();window.effects=(window.effects||0)+1"><input aria-label="Email"><button type="submit">Log in</button></form>'
+    result, state, gateway = await run_case(
+        tmp_path,
+        [click("Log in"), finish()],
+        html=html,
+        responder=lambda _state: responder,
+        security_script=[security_review("allow", "Opening login is ordinary")],
+    )
+    assert result["status"] == "completed"
+    assert state["effects"] == 1 and questions == []
+    assert gateway.security_calls == 1 and gateway.calls == 2
+    assert [item["name"] for item in gateway.security_requests[0]["tools"]] == [
+        "security_review"
+    ]
+
+
+@pytest.mark.parametrize("decision,approved,expected_status", [
+    ("allow", False, "completed"),
+    ("approval", True, "completed"),
+    ("approval", False, "partial"),
+    ("deny", False, "needs_user"),
+])
+async def test_ambiguous_control_review_decides_without_execution_on_deny(
+    tmp_path, decision, approved, expected_status
+):
+    questions = []
+
+    def responder(_state):
+        async def respond(question):
+            questions.append(question)
+            if question["kind"] != "approval":
+                return None
+            return {"request_id": question["request_id"], "approved": approved}
+
+        return respond
+
+    html = '<button onclick="window.effects=(window.effects||0)+1">Continue</button>'
+    result, state, gateway = await run_case(
+        tmp_path,
+        [click("Continue"), finish()],
+        html=html,
+        responder=responder,
+        security_script=[security_review(decision)],
+    )
+    assert result["status"] == expected_status
+    assert state["effects"] == (1 if decision == "allow" or approved else 0)
+    assert gateway.security_calls == 1
+    assert any(item.get("kind") == "approval" for item in questions) is (
+        decision == "approval"
+    )
+
+
+async def test_explicit_destructive_target_uses_exact_host_gate_without_reviewer(tmp_path):
+    def responder(_state):
+        async def respond(question):
+            return {"request_id": question["request_id"], "approved": False}
+
+        return respond
+
+    html = '<button onclick="window.effects=(window.effects||0)+1">Delete selected messages</button>'
+    result, state, gateway = await run_case(
+        tmp_path,
+        [click("Delete selected messages")],
+        html=html,
+        responder=responder,
+    )
+    assert result["status"] == "partial" and state["effects"] == 0
+    assert gateway.security_calls == 0
+
+
 async def test_changed_form_after_approval_prevents_dispatch_and_replans(tmp_path):
     def responder(state):
         async def respond(question):
@@ -293,6 +400,78 @@ async def test_stale_reference_requires_new_actor_decision_before_effect(tmp_pat
     assert "stale_ref" in json.dumps(gateway.requests[1])
 
 
+async def test_stale_control_recovery_chooses_fresh_alternate_observation(tmp_path):
+    state = {}
+    html = '<button id="first">First control</button><button onclick="window.effects=(window.effects||0)+1">Alternate control</button>'
+    base = browser_factory(html, state)
+
+    class ReplacingBrowser(base):
+        failed_once = False
+
+        async def action_context(self, *args, **kwargs):
+            if not self.failed_once:
+                self.failed_once = True
+                await self.page.locator("#first").evaluate("el => el.remove()")
+                raise BrowserError("stale_ref", "Synthetic target disappeared")
+            return await super().action_context(*args, **kwargs)
+
+    gateway = ScriptedGateway(
+        [click("First control"), click("Alternate control"), finish()],
+        security_script=[security_review("allow")],
+    )
+    result = await run_isolated(
+        Settings(artifact_dir=tmp_path),
+        "Use the available control",
+        browser_factory=ReplacingBrowser,
+        gateway_factory=lambda *_args, **_kwargs: gateway,
+    )
+    assert result["status"] == "completed" and state["effects"] == 1
+    assert gateway.calls == 3 and gateway.security_calls == 1
+    assert "stale_ref" in json.dumps(gateway.requests[1])
+    second_observation = gateway.requests[1]["input"][-1]["content"][0]["text"]
+    assert "Alternate control" in second_observation
+    assert "First control" not in second_observation
+
+
+async def test_malformed_security_review_replans_without_dispatch(tmp_path):
+    html = '<button onclick="window.effects=(window.effects||0)+1">Continue</button>'
+    result, state, gateway = await run_case(
+        tmp_path,
+        [click("Continue"), finish("partial")],
+        html=html,
+        security_script=[{"decision": "unknown", "reason": "not a valid decision"}],
+    )
+    assert result["status"] == "partial" and state["effects"] == 0
+    assert gateway.security_calls == 1 and gateway.calls == 2
+    assert "malformed_security_review" in json.dumps(gateway.requests[1])
+
+
+async def test_incomplete_security_fields_stop_before_reviewer_or_dispatch(tmp_path):
+    state = {}
+    base = browser_factory(
+        '<button onclick="window.effects=(window.effects||0)+1">Continue</button>',
+        state,
+    )
+
+    class IncompleteContextBrowser(base):
+        async def action_context(self, *args, **kwargs):
+            context = await super().action_context(*args, **kwargs)
+            context["fields"] = ["x" * 13000]
+            context["context_complete"] = True
+            return context
+
+    gateway = ScriptedGateway([click("Continue"), finish("partial")])
+    result = await run_isolated(
+        Settings(artifact_dir=tmp_path),
+        "Use the available control",
+        browser_factory=IncompleteContextBrowser,
+        gateway_factory=lambda *_args, **_kwargs: gateway,
+    )
+    assert result["status"] == "partial" and state["effects"] == 0
+    assert gateway.security_calls == 0 and gateway.calls == 2
+    assert "incomplete_security_review_context" in json.dumps(gateway.requests[1])
+
+
 @pytest.mark.parametrize("failure", ["uncertain", "observation_failure"])
 async def test_uncertain_effect_is_never_replayed(tmp_path, failure):
     def responder(_state):
@@ -324,11 +503,11 @@ async def test_login_and_challenge_pause_without_model_polling(tmp_path, html, k
 async def test_cancelled_run_keeps_actual_effect_and_cleans_up(tmp_path, monkeypatch):
     original_call = ScriptedGateway.call
 
-    async def interrupted(self, request):
+    async def interrupted(self, request, purpose="actor"):
         if self.calls == 1:
             self.cost_usd = 0.01
             raise asyncio.CancelledError()
-        return await original_call(self, request)
+        return await original_call(self, request, purpose=purpose)
 
     monkeypatch.setattr(ScriptedGateway, "call", interrupted)
 
@@ -436,6 +615,7 @@ async def test_required_notebook_survives_expired_history_on_next_real_request(
         [initial] + [read_after(i) for i in range(count)] + [finish()],
         html=html,
         responder=responder,
+        security_script=[security_review()],
     )
     assert result["status"] == "completed" and gateway.calls == count + 2
     request = gateway.requests[-1]

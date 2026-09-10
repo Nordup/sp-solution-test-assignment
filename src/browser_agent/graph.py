@@ -1,12 +1,13 @@
-"""Small LangGraph: observe, one actor, exact approval, execute, recover.
+"""Small LangGraph: observe, one actor, bounded review, exact approval, execute.
 
-State lives only for this run. There are no checkpoints, reviewer agents or
-persistent action journals. Browser effects are never retried by the executor.
+State lives only for this run. The private security review has no browser tools,
+and browser effects are never retried by the executor.
 """
 
 import asyncio
 import base64
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TypedDict
 from uuid import uuid4
@@ -17,7 +18,13 @@ from .browser import BrowserError
 from .budget import BudgetExceeded
 from .context import HISTORY_MESSAGES, ContextOverflow, build_request
 from .llm import ProviderFailure
-from .safety import assess
+from .safety import (
+    SecurityReviewError,
+    assess,
+    parse_security_review,
+    security_review_complete,
+    security_review_request,
+)
 from .tools import ProtocolError, parse_call, protocol_pair
 
 
@@ -97,6 +104,29 @@ class AgentGraph:
         answer = await self.responder(question)
         self.deadline += time.monotonic() - started  # Human time is not active runtime.
         return answer
+
+    async def security_review(self, action, metadata, assessment):
+        """Ask the same budgeted gateway for one structured, tool-free review."""
+        request = security_review_request(
+            self.task, action, metadata, assessment
+        )
+        try:
+            response = await asyncio.wait_for(
+                self.gateway.call(request, purpose="security"),
+                timeout=max(0.1, self.deadline - time.monotonic()),
+            )
+            return parse_security_review(response)
+        except SecurityReviewError:
+            raise
+        except (BudgetExceeded, ContextOverflow, ProviderFailure, TimeoutError) as exc:
+            raise SecurityReviewError(
+                "security_review_failed",
+                "Security review could not complete within the shared budget or time limit",
+            ) from exc
+        except Exception as exc:
+            raise SecurityReviewError(
+                "security_review_failed", "Security review failed before dispatch"
+            ) from exc
 
     def append_result(self, state, result):
         history = [
@@ -270,6 +300,53 @@ class AgentGraph:
             if assessment.forbidden or not assessment.details_complete:
                 question = {"kind": "clarification", "question": assessment.reason}
                 return updates | self.stop(assessment.reason, "needs_user", question)
+            if assessment.requires_review:
+                if not security_review_complete(metadata):
+                    return updates | {
+                        "route": "recover",
+                        "error": {
+                            "code": "incomplete_security_review_context",
+                            "message": "Security review context was truncated; choose a fresh target",
+                            "uncertain": False,
+                        },
+                    }
+                try:
+                    review = await self.security_review(
+                        {"tool": tool, "args": args}, metadata, assessment
+                    )
+                except SecurityReviewError as exc:
+                    return updates | {"route": "recover", "error": exc.as_dict()}
+                self.emit(
+                    "security_review",
+                    {
+                        "step": step,
+                        "decision": review["decision"],
+                        "reason": review["reason"][:500],
+                    },
+                )
+                if review["decision"] == "deny":
+                    return updates | self.stop(
+                        "The independent security review denied this ambiguous action.",
+                        "needs_user",
+                        {
+                            "kind": "clarification",
+                            "question": review["reason"],
+                        },
+                    )
+                assessment = replace(
+                    assessment,
+                    classification=(
+                        "consequential"
+                        if review["decision"] == "approval"
+                        else "ordinary"
+                    ),
+                    reason=(
+                        "Confirm this exact action after independent security review"
+                        if review["decision"] == "approval"
+                        else "Independent security review classified this as ordinary"
+                    ),
+                    requires_review=False,
+                )
             return updates | {
                 "route": "approve" if assessment.requires_approval else "execute",
                 "metadata": metadata,

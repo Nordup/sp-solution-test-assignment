@@ -1,6 +1,6 @@
 # Autonomous browser agent
 
-A Python browser agent built with LangGraph, Playwright and OpenAI. Give it a task in a terminal and watch it work in a visible browser. It reads the current page, chooses the next browser action, asks for approval before consequential actions, and reports what it observed.
+A Python browser agent built with LangGraph, Playwright and OpenAI. Give it a task in a terminal and watch it work in a visible browser. It reads the current page, chooses the next browser action, asks for approval before destructive or committing effects, and reports what it observed.
 
 [Architecture](docs/ARCHITECTURE.md) · [Test runbook](docs/FINAL-TEST.md) · [Validation status](docs/VALIDATION.md)
 
@@ -25,7 +25,7 @@ The command starts the terminal session and task prompt. It does not choose a UR
 
 The first agent-created Chromium uses the persistent `default` profile under `artifacts/profiles/default`; additional owned browser records use their own workspace profiles. Cookies remain in the profile for later tasks. An attached browser keeps its existing context and tabs; the agent never copies cookies. On `/exit`, owned browsers are closed and attached browsers are only disconnected, leaving the external browser open. You can log in manually in whichever visible browser is active.
 
-The default runtime model is `gpt-5.6-luna` with low reasoning effort. Each task has a maximum $5 model budget, including retries. For a consequential action, inspect the destination, target and form values shown in the terminal and type `yes` to approve that exact action. Any other answer declines it and stops that task.
+The default runtime model is `gpt-5.6-luna` with low reasoning effort. Each task has a maximum $5 model budget for actor calls, independent security-review calls and retries. Routine navigation, search, menus and cart preparation run autonomously. A small structured security layer asks for exact approval only before a destructive or committing effect such as deleting a message, sending a message, submitting an application or placing/paying for an order; inspect the destination, target and form values shown in the terminal and type `yes` to approve that exact action. Any other answer declines it and stops that task.
 
 ## How it works
 
@@ -33,7 +33,7 @@ One LangGraph loop connects browser-workspace observation, a typed model decisio
 
 Connectable browser discovery is deliberately narrow: on macOS and Linux the host inspects local browser listeners with `lsof` and verifies each candidate through its local `/json/version` endpoint. The model receives opaque browser IDs, never raw endpoints. There is no broad port scan or raw command-line scraping. Python Playwright connects through `connect_over_cdp`; a normal Chrome or Firefox process without an enabled CDP endpoint is not magically attachable.
 
-The page tools cover navigation, bounded reads, screenshots, forms, keyboard input, vertical and horizontal scrolling, hover controls, new tabs, tab listing/switching/closing, back, forward and reload, user questions and final reports. Old element references are rejected after navigation or DOM changes. Transient provider errors use bounded retries; stale elements trigger a fresh observation and replanning; an uncertain consequential action stops for inspection instead of being replayed.
+The page tools cover navigation, bounded reads, screenshots, forms, keyboard input, vertical and horizontal scrolling, hover controls, new tabs, tab listing/switching/closing, back, forward and reload, user questions and final reports. Old element references are rejected after navigation or DOM changes. Host classification handles clear destructive targets; ambiguous controls receive an independent structured review of the live observed target and proposed effect, so benign controls do not create approval prompts while destructive or committing effects do. Stale or incomplete review evidence, an unavailable reviewer or an uncertain classification stops safely. Transient provider errors use bounded retries; browser errors trigger a fresh observation and new decision; an uncertain side effect is never replayed.
 
 Context is bounded to the current snapshot, recent tool exchanges and a cumulative factual notebook required on every tool call. Long pages are read in scoped or paged segments. See [architecture and requirement mapping](docs/ARCHITECTURE.md) for the implementation choices.
 

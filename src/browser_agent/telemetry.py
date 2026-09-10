@@ -46,6 +46,12 @@ class Events:
                     + "\n"
                     + result.get("observed_excerpt", "")[:700]
                 )
+            elif event == "security_review":
+                label = "Security"
+                message = (
+                    f"{record.get('decision', 'unknown')}: "
+                    f"{record.get('reason', '')[:500]}"
+                )
             elif event in {"recovery", "provider_retry", "run_error", "run_cancelled"}:
                 label = event
                 message = json.dumps(data, ensure_ascii=False)

@@ -2,19 +2,22 @@
 
 ## Current status
 
-The current revision adds a model-driven browser workspace: it starts empty, discovers verified local CDP browsers by opaque IDs, and lets the actor choose launch, attach, switch or detach from the task wording. Two bounded read-only model smokes passed those launch and attachment paths. Focused automated lifecycle tests pass; live-account scenarios remain pending.
+The current revision adds a model-driven browser workspace and an independent structured security reviewer. Two bounded workspace smokes and one corrected Luna security smoke on a temporary local page passed their intended paths. Focused reviewer tests pass; live-account scenarios remain pending.
 
 The 52-test result and IANA smoke below are historical baselines from before workspace attachment. They do not prove the new discovery, ownership or external disconnect behavior.
 
 | Check | Evidence |
 |---|---|
 | Browser workspace model smokes | **Passed:** new-browser run `7b2c5bdd-b525-4003-9dad-d26a36519b99`, 3 decisions, $0.002718, `launch_browser → tabs → finish`; it created owned browser `b-cb1a17b11b9744` with one active blank `about:blank` tab whose title was empty. Attachment run `945d1f3c-0dd0-440c-8ade-8c1d814d20d2`, 3 decisions, $0.002873, `list_browsers → attach_browser → finish`; it attached a temporary test-owned CDP tab titled `Attachment smoke`, reported heading `Attachment smoke unique proof`, proposed no `launch_browser`, and the external browser stayed connected with its tab and heading intact after workspace close. Private evidence: `artifacts/workspace-smoke/20260910T035211Z/evidence.json`. |
-| Focused tests | **PASS — current tree:** `uv run pytest -q`, 56 passed in 22.02s. The targeted workspace file also reports 4 passed in 4.12s, including owned/attached switching and external detach liveness. |
+| Security reviewer smoke | **Passed:** corrected run `3526d5c0-1443-49dc-aa11-26dba2948bbc`, 7 actor decisions, $0.009641. On a temporary local page, independent reviewer calls allowed `Log in` and reversible `Add to cart` without a human approval; search and menu preparation completed. The explicit `Delete message` action produced one exact approval request; the responder denied it, and the page still reported `Draft remains` with no delete effect. Reviewer and actor costs share the same ledger. Private evidence: `artifacts/security-smoke/20260910T043436Z/evidence.json`. |
+| Focused tests | **PASS — current tree:** `uv run pytest -q`, 72 passed in 26.16s. The targeted reviewer set reports 36 passed, including ordinary-action autonomy, structured reviewer decisions, denial/no-effect, stale-strategy changes, reload resubmission review and reviewer failure handling. |
 | Lint and setup | **PASS — current tree:** Ruff checks, whitespace checks and locked setup pass; the CLI help surface exposes only `--help`. |
 | Blank-start browser smoke | **Historical only:** run `6886c259-494e-4470-b11c-fdfd12d337a7`, model `gpt-5.6-luna` at low reasoning, $0.007165 and 5 decisions. The old `BrowserSession.start()` received no URL from `about:blank`, chose `https://www.iana.org/help/example-domains`, opened and closed an extra tab, and finished with one tab. It did not exercise browser discovery or CDP attachment. Private evidence remains in `artifacts/general-smoke/evidence.json`. |
 | Manual assignment tasks | **Pending.** Run the Yandex Mail, YandexEda and hh.ru scenarios through the real CLI and review browser choice, state, approvals and final reports. |
 
-The two workspace smokes were read-only and required no account, approval or challenge. The IANA run remains a historical generic-navigation baseline; it does not exercise attachment.
+The two workspace smokes were read-only and required no account, approval or challenge. The security smoke changed only temporary local page state and used no account. The IANA run remains a historical generic-navigation baseline; it does not exercise attachment.
+
+An initial security-smoke attempt `b4ef9955-d733-4a5b-ab7c-5c748c5c0208` ($0.003321) used a direct `BrowserSession`; the actor correctly requested `list_browsers`, which that harness did not expose, so it stopped before any page action. It is retained as a harness failure only; the corrected `BrowserWorkspace` run above is the product evidence.
 
 ## Acceptance coverage
 
