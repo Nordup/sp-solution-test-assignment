@@ -114,6 +114,15 @@ def finish(summary="Done", status="completed"):
     return action("finish", status=status, summary=summary, remaining=[] if status == "completed" else ["remaining"])
 
 
+def diagnostic_events(tmp_path, result):
+    path = Path(tmp_path) / "runs" / result["run_id"] / "events.jsonl"
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if json.loads(line).get("event") == "diagnostic"
+    ]
+
+
 async def run_case(tmp_path, actor, security=(), *, responder=None, browser=None, gateway=None, compaction=None):
     settings = Settings(artifact_dir=tmp_path, active_seconds=60)
     browser = browser or FakeBrowser(tmp_path)
@@ -160,6 +169,33 @@ async def test_true_review_waits_and_dispatches_exact_call_once(tmp_path):
     assert result["status"] == "completed"
     assert len(questions) == 1
     assert browser.executed == [("playwright", {"command": "click", "args": ["e5"]})]
+
+
+@pytest.mark.asyncio
+async def test_private_reviewer_packet_diagnostic_keeps_actual_evidence(tmp_path):
+    class EvidenceBrowser(FakeBrowser):
+        async def prepare_task(self):
+            self.prepared += 1
+            self.evidence = 'snapshot: {"ref":"e5","name":"Delete selected messages"}'
+
+    async def responder(question):
+        return {"request_id": question["request_id"], "approved": True}
+
+    result, _browser, _gateway = await run_case(
+        tmp_path,
+        [action("playwright", command="click", args=["e5"]), finish()],
+        security=[True],
+        responder=responder,
+        browser=EvidenceBrowser(tmp_path),
+    )
+    packets = [
+        event
+        for event in diagnostic_events(tmp_path, result)
+        if event.get("phase") == "review_request_build" and event.get("state") == "finished"
+    ]
+    assert packets
+    packet = packets[-1]["review_request"]
+    assert "Delete selected messages" in json.dumps(packet)
 
 
 @pytest.mark.asyncio
