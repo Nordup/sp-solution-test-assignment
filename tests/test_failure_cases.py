@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from evals.failure_cases import FAILURE_CASES, create_failure_fixture, grade_failure
+from evals.run import merge_quality_grade
 
 
 @pytest.mark.parametrize("case", ["food_history_ambiguous", "food_item_unavailable"])
@@ -374,7 +375,17 @@ def test_idempotent_completed_cannot_hide_missing_evidence_or_new_actions(defect
                     "letter": "A duplicate application letter that is long enough to submit successfully to this test role."
                 },
             )
-        assert not grade_failure(fixture, result, approvals)["passed"]
+        grade = grade_failure(fixture, result, approvals)
+        if defect in {"false_authorship", "omits_no_new_actions"}:
+            # Meaning is deferred to the independent native reviewer, not a
+            # language-specific substring gate. Missing review cannot pass.
+            assert grade["passed"]
+            assert (
+                "completed_no_new_submissions_explained"
+                in grade["required_explanations"]
+            )
+            merge_quality_grade(grade, None)
+        assert not grade["passed"]
 
 
 @pytest.mark.parametrize("deliver_history", [False, True])

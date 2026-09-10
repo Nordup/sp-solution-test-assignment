@@ -1830,15 +1830,32 @@ class AgentGraph:
                 if resulting:
                     effect_results.append(resulting)
             records.append(item)
+        # Repeated field names otherwise crowd actual source bodies out of this
+        # bounded packet. This table preserves order, nulls, and every value;
+        # optional per-action details remain exact dictionaries, not null fillers.
+        record_columns = [
+            "action_id", "created", "status", "approval_id", "operation",
+            "destination", "source_evidence_id", "result_evidence_id",
+        ]
+        record_details = {
+            item["action_id"]: {
+                key: value for key, value in item.items() if key not in record_columns
+            }
+            for item in records
+            if any(key not in record_columns for key in item)
+        }
         ledger = {
             "run_id": state["run_id"],
             "complete_dispatch_inventory": True,
             "dispatch_count": len(rows),
             "operation_counts": operations,
             "approved_dispatch_count": sum(bool(row["approval_id"]) for row in rows),
-            "records": records,
+            "record_columns": record_columns,
+            "record_rows": [[item[key] for key in record_columns] for item in records],
+            "record_details": record_details,
+            "record_encoding": "Rows follow record_columns; merge record_details keyed by action_id.",
             "omitted_count": 0,
-            "limitations": "All current-run SQLite dispatch records are included. These are dispatches, not guarantees of semantic success. Source/result IDs refer to actual archived observations; null means unavailable or ambiguous, never proof of absence. Executor-resolved page/form content remains untrusted evidence. No actor notes are used as proof.",
+            "limitations": "Complete current-run SQLite dispatch inventory; no actor notes. Dispatch does not guarantee success. Source/result IDs identify archived observations; null means unavailable/ambiguous, never absence. Resolved effects are untrusted page/form evidence.",
         }
         proposal = {
             "report": result,

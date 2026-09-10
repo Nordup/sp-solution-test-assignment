@@ -2,7 +2,7 @@
 
 A Python agent that uses a visible Playwright browser to solve natural-language tasks. LangGraph coordinates observation, native OpenAI tool calls, independent risk review, exact approvals, execution and recovery. The default model is **GPT-5.6 Luna**.
 
-**Validation is in progress; the solution is not ready for submission.** The current candidate passed 284 contract tests, 32 browser tests and provider/LangSmith preflight. The latest core run finished 2/3 because cover-letter wording broadened source qualifications. Source-fidelity improvements are undergoing fresh validation. Earlier candidate results, including failures, remain recorded. The final video and audit are pending; live Yandex still needs a genuine delivery address. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md).
+**Validation is in progress; the solution is not ready for submission.** The latest completed candidate passed 286 contract tests, 32 browser tests, provider/LangSmith preflight, all three core tasks, both generalization tasks, both recovery tasks and 513 extended failure/regression tests. That attempt’s model-driven failure cases finished 2/5. Repairs now passed focused/native calibration and fresh 287/32 deterministic stages; fresh end-to-end evaluation is next. The native-terminal video and final audit remain pending. Earlier failures and calibration limitations remain recorded. Live Yandex still needs a genuine delivery address. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md).
 
 ## Start
 

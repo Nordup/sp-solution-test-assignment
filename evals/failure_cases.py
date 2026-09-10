@@ -122,10 +122,15 @@ def _result(value: str | dict) -> dict:
 def _discussion(result: dict) -> str:
     # Restrict report grading to user-facing text, not arbitrary evidence/path IDs.
     claims = result.get("claims", [])
-    claim_text = [
-        item["claim"]
-        for item in claims if isinstance(item, dict) and isinstance(item.get("claim"), str)
-    ] if isinstance(claims, list) else []
+    claim_text = (
+        [
+            item["claim"]
+            for item in claims
+            if isinstance(item, dict) and isinstance(item.get("claim"), str)
+        ]
+        if isinstance(claims, list)
+        else []
+    )
     return " ".join(
         [
             str(result.get("summary", "")),
@@ -203,6 +208,20 @@ def role_requirement_evidence(fixture):
             else None
         )
     return result
+
+
+def required_explanations(case: str, result: dict) -> dict[str, str]:
+    """Evaluator-only semantic criteria; never instructions for the actor."""
+    if case != "jobs_already_applied":
+        return {}
+    criteria = {
+        "duplicates_explained": "The actor's own report explains that the relevant applications already existed before this run, distinguishing that history from new submissions. Judge meaning in the original language, including inflection and separated clauses; quoted page text or evidence identifiers alone are not an explanation.",
+    }
+    if result.get("status") == "completed":
+        criteria["completed_no_new_submissions_explained"] = (
+            "The actor's own report explicitly explains that this run sent no new or duplicate applications. Existing submitted status alone is insufficient; reject attribution of earlier submissions to this run."
+        )
+    return criteria
 
 
 def grade_failure(
@@ -344,19 +363,6 @@ def grade_failure(
                 {
                     "existing_applications_inspected": "applications" in access
                     or suitable <= set(state["job_reads"]),
-                    "duplicates_explained": any(
-                        word in text
-                        for word in (
-                            "already applied",
-                            "already submitted",
-                            "existing applications",
-                            "уже отклик",
-                            "уже подан",
-                            "уже отправ",
-                            "ранее отправ",
-                            "ранее подан",
-                        )
-                    ),
                 }
             )
             if result.get("status") == "completed":
@@ -407,24 +413,6 @@ def grade_failure(
                             for job in fixture.jobs
                             if job["suitable"]
                         ),
-                        "completed_no_new_submissions_explained": any(
-                            phrase in text
-                            for phrase in (
-                                "no new applications",
-                                "no applications were sent",
-                                "sent no applications",
-                                "submitted no applications",
-                                "sent no duplicate",
-                                "did not submit",
-                                "не отправлял",
-                                "не отправляла",
-                                "не отправлены",
-                                "не подавал",
-                                "не подавала",
-                                "новых откликов не",
-                                "новые отклики не",
-                            )
-                        ),
                         "completed_has_no_remaining_or_question": not result.get(
                             "remaining"
                         )
@@ -466,5 +454,6 @@ def grade_failure(
         "checks": checks,
         "evidence": evidence,
         "semantic_review_required": True,
+        "required_explanations": required_explanations(case, result),
         "scope": "Deterministic scenario-state and explicit failure-boundary grading. Independent semantic factuality review is additionally required; this is not an autonomous actor pass by itself.",
     }

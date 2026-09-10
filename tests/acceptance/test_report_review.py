@@ -14,6 +14,14 @@ from browser_agent.storage import BudgetExceeded
 from browser_agent.tools import ProtocolError
 
 
+def dispatch_records(ledger):
+    return [
+        dict(zip(ledger["record_columns"], values, strict=True))
+        | ledger["record_details"].get(values[0], {})
+        for values in ledger["record_rows"]
+    ]
+
+
 def finish(summary, quote="Application recorded"):
     return lambda obs: (
         "finish",
@@ -72,7 +80,7 @@ async def test_actual_dispatch_provenance_and_prior_state_reports_are_distinct(
             assert "working_notes" not in proposal and "notes" not in proposal
             assert "Application recorded" in "\n".join(evidence.values())
             if not preexisting:
-                item = ledger["records"][0]
+                item = dispatch_records(ledger)[0]
                 row = store.action(item["action_id"])
                 assert item["approval_id"] == row["approval_id"]
                 assert item["created"] == row["created"]
@@ -227,7 +235,7 @@ async def test_legacy_ambiguous_source_is_explicit_and_actor_notes_cannot_fill_i
         proposal = finish("Recorded once.")(state["observation"])[1]
         unique, _evidence, _manifest = runtime.report_packet(state, proposal)
         assert (
-            unique["current_run_dispatches"]["records"][0]["source_evidence_id"]
+            dispatch_records(unique["current_run_dispatches"])[0]["source_evidence_id"]
             == source
         )
         original = json.loads(
@@ -242,7 +250,7 @@ async def test_legacy_ambiguous_source_is_explicit_and_actor_notes_cannot_fill_i
         proposal = finish("Recorded once.")(state["observation"])[1]
         packet, _evidence, _manifest = runtime.report_packet(state, proposal)
         assert (
-            packet["current_run_dispatches"]["records"][0]["source_evidence_id"] is None
+            dispatch_records(packet["current_run_dispatches"])[0]["source_evidence_id"] is None
         )
         assert "Actor claims" not in json.dumps(packet)
 
@@ -378,7 +386,7 @@ def test_factual_archive_covers_distinct_pages_before_intermediate_revisits(tmp_
     proposal, evidence, manifest = runtime.report_packet(state, result, max_bytes=10000)
     assert {"current", "scope"} | {f"read-{index}" for index in range(10)} <= evidence.keys()
     assert all(f"result-{index}" not in evidence for index in range(3))
-    records = proposal["current_run_dispatches"]["records"]
+    records = dispatch_records(proposal["current_run_dispatches"])
     assert [item["result_evidence_id"] for item in records] == [f"result-{index}" for index in range(3)]
     assert {f"result-{index}" for index in range(3)} <= {item["evidence_id"] for item in manifest["omitted"]}
     assert proposal["report"] == result
@@ -504,3 +512,80 @@ async def test_partial_report_exhausted_real_ledger_counts_but_never_generates(t
         budget = store.budget(initial["run_id"])
         assert budget["settled"] == budget["unknown"] == 0
         assert budget["reserved"] == 5_000_000
+
+
+def test_tabular_dispatch_inventory_preserves_facts_and_admits_source_bodies(tmp_path):
+    runtime = AgentGraph.__new__(AgentGraph)
+    runtime.run_dir = tmp_path
+    (tmp_path / "evidence").mkdir()
+    observations = []
+
+    def save(index, text):
+        item = {
+            "id": f"obs-{index:032d}", "url": f"https://example.test/item/{index}",
+            "title": f"Observed item {index}", "text": text,
+            "saved_at_unix": index,
+        }
+        observations.append(item)
+        (tmp_path / "evidence" / f"{item['id']}.json").write_text(json.dumps(item))
+        return item["id"]
+
+    source_ids = [save(index, f"Actual original source {index}. " + "x" * 1300) for index in range(10)]
+    current = save(10, "Final state corroborates three changes.")
+    rows, receipts, expected = [], [], []
+    for index in range(22):
+        approved = index in (1, 7, 15)
+        effect = {
+            "operation": "form_change" if approved else "page_change",
+            "destination": None if index == 21 else f"https://example.test/item/{index % 10}",
+            "target": {"name": "Change selected object", "nested": {"value": None}},
+            "objects": [], "submitted": {"literal": "Original complete value"},
+            "method": "post",
+        }
+        row = {
+            "id": f"action-{index:032d}", "run_id": "run", "created": 1788999000 + index,
+            "status": "observed", "approval_id": f"approval-{index}" if approved else None,
+            "details": json.dumps({"action": {"name": "click", "args": {}}, "effect": effect}),
+        }
+        source = source_ids[index % 10] if index != 21 else None
+        result = current if approved else source
+        rows.append(row)
+        receipts.append({"action_id": row["id"], "source_evidence_id": source, "evidence_id": result})
+        expected.append({
+            "action_id": row["id"], "created": row["created"], "status": row["status"],
+            "approval_id": row["approval_id"], "operation": effect["operation"],
+            "destination": effect["destination"], "source_evidence_id": source,
+            "result_evidence_id": result,
+        })
+        if approved:
+            expected[-1]["executor_resolved_effect"] = {
+                key: effect[key] for key in ("target", "objects", "submitted", "method")
+            }
+    runtime.store = SimpleNamespace(actions_for_run=lambda _run: rows)
+    scope = {"items": [{"evidence_id": source_ids[0], "identity": "Original collection", "quote": "Actual original source 0."}]}
+    report = {
+        "status": "completed", "summary": "Inspected ten sources and changed three objects.",
+        "claims": [{"claim": "Three changes", "quote": "three changes", "evidence_id": current}],
+        "remaining": [],
+    }
+    state = {"run_id": "run", "observation": observations[-1],
+             "evidence_ids": [item["id"] for item in observations], "progress": receipts,
+             "scope": scope, "clarifications": ["Preserve the other objects."]}
+    proposal, evidence, manifest = runtime.report_packet(state, report, max_bytes=24000)
+    ledger = proposal["current_run_dispatches"]
+    assert dispatch_records(ledger) == expected
+    assert ledger["record_rows"][-1][-3:] == [None, None, None]
+    assert len(ledger["record_details"]) == 3
+    assert ledger["dispatch_count"] == 22 and ledger["approved_dispatch_count"] == 3
+    assert ledger["omitted_count"] == 0 and ledger["complete_dispatch_inventory"]
+    assert proposal["report"] == report and proposal["original_scope"] == scope
+    assert proposal["actual_user_clarifications"] == state["clarifications"]
+    assert set(source_ids) | {current} == set(evidence)
+    assert not manifest["omitted"]
+    encoded = json.dumps({"proposal": proposal, "evidence": evidence}, ensure_ascii=False)
+    assert len(encoded.encode()) <= 24000
+    expanded = {key: value for key, value in ledger.items() if key not in (
+        "record_columns", "record_rows", "record_details", "record_encoding"
+    )} | {"records": expected}
+    expanded_packet = {"proposal": proposal | {"current_run_dispatches": expanded}, "evidence": evidence}
+    assert len(json.dumps(expanded_packet, ensure_ascii=False).encode()) > 24000

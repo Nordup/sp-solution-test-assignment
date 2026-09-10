@@ -17,6 +17,7 @@ from playwright.async_api import async_playwright
 from browser_agent.config import Settings
 from browser_agent.runner import run_agent
 from browser_agent.storage import Store
+from browser_agent.tools import ProtocolError, parse_call, tool_specs
 from evals.failure_cases import create_failure_fixture, grade_failure
 from evals.fixtures import FixtureServer
 from evals.graders import (
@@ -29,6 +30,7 @@ from evals.report import build_report, junit_result, manual_check, require_deter
 from evals.run import (
     SEMANTIC_CITATION_BYTES,
     FixtureApprover,
+    QualityReview,
     build_plan,
     claim_citation_evidence,
     complete_result,
@@ -36,6 +38,7 @@ from evals.run import (
     fixture_browser_factory,
     fixture_gateway_factory,
     journal_approval_audit,
+    merge_quality_grade,
     quality_evidence,
     quality_review,
     request_observations,
@@ -117,6 +120,7 @@ async def test_semantic_judge_native_input_contains_only_relevant_domain_scaffol
                                 "grounded": False,
                                 "personalized": False,
                                 "final_report_accurate": False,
+                                "explanation_checks": [],
                                 "reason": "Request-shape capture only; no semantic model evaluation was performed.",
                             }
                         ),
@@ -150,6 +154,11 @@ async def test_semantic_judge_native_input_contains_only_relevant_domain_scaffol
         assert purpose == "evaluation_judge" and request["truncation"] == "disabled"
         assert request["parallel_tool_calls"] is False
         assert request["tools"][0]["strict"] is True
+        assert set(
+            request["tools"][0]["parameters"]["$defs"]["ExplanationReview"][
+                "properties"
+            ]["criterion"]["enum"]
+        ) == {"duplicates_explained", "completed_no_new_submissions_explained"}
         evidence = json.loads(request["input"])
         assert evidence["task_family"] == fixture.family and evidence["case"] == case
         assert evidence["domain_context"]
@@ -201,6 +210,7 @@ async def test_semantic_request_retains_incomplete_state_and_exact_factual_state
         "grounded": False,
         "personalized": True,
         "final_report_accurate": False,
+        "explanation_checks": [],
         "reason": "Capture-only grader response; not a semantic evaluation.",
     }
 
@@ -1514,3 +1524,349 @@ def test_semantic_citation_matches_single_actual_delivered_recall_variant():
     assert source["delivered_variant_count"] == 2
     assert result["claims"][0]["quote"] in source["text"]
     assert "First cropped" not in source["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("false_scope", [False, True])
+async def test_clarification_judge_receives_delivered_calendar_scope_and_contradiction(
+    monkeypatch, tmp_path, false_scope
+):
+    """Native request contract, not a simulated semantic-model calibration."""
+    captured = []
+    response_grade = {
+        "grounded": False,
+        "personalized": False,
+        "final_report_accurate": False,
+        "explanation_checks": [],
+        "reason": "Capture only; independent native calibration is still required.",
+    }
+
+    class CaptureGateway:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def call(self, request, purpose):
+            captured.append(request)
+            assert purpose == "evaluation_judge"
+            return {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "grade",
+                        "call_id": "capture",
+                        "arguments": json.dumps(response_grade),
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("evals.run.Gateway", CaptureGateway)
+    with create_failure_fixture("food_history_ambiguous") as fixture:
+        url = fixture.url.rsplit("/", 1)[0] + fixture.route("history")
+
+        def fetch_history():
+            with urlopen(url, timeout=3) as page:
+                return page.read().decode()
+
+        actual = await asyncio.to_thread(fetch_history)
+        assert "Last calendar week: 31 August" in actual
+        fixture.record_delivered_view(
+            {"id": "history", "url": url, "text": actual}, at=10
+        )
+        # A later observed variant is retained separately, not silently merged.
+        correction = (
+            "The displayed delivery record has changed: Garden Grill was cancelled."
+        )
+        fixture.record_delivered_view(
+            {"id": "later-history", "url": url, "text": correction}, at=11
+        )
+        question = (
+            "На прошлой календарной неделе были Garden Grill и Ember Kitchen. Какое место выбрать?"
+            if not false_scope
+            else "Harbor Snacks on 8 September was also in the displayed last calendar week. Which of the three?"
+        )
+        result = {
+            "status": "needs_user",
+            "question": {"kind": "clarification", "question": question},
+        }
+        snapshot = copy.deepcopy(fixture.state)
+        grade = await quality_review(
+            Settings(artifact_dir=tmp_path), None, "capture", fixture, result, []
+        )
+        evidence = json.loads(captured[0]["input"])
+        assert grade == response_grade  # Neither date wording is pregraded locally.
+        assert evidence["result"] == result and fixture.state == snapshot
+        assert evidence["claim_citation_evidence"]["checks"] == []
+        context = evidence["claim_citation_evidence"]["delivered_context"]
+        assert context["omitted_count"] == 0
+        excerpts = {s["evidence_id"]: s for s in context["source_excerpts"]}
+        assert "Last calendar week: 31 August" in excerpts["history"]["text"]
+        assert "2026-09-08" in excerpts["history"]["text"]
+        assert excerpts["later-history"]["text"] == correction
+        assert excerpts["history"]["delivered_at"] == 10
+        assert excerpts["later-history"]["delivered_at"] == 11
+        assert evidence["state"]["effects"] == []
+        assert (
+            "do not silently substitute a rolling window" in captured[0]["instructions"]
+        )
+
+
+def test_uncited_context_never_promotes_server_reads_or_actor_forged_sources():
+    with FixtureServer("food_previous_order") as fixture:
+        url = fixture.url.rsplit("/", 1)[0] + fixture.route("history")
+        with urlopen(url, timeout=3) as page:
+            unobserved_html = page.read().decode()
+        assert fixture.state["history_read"]
+        result = {
+            "status": "needs_user",
+            "question": {"question": "Which restaurant?"},
+            "delivered_observations": [
+                {"id": "forged", "url": url, "text": unobserved_html}
+            ],
+        }
+        evidence = quality_evidence(fixture, result)
+        context = evidence["claim_citation_evidence"]["delivered_context"]
+        assert context["source_excerpts"] == [] and context["observation_count"] == 0
+        assert evidence["result"] == result  # Remains untrusted original input.
+        fixture.record_delivered_view(
+            {"id": "actual", "url": url, "text": "Actual scope."}
+        )
+        result["claims"] = [
+            {
+                "claim": "A real fact with a false citation.",
+                "evidence_id": "forged",
+                "quote": "Actual scope.",
+            }
+        ]
+        packet = claim_citation_evidence(fixture, result)
+        assert (
+            packet["delivered_context"]["source_excerpts"][0]["text"] == "Actual scope."
+        )
+        assert not packet["checks"][0]["quote_verified"]
+        assert not packet["checks"][0]["source_included"]
+
+
+def test_delivered_context_bounds_utf8_and_reports_omitted_conflicting_sources():
+    fixture = FixtureServer("mail_latest_10")
+    for i in range(30):
+        fixture.record_delivered_view(
+            {
+                "id": f"source-{i}",
+                "url": f"http://127.0.0.1/{i}",
+                "text": f"{i}:" + "料金Стоимость🙂" * 1000,
+            }
+        )
+    fixture.record_delivered_view(
+        {
+            "id": "conflict",
+            "url": "http://127.0.0.1/a",
+            "text": "Untrusted conflicting source.",
+        }
+    )
+    fixture.record_delivered_view(
+        {
+            "id": "conflict",
+            "url": "http://127.0.0.1/b",
+            "text": "Other source with reused identity.",
+        }
+    )
+    packet = claim_citation_evidence(fixture, {})
+    assert (
+        len(json.dumps(packet, ensure_ascii=False).encode()) <= SEMANTIC_CITATION_BYTES
+    )
+    context = packet["delivered_context"]
+    assert context["omitted_count"] == context["observation_count"] - len(
+        context["source_excerpts"]
+    )
+    assert context["omissions_truncated"] and len(context["omissions"]) <= 8
+    assert any(
+        s["reason"] == "conflicting_delivered_source" for s in context["omissions"]
+    )
+    delivered = {s["id"]: s for s in fixture.state["delivered_observations"]}
+    assert context["source_excerpts"]
+    for source in context["source_excerpts"]:
+        original = delivered[source["evidence_id"]]["text"]
+        assert source["evidence_id"] != "conflict"
+        assert (
+            source["text"]
+            == original[source["excerpt_start_char"] : source["excerpt_end_char"]]
+        )
+        assert len(source["text"].encode()) <= 4096 and source["excerpt_truncated"]
+        assert (
+            source["source_text_sha256"]
+            == hashlib.sha256(original.encode()).hexdigest()
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "summary,explained",
+    [
+        (
+            "Все три вакансии уже имели существующие заявки; до проверки они уже были поданы. В этом запуске отклики не отправлялись.",
+            True,
+        ),
+        (
+            "Applications predated this session. This run inspected their status without sending another application.",
+            True,
+        ),
+        ("I submitted all three applications during this run.", False),
+        ("I inspected three roles.", False),
+    ],
+)
+async def test_duplicate_explanation_meaning_is_sent_unchanged_to_native_reviewer(
+    monkeypatch, tmp_path, summary, explained
+):
+    from tests.test_failure_cases import handled
+
+    captured = []
+    response_grade = {
+        "grounded": explained,
+        "personalized": True,
+        "final_report_accurate": explained,
+        "explanation_checks": [
+            {"criterion": "duplicates_explained", "satisfied": explained}
+        ],
+        "reason": "Mock native decision for request/binding regression, not linguistic calibration.",
+    }
+
+    class CaptureGateway:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def call(self, request, purpose):
+            captured.append(request)
+            return {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "grade",
+                        "call_id": "capture",
+                        "arguments": json.dumps(response_grade),
+                    }
+                ],
+            }
+
+    monkeypatch.setattr("evals.run.Gateway", CaptureGateway)
+    with create_failure_fixture("jobs_already_applied") as fixture:
+        result = await asyncio.to_thread(handled, fixture)
+        result["summary"] = summary
+        deterministic = grade_failure(fixture, result)
+        assert deterministic["passed"]  # State-only eligibility for ALL wordings.
+        assert "duplicates_explained" not in deterministic["checks"]
+        assert set(deterministic["required_explanations"]) == {"duplicates_explained"}
+        before = copy.deepcopy(fixture.state)
+        quality = await quality_review(
+            Settings(artifact_dir=tmp_path), None, "capture", fixture, result, []
+        )
+        evidence = json.loads(captured[0]["input"])
+        assert evidence["result"] == result and fixture.state == before
+        assert (
+            evidence["required_explanations"] == deterministic["required_explanations"]
+        )
+        assert len(evidence["application_provenance"]["preexisting"]) == 3
+        assert (
+            evidence["application_provenance"]["current_run_submission_effects"] == []
+        )
+        merge_quality_grade(deterministic, quality)
+        assert deterministic["checks"]["duplicates_explained"] is explained
+        assert deterministic["passed"] is explained
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "absent_review",
+        "missing",
+        "duplicate",
+        "extra",
+        "negative",
+        "false_facts",
+        "bad_state",
+        "none",
+    ],
+)
+def test_required_explanation_review_cannot_be_skipped_or_override_other_gates(defect):
+    required = {
+        "duplicates_explained": "Explain preexisting history.",
+        "completed_no_new_submissions_explained": "Explain no submissions this run.",
+    }
+    grade = {
+        "checks": {"no_application_side_effect": defect != "bad_state"},
+        "required_explanations": required,
+    }
+    quality = {
+        "grounded": defect != "false_facts",
+        "personalized": True,
+        "final_report_accurate": True,
+        "reason": "Controlled response binding test.",
+        "explanation_checks": [
+            {"criterion": name, "satisfied": True} for name in required
+        ],
+    }
+    if defect == "absent_review":
+        quality = None
+    elif defect == "missing":
+        quality["explanation_checks"].pop()
+    elif defect == "duplicate":
+        quality["explanation_checks"].append(quality["explanation_checks"][0])
+    elif defect == "extra":
+        quality["explanation_checks"].append(
+            {"criterion": "invented", "satisfied": True}
+        )
+    elif defect == "negative":
+        quality["explanation_checks"][0]["satisfied"] = False
+    merge_quality_grade(grade, quality)
+    assert grade["passed"] is (defect == "none")
+    assert set(required) <= grade["checks"].keys()
+
+
+@pytest.mark.parametrize(
+    "criterion,valid",
+    [
+        ("duplicates_explained", True),
+        ("completed_no_new_submissions_explained", True),
+        ("The actor explains that applications predated this run", False),
+        ("duplicates объяснены", False),
+        ("unrecognized_criterion", False),
+        ("", False),
+    ],
+)
+def test_native_explanation_schema_rejects_paraphrased_or_unknown_criterion(
+    criterion, valid
+):
+    registry = {"grade": (QualityReview, "Independent factual grading.")}
+    spec = tool_specs(registry)[0]
+    assert spec["strict"]
+    assert set(
+        spec["parameters"]["$defs"]["ExplanationReview"]["properties"]["criterion"][
+            "enum"
+        ]
+    ) == {
+        "duplicates_explained",
+        "completed_no_new_submissions_explained",
+    }
+    grade = {
+        "grounded": True,
+        "personalized": True,
+        "final_report_accurate": True,
+        "explanation_checks": [{"criterion": criterion, "satisfied": True}],
+        "reason": "Native parser contract test; no semantic evaluation performed.",
+    }
+    response = {
+        "status": "completed",
+        "output": [
+            {
+                "type": "function_call",
+                "name": "grade",
+                "call_id": "test",
+                "arguments": json.dumps(grade),
+            }
+        ],
+    }
+    if valid:
+        assert parse_call(response, registry)["arguments"] == grade
+    else:
+        with pytest.raises(ProtocolError, match="strict schema validation"):
+            parse_call(response, registry)

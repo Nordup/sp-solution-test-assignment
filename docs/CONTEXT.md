@@ -132,7 +132,7 @@ Visible order dates were April 2025; a previous-week order was not verified. Use
 
 A later read-only Computer Use check again showed the existing authenticated Yandex Eda session and populated order history, still dated April 2025, without a visible challenge. This check reused the existing browser; it did not restart the profile or exercise the implemented Playwright agent. It therefore confirms current visible account access only. At that check, restart persistence was unproven; later actual-runner attempts below supersede that narrow point. Previous-week history and autonomous live-task compatibility remain unproven; no new order or payment was submitted.
 
-## Recorder capability check — 2026-09-09
+## Historical recorder capability check — 2026-09-09
 
 On this Mac, FFmpeg is available and screen-capture permission was granted. A two-second H.264 screen recording encoded and decoded successfully at 2560×1600. This proves recorder operation only; it is not the assignment demonstration. The raw smoke file is private at `artifacts/final/recorder-smoke.mp4` and is not a public deliverable.
 
@@ -149,6 +149,12 @@ ffmpeg -f avfoundation -framerate 10 -capture_cursor 1 -pixel_format nv12 -i "3:
 ```
 
 The example has no audio and a two-minute limit; change the duration deliberately for the actual run. Arrange the visible agent browser and terminal together before capture, then inspect the entire recording and redact private information in a separate shareable copy. Do not publish the raw screen recording or describe the recorder smoke as a completed demo.
+
+### Current native-window recorder check — 2026-09-10
+
+Later AVFoundation probes stalled, so the earlier command is not the selected recording path on this machine. A private ScreenCaptureKit utility now records explicitly selected task windows with an inclusion filter, excluding other applications, desktop and menu bar. Its three-second Terminal-only probe encoded 63 frames into a 3.32-second H.264 video at 2560×1600 with no audio; decoded beginning/end frames show the actual prepared Terminal against black surroundings. This verifies capture only, not a completed agent demonstration. Adding the newly launched task browser to the filter is implemented but not yet verified in a full run.
+
+The operator's recorder, window IDs, probes and raw captures remain under ignored `artifacts/final/`. They are local recording setup, not dependencies of the submitted agent. To reproduce the presentation elsewhere, run [DEMO.md](DEMO.md) in a real terminal, tile its controlled browser beside it, and use the operating system's screen recorder. Review the full video before sharing, especially when recording real accounts.
 
 ## Actual actor live attempt — 2026-09-09
 
@@ -651,14 +657,19 @@ Status: **IN PROGRESS — not ready for submission.** This file distinguishes im
 
 ## Current evidence
 
-Current candidate `cc74a1049452` (commit `ac552e8`) passed **241 contract tests**, **32 browser tests**, and native provider/LangSmith preflight. All three core tasks and both generalization outcomes passed. Event trace transport was recovered and verified without new model calls; the original failure remains retained. Both real-model recovery outcomes and their traces pass. Ordered extended regression passed 435 tests. The five real-model failure scenarios finished 3/5 PASS: two final-report attribution failures remain under diagnosis. Later generalization/recovery/failure stages and the final video remain incomplete.
+Candidate `d1e0e5835097` now contains the evidence/semantic-contract repairs below. Its unchanged runtime passed 287 contract tests and 32 browser tests; the final evaluator enum amendment separately passed 23 affected checks. Fresh end-to-end runs are next.
+
+Latest completed full attempt: runtime `15261073452a` (source commit `2cda906`; terminal interface commit `28ddebf`) passed **286 contract tests**, **32 browser tests**, native provider/LangSmith preflight, **3/3 core**, **2/2 generalization**, **2/2 recovery**, and **513 extended failure/regression tests**. Its five real-model semantic failure scenarios finished **2/5**. Three evidence-packing/explanation-grading failures are being repaired; that candidate does not pass the final suite. The actual terminal/browser video and final repository audit remain pending. Detailed run IDs, costs and historical failures are retained below.
 
 Completion verification uses medium reasoning; actor/risk/clarification remain low on Luna. Native endpoint and independent factual-judge calibrations passed their retained positive/negative examples, as recorded below; these are not autonomous success-rate estimates. Every historical failed task remains in the attempt table.
+
+The latest source-fidelity risk calibration returned **3/5 expected decisions**, accepting both unsupported broadened drafts. The fresh core jobs run passed the unchanged independent letter checks, but the reviewer is not established as a reliable factual filter.
 
 The live Yandex run remains paused for a genuine delivery address, with $0.080924 settled and no reserved/unknown amount. It has not completed the food task. Earlier successes below demonstrate narrower controlled behavior and do not certify the current candidate or arbitrary live sites.
 
 ## Earlier candidates and repairs
 
+- Historical snapshot `cc74a1049452` (commit `ac552e8`) passed 241 contract tests, 32 browser tests, preflight, three core tasks, two generalization tasks, two recovery outcomes and 435 extended tests. The event trace was recovered without a new model call; the original failure remains retained. Its semantic failure suite finished 3/5, with two report-attribution failures that led to subsequent repairs. This snapshot is not current release evidence.
 - Material unresolved choices are now stored independently of working notes and checkpoint rewind. Native risk reviews ground new obligations and resolutions in actual observations or user answers; per-action relevance lets unrelated work proceed. Collection-selection ambiguity prevents freezing an unsupported candidate, while uncertainty about one member does not prevent preserving the original collection. The opposite-choice regression explores North, rejects an unsupported North-only freeze, accepts the real user's South choice, then requires exact South approval before one effect. Completion review receives retained uncertainty and SQLite-matched dispatch records, and distinguishes previously existing state from this run's actions. These tests establish enforcement under scripted reviewer judgments, not autonomous model accuracy.
 - Evaluator corrections accept an actually delivered onsite listing card as decisive exclusion when the delivered resume requires fully remote work; they still reject missing or mismatched evidence. Job semantic evidence preserves all original history/effects and distinguishes existing applications from new or changed letters. The focused evaluator suite passed 103 tests, followed by 14 semantic instruction/evidence tests. Fresh model runs remain required; no historical failure was relabeled.
 
@@ -942,6 +953,35 @@ The user reattached all three original screenshots and explicitly required the a
 
 The terminal replacement is implemented: `scripts/demo_terminal.py` reuses CLI task entry, exact responses and Rich output while retaining fixture lifetime, network isolation, profile separation and the existing release ledger. **25 terminal-launcher tests passed** in8.11s, with Ruff/diff/help checks passing. Retired web-console code/tests were removed. No model call or recording was made by this interface verification. The source-fidelity candidate’s ordered stages03/04 passed **286/32 tests**; preflight passed at2026-09-09T23:45:13Z and fresh core evaluation is running.
 
+
+On `15261073452a` / runtime source commit `2cda906`, core experiment `eval-20260909T234515-7a02f7b5` passed **3/3**, all traces verified and task ledgers closed with zero reserved/unknown: mail `e99a28db-70f6-49cb-9ef1-72135357b943` ($0.209480), food `cd7d134e-d757-437a-811c-c5b4e712d5bd` ($0.048627), jobs `e9018640-6ce9-4c18-91fa-ecab4e2c3a24` ($0.094401). All three submitted letters passed the unchanged independent factuality/personalization checks. This fresh actor evidence does not erase the risk-review calibration’s false negatives.
+
+Generalization experiment `eval-20260909T235444-e23e7bb9` passed **2/2** on the same runtime fingerprint: unfamiliar event `8b123be6-1fdf-49ee-8016-e9b63d6a66a9` ($0.042579) and changed food layout `5db23214-7b4a-4b0e-947d-26d5baa93f7f` ($0.050970). Both traces verified; task ledgers closed with zero reserved/unknown. Commit `28ddebf` changes the terminal recording interface/tests/docs without changing the tested runtime fingerprint. The user confirmed the native Terminal session is visible; it remains idle at Task while later mandatory stages run. No actual demonstration video is claimed yet.
+
+Recovery experiment `eval-20260909T235829-4791c8bf` passed **2/2** on `15261073452a`: stale-reference recovery `435056f9-c2c9-4f6c-b793-a36d786df02c` ($0.051348) and explicit consequential-action denial `3123eeb5-cdbe-4721-9ede-399025f0ac78` ($0.188685). Both traces verified; task ledgers closed with zero reserved/unknown. The release has $7.169973 settled, with separate $5 paused-live and $5 unknown holds retained. Stage08 and semantic failure cases are running before the actual terminal/browser recording.
+
+
+Stage08 passed **513 tests** in198.07s with no skips/failures. Semantic failure experiment `eval-20260910T000717-90720a93` finished **2/5**, all traces verified and task ledgers closed with zero reserved/unknown:
+
+| Case | Run | Outcome | Cost |
+| --- | --- | --- | ---: |
+| Ambiguous food history | `aa6b62b9-b507-4c36-a168-32152af13618` | FAIL | $0.008855 |
+| Unavailable food item | `060f2637-1cb7-4855-8d2b-8d981be0308e` | PASS | $0.008486 |
+| Ambiguous mail classification | `167f9774-c1ee-4664-adbf-616d3ab9c6e4` | FAIL | $0.228920 |
+| Existing applications | `991052be-87b8-4368-b679-77ff1f1e7857` | FAIL | $0.051114 |
+| Unsupported qualifications | `4ee13057-127c-409b-a21f-fc5c6f266377` | PASS | $0.034359 |
+
+The food clarification correctly named the two restaurants in the explicitly observed calendar week. Its independent judge omitted uncited page context and used a rolling-week interpretation, incorrectly including September8. The mail actor actually received the Security alert body, but successive runtime factual-review packets omitted different bodies under the same bound; the final fallback lost the actor’s later explicit Civic Circle ambiguity explanation. The duplicate-applications report distinguished existing applications from this run’s navigation-only work, but the deterministic phrase list missed its inflected/separated Russian wording. None of these failed records is relabeled as passed. Generic evidence packing and explanation grading are being repaired before fresh validation. Release settled spend is $7.501707; separate paused-live and unknown holds remain $5 each. All100 retained attempts were exported.
+
+
+Candidate `d1e0e5835097` losslessly tabulates the complete dispatch inventory within the existing32KB/24KB factual packet, preserving optional details, nulls, source links, scope and reports. All three retained mail packets now include all ten full message bodies. **43 focused runtime tests** passed; native report-ledger calibration `report-ledger-calibration-6c9cc4ef-b9c2-463a-81dd-9a6d3341966f` returned **5/5 expected verdicts** ($0.020246): three original factual reports accepted, false deletion and password-content reports rejected. This calibrates verdicts on retained inputs, not autonomous reliability or every sentence of a reviewer rationale. No browser action or historical regrade occurred.
+
+The evaluator now includes actual delivered page context even without claim citations, sharing its existing12KB bound and retaining source provenance/omissions. Duplicate explanations use independent native criterion decisions instead of phrase matching; deterministic history/effect/approval checks remain. **178 focused evaluator tests** passed. Initial native calibration `delivered-context-calibration-d843ba0c-3c74-49aa-8fea-92644f19cbd3` returned **7/8** ($0.014722): all five date/factual checks passed, but the true duplicate explanation failed exact binding because the model emitted a prose criterion name. Negative duplicate responses also had malformed names, so they did not establish criterion discrimination. This calibration remains failed.
+
+Criterion IDs were then constrained in the native schema to their supported enum values; missing/extra/duplicate response binding still fails closed. **23 affected tests** passed. Calibration `explanation-enum-calibration-fc695ffb-06f8-4025-8d49-f59b8a6ea63c` passed **4/4** ($0.007555): truthful partial and explicitly constructed completed-existing-state reports accepted; false new submissions and a truthful report missing the required explanation rejected with valid exact IDs. Source files/hashes remained unchanged; all calibration ledgers closed with zero reserved/unknown.
+
+Ordered stages03/04 passed **287/32 tests** in115.84/32.81seconds. The final enum-only amendment changes evaluator schema, not the runtime exercised by these stages; affected evaluator checks were rerun before fresh paid validation. The bounded source review confirmed unchanged credentials, dependencies, model/efforts and spending caps; actual prior setup checks were retained through an explicit amendment, not claimed rerun. A repository precheck scanned610 reachable Git objects with no exact configured credential matches/private tracked paths and preserved original image hashes. This is not final video/repository sign-off.
+
 ---
 
 <!-- Source: EVALUATION-RESULTS.md -->
@@ -1042,6 +1082,18 @@ See [VALIDATION.md](VALIDATION.md) for release status and [FINAL-TEST.md](FINAL-
 | `49d7e6dd-572e-4aba-ae49-493a5a1d8a2c` | `mail_latest_10` / 101 | `31d09be88a73` | PASS | 13/13 | yes | 0.236677 | 0.000000 |
 | `8ba23e93-aa84-41d7-9513-f6447845a766` | `food_previous_order` / 102 | `31d09be88a73` | PASS | 14/14 | yes | 0.049615 | 0.000000 |
 | `f7a8be74-90b5-4413-87ed-1b36cd4bd95d` | `jobs_resume_3` / 103 | `31d09be88a73` | FAIL | 15/16 | yes | 0.131726 | 0.000000 |
+| `e99a28db-70f6-49cb-9ef1-72135357b943` | `mail_latest_10` / 101 | `15261073452a` | PASS | 13/13 | yes | 0.209480 | 0.000000 |
+| `cd7d134e-d757-437a-811c-c5b4e712d5bd` | `food_previous_order` / 102 | `15261073452a` | PASS | 14/14 | yes | 0.048627 | 0.000000 |
+| `e9018640-6ce9-4c18-91fa-ecab4e2c3a24` | `jobs_resume_3` / 103 | `15261073452a` | PASS | 16/16 | yes | 0.094401 | 0.000000 |
+| `8b123be6-1fdf-49ee-8016-e9b63d6a66a9` | `unfamiliar_event` / 201 | `15261073452a` | PASS | 16/16 | yes | 0.042579 | 0.000000 |
+| `5db23214-7b4a-4b0e-947d-26d5baa93f7f` | `food_layout_variant` / 202 | `15261073452a` | PASS | 14/14 | yes | 0.050970 | 0.000000 |
+| `435056f9-c2c9-4f6c-b793-a36d786df02c` | `stale_ref_recovery` / 301 | `15261073452a` | PASS | 15/15 | yes | 0.051348 | 0.000000 |
+| `3123eeb5-cdbe-4721-9ede-399025f0ac78` | `consequential_denied` / 302 | `15261073452a` | PASS | 4/4 | yes | 0.188685 | 0.000000 |
+| `aa6b62b9-b507-4c36-a168-32152af13618` | `food_history_ambiguous` / 401 | `15261073452a` | FAIL | 13/15 | yes | 0.008855 | 0.000000 |
+| `060f2637-1cb7-4855-8d2b-8d981be0308e` | `food_item_unavailable` / 402 | `15261073452a` | PASS | 16/16 | yes | 0.008486 | 0.000000 |
+| `167f9774-c1ee-4664-adbf-616d3ab9c6e4` | `mail_classification_ambiguous` / 403 | `15261073452a` | FAIL | 12/13 | yes | 0.228920 | 0.000000 |
+| `991052be-87b8-4368-b679-77ff1f1e7857` | `jobs_already_applied` / 404 | `15261073452a` | FAIL | 12/13 | yes | 0.051114 | 0.000000 |
+| `4ee13057-127c-409b-a21f-fc5c6f266377` | `jobs_unsupported_qualifications` / 405 | `15261073452a` | PASS | 16/16 | yes | 0.034359 | 0.000000 |
 
 Unknown amounts are retained generation reservations, not confirmed charges or refunds. Aggregate release holds may be larger. Setup/provider preflight costs are recorded separately in the release ledger and preflight reports; this table covers task attempts only.
 
@@ -1184,6 +1236,8 @@ Each paid call in `decide`, `assess risk`, or optional compaction uses the same 
 Read-only tools also go through validation and the dispatcher, but do not require human approval. Only the executor has browser mutation capability. The reviewer and compactor cannot call it. A graph node is an application function, not necessarily a separate LLM request.
 
 Actor-authored completed and partial results undergo exact registered-source citation validation and a separate factual-report audit. Completed results first require successful endpoint review; truthful partial results may retain unmet work and do not assert endpoint completion. This nonacting native call uses Luna at medium effort and checks the unchanged summary and every claim against archived observations and the complete bounded current-run dispatch inventory. Host source/result links and timestamps distinguish actions in this run from preexisting state; a dispatch alone never proves success. Actor working notes are excluded from this factual packet. Missing provenance and omitted observations remain explicit. Factual rejection shares the existing two completion repairs; unavailable or malformed review produces a partial result. This repair is undergoing validation; see VALIDATION.md for actual results.
+
+Repeated dispatch records are encoded as a self-describing table to preserve more observed page content within the same 32 KB packet. Column order restores every original field and null value; optional per-action details retain their exact dictionaries. The complete inventory, original scope, report and evidence priorities remain unchanged. This removes repeated JSON keys rather than dropping actions or treating omitted page bodies as proof of their content. Focused regressions and retained-packet reconstruction verify the lossless transformation; native and fresh autonomous evidence remain separately required.
 
 ## 5. Data contracts and persistence
 
@@ -1494,6 +1548,9 @@ After successful post-dispatch observation, the native result and current runtim
 ## Source fidelity in drafted content
 
 Actor and memory instructions preserve names, durations, technologies, project boundaries and achievement scope from actual sources. Recipient requirements, prior drafts and compressed notes do not establish new personal facts. Faithful paraphrases and clearly prospective intentions remain allowed. The existing risk reviewer is instructed to reject clearly unsupported factual expansions before dispatch through normal recovery; its semantic judgment is fallible. A retained-input native calibration accepted two subtly broadened drafts despite these instructions, while accepting three faithful/future-intention variants. This is a known limitation, not a proven factual firewall. Exact human review of outbound content and independent evaluation remain necessary; fresh actor results are documented separately.
+
+
+Evaluator evidence includes separately labeled actor-delivered page excerpts even when a clarification has no claim citations. These excerpts share the existing12KB citation-packet bound, retain chronology and explicit omissions, and cannot repair invalid claim citations. For existing-application scenarios, explanation requirements are evaluator-only semantic criteria: the native grade returns constrained criterion IDs and decisions, then the host rejects missing, duplicate or unexpected IDs. Factual review, observed-history checks and unchanged-effect assertions remain separate required checks. No evaluator rubric or expected answer is provided to the runtime.
 
 ---
 

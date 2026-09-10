@@ -106,7 +106,7 @@ Visible order dates were April 2025; a previous-week order was not verified. Use
 
 A later read-only Computer Use check again showed the existing authenticated Yandex Eda session and populated order history, still dated April 2025, without a visible challenge. This check reused the existing browser; it did not restart the profile or exercise the implemented Playwright agent. It therefore confirms current visible account access only. At that check, restart persistence was unproven; later actual-runner attempts below supersede that narrow point. Previous-week history and autonomous live-task compatibility remain unproven; no new order or payment was submitted.
 
-## Recorder capability check — 2026-09-09
+## Historical recorder capability check — 2026-09-09
 
 On this Mac, FFmpeg is available and screen-capture permission was granted. A two-second H.264 screen recording encoded and decoded successfully at 2560×1600. This proves recorder operation only; it is not the assignment demonstration. The raw smoke file is private at `artifacts/final/recorder-smoke.mp4` and is not a public deliverable.
 
@@ -123,6 +123,12 @@ ffmpeg -f avfoundation -framerate 10 -capture_cursor 1 -pixel_format nv12 -i "3:
 ```
 
 The example has no audio and a two-minute limit; change the duration deliberately for the actual run. Arrange the visible agent browser and terminal together before capture, then inspect the entire recording and redact private information in a separate shareable copy. Do not publish the raw screen recording or describe the recorder smoke as a completed demo.
+
+### Current native-window recorder check — 2026-09-10
+
+Later AVFoundation probes stalled, so the earlier command is not the selected recording path on this machine. A private ScreenCaptureKit utility now records explicitly selected task windows with an inclusion filter, excluding other applications, desktop and menu bar. Its three-second Terminal-only probe encoded 63 frames into a 3.32-second H.264 video at 2560×1600 with no audio; decoded beginning/end frames show the actual prepared Terminal against black surroundings. This verifies capture only, not a completed agent demonstration. Adding the newly launched task browser to the filter is implemented but not yet verified in a full run.
+
+The operator's recorder, window IDs, probes and raw captures remain under ignored `artifacts/final/`. They are local recording setup, not dependencies of the submitted agent. To reproduce the presentation elsewhere, run [DEMO.md](DEMO.md) in a real terminal, tile its controlled browser beside it, and use the operating system's screen recorder. Review the full video before sharing, especially when recording real accounts.
 
 ## Actual actor live attempt — 2026-09-09
 
