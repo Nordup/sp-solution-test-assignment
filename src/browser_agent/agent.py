@@ -26,7 +26,7 @@ async def run_task(
     if not isinstance(task, str) or not task.strip():
         raise ValueError("A task is required.")
     settings.prepare()
-    profile = browser.profile.name
+    profile = getattr(getattr(browser, "profile", None), "name", "workspace")
     run_id = str(uuid4())
     directory = settings.artifact_dir / "runs" / run_id
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -44,7 +44,8 @@ async def run_task(
     metadata = {
         "run_id": run_id,
         "task": task,
-        "url": browser.page.url if browser.page else None,
+        "url": getattr(browser, "current_url", None)
+        or (browser.page.url if getattr(browser, "page", None) else None),
         "model": settings.model,
         "profile": profile,
         "budget_usd": settings.budget_usd,

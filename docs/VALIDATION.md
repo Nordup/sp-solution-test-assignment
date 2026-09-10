@@ -2,26 +2,30 @@
 
 ## Current status
 
-The current revision changes the runtime lifecycle: the bare CLI opens visible Chromium before the first task, keeps one persistent default profile for multiple tasks, starts without a supplied URL, and adds generic tab/history/hover/scroll controls. Focused checks pass after those changes and the retirement of the prepared-fixture harness; manual account-task acceptance remains pending.
+The current revision adds a model-driven browser workspace: it starts empty, discovers verified local CDP browsers by opaque IDs, and lets the actor choose launch, attach, switch or detach from the task wording. Two bounded read-only model smokes passed those launch and attachment paths. Focused automated lifecycle tests pass; live-account scenarios remain pending.
 
-No live-account task has been run. One bounded, read-only real-model smoke was run from a fresh blank page to exercise generic navigation and tabs:
+The 52-test result and IANA smoke below are historical baselines from before workspace attachment. They do not prove the new discovery, ownership or external disconnect behavior.
 
 | Check | Evidence |
 |---|---|
-| Blank-start browser smoke | **PASS** — run `6886c259-494e-4470-b11c-fdfd12d337a7`, model `gpt-5.6-luna` at low reasoning, $0.007165 and 5 decisions. `BrowserSession.start()` received no URL; the initial page was `about:blank` with one tab. The actor chose `https://www.iana.org/help/example-domains`, then used `new_tab`, navigated and verified the documentation, closed the extra tab, and finished with the original tab active and one tab open. Private evidence is in `artifacts/general-smoke/evidence.json` (ignored by Git). |
-| Focused tests | **PASS** — current tree: `uv run pytest -q`, 52 passed in 21.99s. |
-| Lint and setup | **PASS** — current Ruff checks pass; the CLI help surface exposes only `--help`. Locked setup and Playwright installation were already available in the current environment. |
-| Manual assignment tasks | **Pending.** Run the Yandex Mail, YandexEda and hh.ru scenarios through the real CLI and review browser state, approvals and final reports. |
+| Browser workspace model smokes | **Passed:** new-browser run `7b2c5bdd-b525-4003-9dad-d26a36519b99`, 3 decisions, $0.002718, `launch_browser → tabs → finish`; it created owned browser `b-cb1a17b11b9744` with one active blank `about:blank` tab whose title was empty. Attachment run `945d1f3c-0dd0-440c-8ade-8c1d814d20d2`, 3 decisions, $0.002873, `list_browsers → attach_browser → finish`; it attached the discovered `Attachment smoke` tab, reported heading `Attachment smoke unique proof`, proposed no `launch_browser`, and the external browser stayed connected with its tab and heading intact after workspace close. Private evidence: `artifacts/workspace-smoke/20260910T035211Z/evidence.json`. |
+| Focused tests | **PASS — current tree:** `uv run pytest -q`, 56 passed in 22.02s. The targeted workspace file also reports 4 passed in 4.12s, including owned/attached switching and external detach liveness. |
+| Lint and setup | **PASS — current tree:** Ruff checks, whitespace checks and locked setup pass; the CLI help surface exposes only `--help`. |
+| Blank-start browser smoke | **Historical only:** run `6886c259-494e-4470-b11c-fdfd12d337a7`, model `gpt-5.6-luna` at low reasoning, $0.007165 and 5 decisions. The old `BrowserSession.start()` received no URL from `about:blank`, chose `https://www.iana.org/help/example-domains`, opened and closed an extra tab, and finished with one tab. It did not exercise browser discovery or CDP attachment. Private evidence remains in `artifacts/general-smoke/evidence.json`. |
+| Manual assignment tasks | **Pending.** Run the Yandex Mail, YandexEda and hh.ru scenarios through the real CLI and review browser choice, state, approvals and final reports. |
 
-The smoke was read-only and required no account, approval or challenge. Its event log records the first chosen URL, each tool proposal/result, tab IDs and final tab state. It does not replace the three manual acceptance scenarios.
+The two workspace smokes were read-only and required no account, approval or challenge. The IANA run remains a historical generic-navigation baseline; it does not exercise attachment.
 
 ## Acceptance coverage
 
-Focused tests and the manual runbook cover the assignment requirements:
+The current checks cover these assignment requirements:
 
-- generic navigation starts without a supplied URL and chooses destinations from observed pages;
-- the visible persistent profile accepts manual login and multiple tasks;
-- typed tools provide navigation, tabs, history, hover, vertical and horizontal scroll, forms, reads and reports;
+- the task determines whether the actor should discover and attach an existing browser or launch an owned one;
+- an empty `BrowserWorkspace` is visible to the model as a no-browser state, without a deterministic initial browser, URL or menu;
+- `list_browsers` exposes opaque IDs only for local listeners found with `lsof` and verified through `/json/version`;
+- Python Playwright `connect_over_cdp` attaches existing Chromium contexts while preserving tabs and cookies without copying them;
+- owned browsers close on `/exit`, while attached browsers are only disconnected and remain open;
+- active-browser page tools provide navigation, tabs, history, hover, vertical and horizontal scroll, forms, reads and reports;
 - bounded snapshots, paged reads, recent exchanges and the cumulative factual notebook constrain model context;
 - exact target/form approvals guard consequential actions and changed targets invalidate old approvals;
 - stale references, provider retries, retry exhaustion, login challenges and uncertain effects have explicit recovery behavior;
@@ -45,10 +49,12 @@ The following eight synthetic fixture runs were recorded before the fixture pack
 | `a27a7384-1926-4d53-b930-fbd72ddd7a57` | jobs_resume_3 | PASS | manually_reviewed | 0.030998 | exported |
 | `767c4ac5-1088-406a-9ebc-14a151ab30fc` | mail_latest_10 | PASS | not_applicable | 0.042904 | exported |
 
-The preceding three successful task families read ten mail bodies and removed exactly three spam messages, reached food payment review at 315,000 VND without payment, and selected three jobs with individually reviewed letters. Their combined model cost was $0.105330. These results demonstrate controlled historical behavior; they do not certify live-site compatibility or the current lifecycle.
+The three successful historical task families read ten mail bodies and removed exactly three spam messages, reached food payment review at 315,000 VND without payment, and selected three jobs with individually reviewed letters. Their combined model cost was $0.105330. These results demonstrate controlled historical behavior; they do not certify live-site compatibility or the current workspace lifecycle.
 
 ## Limits and prior fixes
 
+An external browser must already expose a local remote-debugging endpoint. An ordinary running Chrome or Firefox cannot be attached just because it is open, and the agent does not copy cookies or manufacture a CDP endpoint. Discovery is limited to macOS and Linux `lsof` listener records verified through `/json/version`; it does not scan arbitrary ports or scrape raw process command lines. ChromeMCP extension/channel support is not implemented.
+
 No real orders, payments, emails or job applications were submitted during the archived synthetic runs. The prepared Yandex session previously needed a genuine delivery address; useful last-week order history and a complete live food task remain unverified. Login and security challenges require manual handling, and Windows support is not certified.
 
-Earlier failures showed that too little recent history and an optional notebook caused repeated work. Requiring the factual notebook on every tool call fixed that issue. A prior food recording also stopped one page before payment review; the task prompt and finish description were clarified before the archived run. Those fixes do not guarantee every live model run.
+Earlier failures showed that too little recent history and an optional notebook caused repeated work. Requiring the factual notebook on every tool call fixed that issue. An earlier food attempt stopped one page before payment review; the task prompt and finish description were clarified before the archived run. Those fixes do not guarantee every live model run.

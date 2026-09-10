@@ -24,6 +24,9 @@ def build_request(task, observation, notebook, history, image=None, feedback="")
             "offset",
             "next_offset",
             "tabs",
+            "workspace",
+            "active_browser",
+            "no_browser",
         )
     }
     messages = [

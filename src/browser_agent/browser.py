@@ -112,6 +112,8 @@ class BrowserSession:
         self.generation = uuid4().hex
         self.revision = 0
         self._pw = None
+        self._attached_browser = None
+        self._attached = False
         self._profile_lock = None
         self._pages: dict[str, Any] = {}
         self._registry: dict[str, dict] = {}
@@ -148,6 +150,8 @@ class BrowserSession:
                 )
                 self.context.set_default_timeout(self.ACTION_TIMEOUT_MS)
                 self.context.set_default_navigation_timeout(15000)
+                self._attached = False
+                self._attached_browser = None
                 self._closed = False
                 self.generation = uuid4().hex
                 self._pages, self._registry = {}, {}
@@ -179,6 +183,56 @@ class BrowserSession:
                 raise BrowserError(
                     code,
                     "Could not open browser; check installation, display, and profile ownership",
+                ) from exc
+
+    async def attach(self, endpoint: str):
+        """Attach to a local Chromium CDP endpoint without owning its process."""
+        async with self.lock:
+            if self.context is not None and not self._closed:
+                raise BrowserError(
+                    "already_started", "Browser session is already running"
+                )
+            self._validate_cdp_endpoint(endpoint)
+            try:
+                self._pw = await async_playwright().start()
+                self._attached_browser = await self._pw.chromium.connect_over_cdp(
+                    endpoint, timeout=10000, is_local=True, no_defaults=True
+                )
+                contexts = self._attached_browser.contexts
+                if not contexts:
+                    raise BrowserError(
+                        "attach_no_context", "Attached browser has no default context"
+                    )
+                self.context = contexts[0]
+                self.context.set_default_timeout(self.ACTION_TIMEOUT_MS)
+                self.context.set_default_navigation_timeout(15000)
+                self._attached = True
+                self._closed = False
+                self.generation = uuid4().hex
+                self._pages, self._registry = {}, {}
+                self._observation = None
+                self._snapshot_text = ""
+                self._dialogs = []
+                self._http_status = {}
+                self.context.on("close", lambda _: setattr(self, "_closed", True))
+                self.context.on("page", self._register_page)
+                for page in self.context.pages:
+                    self._register_page(page)
+                self.page = next(
+                    (page for page in self.context.pages if not page.is_closed()),
+                    None,
+                )
+                if self.page is None:
+                    raise BrowserError(
+                        "attach_no_pages", "Attached browser has no open tabs"
+                    )
+            except Exception as exc:
+                await self._close_unlocked()
+                if isinstance(exc, BrowserError):
+                    raise
+                raise BrowserError(
+                    "attach_failed",
+                    "Could not attach to the local browser; it may have closed or rejected CDP",
                 ) from exc
 
     def _register_page(self, page):
@@ -223,12 +277,19 @@ class BrowserSession:
 
     async def _close_unlocked(self):
         try:
-            if self.context:
+            if self._attached_browser:
+                # Browser.close disconnects Playwright's CDP handle. Do not close
+                # the external context or any of its pages.
+                await self._attached_browser.close()
+            elif self.context:
                 await self.context.close()
         finally:
             self.context = None
             self.page = None
             self._closed = True
+            self._attached_browser = None
+            self._attached = False
+            self._pages = {}
             self._registry.clear()
             self._observation = None
             if self._pw:
@@ -244,11 +305,59 @@ class BrowserSession:
         return next((k for k, p in self._pages.items() if p is self.page), "")
 
     def _ensure_open(self):
-        if self._closed or self.page is None or self.page.is_closed():
+        if self._closed:
             raise BrowserError(
                 "browser_disconnected",
                 "Browser or active page closed; reopen and observe before continuing",
             )
+        if self.page is None or self.page.is_closed():
+            self.page = next(
+                (page for page in self._pages.values() if not page.is_closed()), None
+            )
+        if self.page is None:
+            raise BrowserError(
+                "no_open_tabs", "Browser is connected but has no open tabs"
+            )
+
+    @property
+    def attached(self):
+        return self._attached
+
+    @property
+    def is_open(self):
+        return not self._closed
+
+    async def tabs_summary(self, limit: int = 8):
+        async with self.lock:
+            tabs = []
+            live = [
+                (page_id, page)
+                for page_id, page in self._pages.items()
+                if not page.is_closed()
+            ]
+            for page_id, page in live[:limit]:
+                if page.is_closed():
+                    continue
+                try:
+                    title = (await asyncio.wait_for(page.title(), timeout=1))[:200]
+                    url = page.url[:1000]
+                except (PlaywrightError, TimeoutError):
+                    continue
+                tabs.append(
+                    {
+                        "page_id": page_id,
+                        "title": title,
+                        "url": url,
+                        "active": page is self.page,
+                    }
+                )
+            return tabs
+
+    async def bring_to_front(self):
+        """Make the active page visible when switching managed browsers."""
+        async with self.lock:
+            self._ensure_open()
+            await self.page.bring_to_front()
 
     @staticmethod
     def _validate_url(url):
@@ -266,6 +375,25 @@ class BrowserSession:
             raise BrowserError(
                 "invalid_url",
                 "Only HTTP(S) URLs without embedded credentials are supported",
+            )
+
+    @staticmethod
+    def _validate_cdp_endpoint(endpoint):
+        try:
+            parsed = urlsplit(endpoint)
+            valid = (
+                parsed.scheme in {"http", "https", "ws", "wss"}
+                and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+                and parsed.port is not None
+                and not parsed.username
+                and not parsed.password
+            )
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise BrowserError(
+                "invalid_endpoint",
+                "Only local HTTP(S)/WebSocket CDP endpoints are attachable",
             )
 
     def _check_observation(self, observation_id):

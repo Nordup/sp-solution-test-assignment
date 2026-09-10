@@ -1,6 +1,6 @@
 # Autonomous browser agent
 
-A Python browser agent built with LangGraph, Playwright and OpenAI. Give it a task in a terminal and watch it work in a visible Chromium browser. It reads the current page, chooses the next browser action, asks for approval before consequential actions, and reports what it observed.
+A Python browser agent built with LangGraph, Playwright and OpenAI. Give it a task in a terminal and watch it work in a visible browser. It reads the current page, chooses the next browser action, asks for approval before consequential actions, and reports what it observed.
 
 [Architecture](docs/ARCHITECTURE.md) · [Test runbook](docs/FINAL-TEST.md) · [Validation status](docs/VALIDATION.md)
 
@@ -21,17 +21,19 @@ Set `OPENAI_API_KEY` in `.env.local`, preserving any existing values, then start
 uv run browser-agent
 ```
 
-The command opens visible Chromium before showing the first `Task:` prompt. It uses one persistent `default` profile under `artifacts/profiles/default`, so cookies and other browser session data remain available across tasks. Enter tasks at the prompt, or type `/exit` to close the browser and end the session. The same browser stays open while several tasks run.
+The command starts the terminal session and task prompt. It does not choose a URL, browser or account at startup. The browser workspace begins with no active browser; the actor decides from the task whether to inspect connectable local browsers, attach to one, or launch an owned visible Chromium through native tools.
 
-There is no startup URL or task-specific command. The actor can start from the current page, open a public homepage or search engine with `navigate`, and discover the required site routes and controls from the observed page. You can log in manually in the visible browser whenever a task needs it; credentials stay outside the model tools and the saved cookies are available to later tasks.
+The first agent-created Chromium uses the persistent `default` profile under `artifacts/profiles/default`; additional owned browser records use their own workspace profiles. Cookies remain in the profile for later tasks. An attached browser keeps its existing context and tabs; the agent never copies cookies. On `/exit`, owned browsers are closed and attached browsers are only disconnected, leaving the external browser open. You can log in manually in whichever visible browser is active.
 
 The default runtime model is `gpt-5.6-luna` with low reasoning effort. Each task has a maximum $5 model budget, including retries. For a consequential action, inspect the destination, target and form values shown in the terminal and type `yes` to approve that exact action. Any other answer declines it and stops that task.
 
 ## How it works
 
-One LangGraph loop connects observation, a typed model decision, host safety checks, execution and recovery. The model chooses from the current accessibility snapshot; it receives no site-specific selectors, navigation recipes or expected task answers.
+One LangGraph loop connects browser-workspace observation, a typed model decision, host safety checks, execution and recovery. The model receives a no-browser state when the workspace is empty. It can use `list_browsers`, `launch_browser`, `attach_browser`, `switch_browser` and `detach_browser`, then uses the same active-browser page tools for navigation, tabs, forms and reports.
 
-The native browser tools cover navigation, bounded reads, screenshots, forms, keyboard input, vertical and horizontal scrolling, hover controls, new tabs, tab listing/switching/closing, back, forward and reload, user questions and final reports. Old element references are rejected after navigation or DOM changes. Transient provider errors use bounded retries; stale elements trigger a fresh observation and replanning; an uncertain consequential action stops for inspection instead of being replayed.
+Connectable browser discovery is deliberately narrow: on macOS and Linux the host inspects local browser listeners with `lsof` and verifies each candidate through its local `/json/version` endpoint. The model receives opaque browser IDs, never raw endpoints. There is no broad port scan or raw command-line scraping. Python Playwright connects through `connect_over_cdp`; a normal Chrome or Firefox process without an enabled CDP endpoint is not magically attachable.
+
+The page tools cover navigation, bounded reads, screenshots, forms, keyboard input, vertical and horizontal scrolling, hover controls, new tabs, tab listing/switching/closing, back, forward and reload, user questions and final reports. Old element references are rejected after navigation or DOM changes. Transient provider errors use bounded retries; stale elements trigger a fresh observation and replanning; an uncertain consequential action stops for inspection instead of being replayed.
 
 Context is bounded to the current snapshot, recent tool exchanges and a cumulative factual notebook required on every tool call. Long pages are read in scoped or paged segments. See [architecture and requirement mapping](docs/ARCHITECTURE.md) for the implementation choices.
 
@@ -44,7 +46,11 @@ uv run ruff check .
 uv run pytest -q
 ```
 
-Use the same terminal command for manual acceptance. Give the agent only the task text; do not supply routes, selectors or click recipes. The visible browser and terminal should make each decision, approval and final state reviewable.
+Use the same terminal command for manual acceptance. Give the agent only the task text; do not supply routes, selectors or click recipes. A task can explicitly describe an existing signed-in browser or request a new browser, and the model must choose the corresponding workspace path from those words.
+
+Two small tool-choice checks make that distinction observable: `Create a new browser and open IANA’s website.` versus `Use my already-open Chromium browser; find the tab titled “Example Domains” and summarize it.` The second case assumes a browser was prepared manually with remote debugging enabled; no URL is preloaded by the test harness.
+
+Both workspace paths have also been exercised once with bounded, read-only model smokes; run IDs, tool order and costs are recorded in [Validation status](docs/VALIDATION.md).
 
 1. **Yandex Mail:** `Прочитай последние 10 писем в Яндекс.Почте и удали спам`. Confirm that the agent reads the ten message bodies, removes only spam, reports the actual deleted count and names relevant retained messages, and requests approval before each destructive action.
 2. **YandexEda:** `На YandexEda закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе. Остановись перед финальным подтверждением оплаты; заказ не размещай.` Confirm that it discovers the restaurant from visible order history, selects the exact items, reaches payment review, stops before payment and leaves no order placed.
@@ -56,7 +62,7 @@ These are human-reviewed live-account acceptance scenarios. Login, CAPTCHA, addr
 
 | Path | Contents |
 |---|---|
-| `src/browser_agent/` | Agent lifecycle, graph, browser tools, safety, context, model client and budget |
+| `src/browser_agent/` | Agent lifecycle, browser workspace, graph, browser tools, safety, context, model client and budget |
 | `tests/` | Browser, graph, protocol, safety and context tests |
 | `docs/` | Architecture, test instructions, validation status and original assignment materials |
 

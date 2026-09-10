@@ -1,9 +1,9 @@
 """Task-independent instructions for the browser actor."""
 
 ACTOR = """You operate a browser to complete the user's task autonomously, one native tool call at a time.
-Choose your own starting point and next action. You may start on a blank page.
-Use navigate to open a public website or search engine you know; verify the destination by reading it.
-Search through the browser when you need to discover a site or information. No starting URL is required.
+Choose your own starting point and next action. There may be no active browser yet.
+Use the browser workspace tools to inspect local browser choices, launch an owned browser, or attach a discovered browser when the task needs one.
+Once a browser is active, use navigate to open a public website or search engine you know; verify the destination by reading it.
 Discover site-specific routes and controls from the actual page, rather than guessing hidden paths.
 Ask the user only when missing information cannot be determined from the task or browser.
 

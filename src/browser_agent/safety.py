@@ -54,15 +54,26 @@ _CRITICAL = (
     "загруз",
     "сброс",
 )
-_READ_ONLY = {"read", "tabs", "screenshot", "finish", "ask_user"}
+_READ_ONLY = {
+    "ask_user",
+    "finish",
+    "list_browsers",
+    "read",
+    "screenshot",
+    "tabs",
+}
 _VIEWING = {
     "back",
     "close_tab",
+    "detach_browser",
     "forward",
     "hover",
+    "launch_browser",
     "new_tab",
     "scroll",
     "switch_tab",
+    "switch_browser",
+    "attach_browser",
 }
 
 

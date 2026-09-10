@@ -8,9 +8,10 @@ from rich.console import Console
 from rich.panel import Panel
 
 from .agent import run_task
-from .browser import BrowserError, BrowserSession
+from .browser import BrowserError
 from .config import Settings
 from .llm import ProviderFailure
+from .workspace import BrowserWorkspace
 
 app = typer.Typer(add_completion=False)
 console = Console()
@@ -49,11 +50,10 @@ async def session(settings):
     settings.prepare()
     if not settings.api_key.get_secret_value():
         raise ValueError("Set OPENAI_API_KEY in .env.local before starting.")
-    browser = BrowserSession(settings.artifact_dir / "profiles" / "default")
+    workspace = BrowserWorkspace(settings.artifact_dir / "profiles")
     try:
-        await browser.start()
         console.print(
-            "Browser ready. Enter a task, or /exit to close. You can log in manually in the browser."
+            "Browser workspace ready. Enter a task, or /exit to close. Choose or launch a browser from the task."
         )
         while True:
             try:
@@ -67,7 +67,7 @@ async def session(settings):
             result = await run_task(
                 settings,
                 task,
-                browser,
+                workspace,
                 responder=human,
                 console=console,
                 raise_on_cancel=True,
@@ -76,15 +76,13 @@ async def session(settings):
                 Panel(json.dumps(result, ensure_ascii=False, indent=2), title="RESULT"),
                 markup=False,
             )
-            if browser.page is None or browser.page.is_closed():
-                break
     finally:
-        await browser.close()
+        await workspace.close()
 
 
 @app.command()
 def main():
-    """Open the browser and enter tasks. No startup URL or task options."""
+    """Open the browser workspace and enter tasks. No startup browser is chosen."""
     try:
         asyncio.run(session(Settings.load()))
     except (KeyboardInterrupt, EOFError, asyncio.CancelledError):

@@ -53,6 +53,14 @@ class Tab(Action):
     page_id: str
 
 
+class BrowserId(Action):
+    browser_id: str = Field(min_length=3, max_length=80)
+
+
+class DiscoveryId(Action):
+    discovery_id: str = Field(min_length=3, max_length=80)
+
+
 class Ask(Action):
     question: str = Field(min_length=1, max_length=1500)
     kind: Literal["clarification", "login", "challenge"]
@@ -65,6 +73,11 @@ class Finish(Action):
 
 
 REGISTRY = {
+    "list_browsers": (Empty, "Discover local connectable browsers and list managed browser IDs, ownership and tabs."),
+    "launch_browser": (Empty, "Launch a new owned browser with a persistent profile and make it active."),
+    "attach_browser": (DiscoveryId, "Attach to a browser from a current list_browsers discovery ID; the host rechecks it locally."),
+    "switch_browser": (BrowserId, "Switch the active browser to an observed managed browser ID."),
+    "detach_browser": (Empty, "Disconnect the active attached browser without closing its external browser or tabs."),
     "click": (
         Ref,
         "Click a current observed ref. The host asks for exact approval when necessary.",
