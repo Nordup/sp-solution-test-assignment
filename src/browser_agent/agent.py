@@ -62,11 +62,14 @@ async def run_task(
                     "steps": 0,
                     "failures": 0,
                     "history": [],
+                    "clarifications": [],
                     "notebook": "",
                     "read_args": {},
                     "pending_result": None,
                 },
-                {"recursion_limit": settings.max_decisions * 5 + 30},
+                # A reviewed effect can visit observe -> decide -> review ->
+                # approve -> execute -> observe; leave bounded room for recovery.
+                {"recursion_limit": settings.max_decisions * 7 + 40},
             )
         result = state["result"]
         steps = state.get("steps", 0)

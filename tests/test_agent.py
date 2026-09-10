@@ -11,6 +11,7 @@ from langsmith.run_helpers import get_tracing_context
 
 from browser_agent.agent import run_task
 from browser_agent.browser import BrowserError, BrowserSession
+from browser_agent.budget import BudgetExceeded
 from browser_agent.config import Settings
 
 FORM = '<form onsubmit="event.preventDefault();window.effects=(window.effects||0)+1"><textarea aria-label="Message">Original text</textarea><button type="submit">Send</button></form>'
@@ -27,6 +28,13 @@ def ref(observation, label):
 
 def click(label):
     return lambda observation: ("click", {"ref": ref(observation, label)})
+
+
+def ask(question):
+    return lambda _observation: (
+        "ask_user",
+        {"question": question, "kind": "clarification"},
+    )
 
 
 def finish(status="completed"):
@@ -270,7 +278,10 @@ async def test_exact_approval_controls_one_actual_effect(tmp_path, answer):
         return respond
 
     result, state, gateway = await run_case(
-        tmp_path, [click("Send"), finish()], responder=responder
+        tmp_path,
+        [click("Send"), finish()],
+        responder=responder,
+        security_script=[security_review("approval")],
     )
     assert len(questions) == 1
     assert state["effects"] == (1 if answer == "approve" else 0)
@@ -301,10 +312,37 @@ async def test_login_button_uses_security_reviewer_without_human_prompt(tmp_path
     ]
 
 
+async def test_trusted_clarification_is_separate_from_untrusted_recent_history(tmp_path):
+    html = '<button onclick="window.effects=(window.effects||0)+1">Continue</button>'
+
+    async def responder(question):
+        assert question["kind"] == "clarification"
+        return "User-approved scope: this one item"
+
+    result, _state, gateway = await run_case(
+        tmp_path,
+        [
+            ask("Which scope should I use?"),
+            click("Continue"),
+            finish(),
+        ],
+        html=html,
+        responder=lambda _state: responder,
+        security_script=[security_review("allow")],
+    )
+    assert result["status"] == "completed"
+    packet = gateway.security_requests[0]["input"][0]["content"][0]["text"]
+    assert "Which scope should I use?" in packet
+    assert "User-approved scope: this one item" in packet
+    assert "trusted_user_clarifications" in packet
+    assert "untrusted_recent_tool_results" in packet
+
+
 @pytest.mark.parametrize("decision,approved,expected_status", [
     ("allow", False, "completed"),
     ("approval", True, "completed"),
     ("approval", False, "partial"),
+    ("replan", False, "partial"),
     ("deny", False, "needs_user"),
 ])
 async def test_ambiguous_control_review_decides_without_execution_on_deny(
@@ -324,7 +362,7 @@ async def test_ambiguous_control_review_decides_without_execution_on_deny(
     html = '<button onclick="window.effects=(window.effects||0)+1">Continue</button>'
     result, state, gateway = await run_case(
         tmp_path,
-        [click("Continue"), finish()],
+        [click("Continue"), finish("partial") if decision == "replan" else finish()],
         html=html,
         responder=responder,
         security_script=[security_review(decision)],
@@ -335,9 +373,11 @@ async def test_ambiguous_control_review_decides_without_execution_on_deny(
     assert any(item.get("kind") == "approval" for item in questions) is (
         decision == "approval"
     )
+    if decision == "replan":
+        assert "security_replan" in json.dumps(gateway.requests[1])
 
 
-async def test_explicit_destructive_target_uses_exact_host_gate_without_reviewer(tmp_path):
+async def test_destructive_effect_uses_reviewer_then_exact_host_gate(tmp_path):
     def responder(_state):
         async def respond(question):
             return {"request_id": question["request_id"], "approved": False}
@@ -350,9 +390,10 @@ async def test_explicit_destructive_target_uses_exact_host_gate_without_reviewer
         [click("Delete selected messages")],
         html=html,
         responder=responder,
+        security_script=[security_review("approval")],
     )
     assert result["status"] == "partial" and state["effects"] == 0
-    assert gateway.security_calls == 0
+    assert gateway.security_calls == 1
 
 
 async def test_changed_form_after_approval_prevents_dispatch_and_replans(tmp_path):
@@ -368,7 +409,10 @@ async def test_changed_form_after_approval_prevents_dispatch_and_replans(tmp_pat
         return respond
 
     result, state, gateway = await run_case(
-        tmp_path, [click("Send"), finish("partial")], responder=responder
+        tmp_path,
+        [click("Send"), finish("partial")],
+        responder=responder,
+        security_script=[security_review("approval")],
     )
     assert result["status"] == "partial" and state["effects"] == 0
     assert gateway.calls == 2
@@ -379,6 +423,41 @@ async def test_changed_form_after_approval_prevents_dispatch_and_replans(tmp_pat
     ]
     assert errors[0]["code"] in {"stale_ref", "approval_changed"}
     assert "Changed after review" in json.dumps(gateway.requests[-1])
+
+
+async def test_target_change_after_review_allow_is_rejected_by_fingerprint(tmp_path):
+    state = {}
+    base = browser_factory(
+        '<button onclick="window.effects=(window.effects||0)+1">Continue</button>',
+        state,
+    )
+
+    class ChangedOnDispatch(base):
+        changed = False
+
+        async def execute(self, *args, **kwargs):
+            if not self.changed:
+                self.changed = True
+                await self.page.get_by_role("button", name="Continue").evaluate(
+                    "el => el.textContent = 'Changed control'"
+                )
+            return await super().execute(*args, **kwargs)
+
+    gateway = ScriptedGateway(
+        [click("Continue"), finish("partial")],
+        security_script=[security_review("allow")],
+    )
+    result = await run_isolated(
+        Settings(artifact_dir=tmp_path),
+        "Use the available control",
+        browser_factory=ChangedOnDispatch,
+        gateway_factory=lambda *_args, **_kwargs: gateway,
+    )
+    assert result["status"] == "partial" and state["effects"] == 0
+    assert any(
+        code in json.dumps(gateway.requests[1])
+        for code in ("approval_changed", "stale_ref")
+    )
 
 
 async def test_stale_reference_requires_new_actor_decision_before_effect(tmp_path):
@@ -393,6 +472,7 @@ async def test_stale_reference_requires_new_actor_decision_before_effect(tmp_pat
         [click("Send"), click("Send"), finish()],
         responder=responder,
         stale=True,
+        security_script=[security_review("approval")],
     )
     assert (
         result["status"] == "completed" and state["effects"] == 1 and gateway.calls == 3
@@ -446,6 +526,28 @@ async def test_malformed_security_review_replans_without_dispatch(tmp_path):
     assert "malformed_security_review" in json.dumps(gateway.requests[1])
 
 
+async def test_security_budget_failure_stops_without_an_extra_actor_call(tmp_path):
+    class BudgetLimitedGateway(ScriptedGateway):
+        async def call(self, request, purpose="actor"):
+            if purpose == "security":
+                raise BudgetExceeded("synthetic shared cap")
+            return await super().call(request, purpose=purpose)
+
+    gateway = BudgetLimitedGateway([click("Continue"), finish("partial")])
+    result = await run_isolated(
+        Settings(artifact_dir=tmp_path),
+        "Use the available control",
+        browser_factory=browser_factory(
+            '<button onclick="window.effects=(window.effects||0)+1">Continue</button>',
+            {},
+        ),
+        gateway_factory=lambda *_args, **_kwargs: gateway,
+    )
+    assert result["status"] == "partial"
+    assert result["error"]["code"] == "budget_exceeded"
+    assert gateway.calls == 1
+
+
 async def test_incomplete_security_fields_stop_before_reviewer_or_dispatch(tmp_path):
     state = {}
     base = browser_factory(
@@ -481,7 +583,11 @@ async def test_uncertain_effect_is_never_replayed(tmp_path, failure):
         return respond
 
     result, state, gateway = await run_case(
-        tmp_path, [click("Send"), click("Send")], responder=responder, **{failure: True}
+        tmp_path,
+        [click("Send"), click("Send")],
+        responder=responder,
+        security_script=[security_review("approval")],
+        **{failure: True},
     )
     assert result["status"] == "needs_user" and state["effects"] == 1
     assert gateway.calls == 1 and gateway.closed
@@ -500,7 +606,7 @@ async def test_login_and_challenge_pause_without_model_polling(tmp_path, html, k
     assert gateway.calls == 0
 
 
-async def test_cancelled_run_keeps_actual_effect_and_cleans_up(tmp_path, monkeypatch):
+async def test_cancelled_security_review_cleans_up_without_dispatch(tmp_path, monkeypatch):
     original_call = ScriptedGateway.call
 
     async def interrupted(self, request, purpose="actor"):
@@ -518,16 +624,19 @@ async def test_cancelled_run_keeps_actual_effect_and_cleans_up(tmp_path, monkeyp
         return respond
 
     result, state, gateway = await run_case(
-        tmp_path, [click("Send")], responder=responder
+        tmp_path,
+        [click("Send")],
+        responder=responder,
+        security_script=[security_review("approval")],
     )
-    assert result["status"] == "partial" and state["effects"] == 1
+    assert result["status"] == "partial" and state["effects"] == 0
     assert result["steps"] >= 1 and result["cost_usd"] == 0.01
     saved = json.loads(
         (tmp_path / "runs" / result["run_id"] / "result.json").read_text()
     )
     assert saved == result
     assert "did not start" not in result["summary"]
-    assert gateway.closed and gateway.calls == 1
+    assert gateway.closed and gateway.calls == 1 and gateway.security_calls == 0
 
 
 @pytest.mark.parametrize("becomes_enabled", [True, False])
@@ -560,7 +669,8 @@ async def test_disabled_target_reobserves_before_approval_or_stops_at_retry_boun
     gateway = ScriptedGateway(
         [click("Send"), click("Send"), finish()]
         if becomes_enabled
-        else [click("Send")] * 3
+        else [click("Send")] * 3,
+        security_script=[security_review("approval")],
     )
     result = await run_isolated(
         Settings(artifact_dir=tmp_path, max_retries=2),

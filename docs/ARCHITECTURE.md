@@ -34,7 +34,25 @@ Discovery intentionally has a narrow trust boundary. On macOS and Linux the host
 
 Python 3.12, LangGraph `StateGraph`, native OpenAI Responses function calls validated by Pydantic, Playwright and Rich terminal input. The runtime model is `gpt-5.6-luna` with low reasoning effort. LangSmith remains a dependency for explicit tracing boundaries; live tasks disable tracing and do not export account content automatically.
 
-Once a browser is active, one LangGraph loop connects observation, a typed model decision, host-side classification, an independent structured security-review call through the same Gateway and budget ledger when a control is ambiguous, execution and recovery. Clear destructive or committing targets go directly to exact approval; the independent reviewer receives the current observed target/form evidence and proposed effect for ambiguous controls, then returns allow, approval or deny. Routine navigation, search, menu expansion and cart preparation proceed without a user prompt; deleting a message, sending a message, submitting an application, placing or paying for an order and similar external effects require exact approval. The reviewer is a narrow safety component, not a general multi-agent framework or second planner. The model receives no site-specific selectors, navigation recipes or expected task answers.
+Once a browser is active, one LangGraph loop connects observation, a typed model decision, technical host guards, an independent `review` node, execution and recovery. The reviewer uses the same Gateway and budget ledger at medium reasoning effort while the actor remains at low effort. Browser lifecycle and observation capabilities can use technical guards; every page-changing action is reviewed semantically with the current host-resolved target and effect. The typed reviewer returns `allow`, `approval`, `replan` or `deny`: an allow executes, approval enters the existing exact host gate, replan returns bounded feedback to a fresh observation, and deny stops. Deleting a message, sending a message, submitting an application, placing or paying for an order and similar external effects still require exact approval. The reviewer is a narrow safety component, not a general multi-agent framework or second planner. The model receives no site-specific selectors, navigation recipes or expected task answers.
+
+The review packet contains the full task, trusted user clarifications and the exact host-resolved operation, destination, target and form values. Page text, model notes, recent tool results and other page-controlled prose are marked untrusted and bounded; the reviewer receives no private chain of thought. Strict Pydantic function schemas reject prose or malformed JSON. Stale references trigger a fresh observation; incomplete technical context stops safely or requests a safer clarification. Provider, budget or time failures stop or recover within the configured bound without replaying an effect.
+
+```mermaid
+flowchart LR
+  O[observe] --> D[decide]
+  D -->|page effect| R[review]
+  D -->|read-only or lifecycle| E[execute]
+  R -->|allow| E
+  R -->|approval| A[approve: exact host gate]
+  R -->|replan or recoverable error| C[recover]
+  R -->|deny| X[stop]
+  A -->|yes| E
+  A -->|no| X
+  E --> O
+  C -->|fresh observation| O
+  C -->|limit or uncertain effect| X
+```
 
 ## Requirement decisions
 
@@ -49,9 +67,9 @@ Once a browser is active, one LangGraph loop connects observation, a typed model
 | Browser controls | Native tools cover browser discovery/ownership plus `navigate`, `new_tab`, `tabs`, `switch_tab`, `close_tab`, `back`, `forward`, `reload`, `hover`, vertical and horizontal `scroll`, reads, screenshots, forms, keyboard input, questions and reports. |
 | Structured model interaction | Native strict function schemas plus Pydantic validation are used. The runtime does not parse JSON from model prose with regular expressions. |
 | Bounded context | The actor receives a bounded current accessibility snapshot, scoped or paged reads, ten recent tool exchanges and a cumulative factual notebook required in every tool call (up to 6,000 characters). |
-| Security layer and critical-action confirmation | Host classification recognizes clear destructive/committing targets; ambiguous controls go to an independent structured reviewer. Routine navigation, search, menu and cart preparation remain autonomous; deleting, sending, submitting an application, placing or paying for an order and similar external effects require an exact affirmative response showing destination, values and action. Reload is reviewed when the current form action/method could resubmit work; a no-form reload may remain ordinary. The browser revalidates the target before dispatch. |
+| Security layer and critical-action confirmation | Technical guards cover capability and protocol boundaries; every page-changing action goes to an independent structured reviewer with host-resolved operation, destination, target and form values. `allow` executes ordinary reversible work, `approval` enters the exact affirmative gate showing destination, values and action, `replan` requests fresh evidence, and `deny` stops. Deleting, sending, submitting an application, placing or paying for an order and similar external effects require approval. Every reload is reviewed; the reviewer judges whether the current form action/method could resubmit work. The browser revalidates the target before dispatch. |
 | Adaptive recovery | Provider errors use bounded backoff/retry; browser errors trigger a fresh observation and new decision; stale references and stale review details are rejected. An unavailable reviewer or uncertain classification stops safely, and repeated failure produces an honest partial or failed report. |
-| Advanced patterns | The implementation uses adaptive error handling plus the narrow security reviewer above. It does not add a general fleet of specialized sub-agents or a second autonomous planner. |
+| Advanced patterns | The implementation uses adaptive error handling plus the narrow independent security-review node above. It does not add a general fleet of specialized sub-agents or a second autonomous planner. |
 | Uncertain side effect | If an action may already have taken effect, the actor stops for inspection instead of automatically replaying it. |
 | Login or challenge | Passwords and credentials are not model tools. Login, CAPTCHA and security challenges pause for manual handling in the visible browser. |
 | Cost | The runtime enforces a maximum $5 model budget per task across actor calls, independent security-review calls and retries. Unknown billed attempts consume the conservative estimate. |
@@ -72,8 +90,8 @@ The agent is designed for the assignment's live-account acceptance scenarios, bu
 - `cli.py` opens the terminal session, prompts for tasks and handles `/exit`.
 - `agent.py` owns one task lifecycle in `run_task`.
 - `workspace.py` implements browser discovery, ownership and active-browser routing; `browser.py` implements the Playwright page adapter and actions.
-- `graph.py` defines the observe/decide/execute loop.
-- `safety.py` classifies actions for confirmation; `tools.py` defines native workspace and page schemas.
+- `graph.py` defines the observe/decide/review/approve/execute/recover loop.
+- `safety.py` applies capability and protocol guards and builds the independent review packet; `tools.py` defines native workspace, page and review schemas.
 - `prompts.py` and `context.py` construct bounded model input.
 - `llm.py` handles the OpenAI client and retries; `budget.py` enforces the per-task spending cap.
 - `telemetry.py` records private local events. Live tracing is disabled by default.
@@ -86,3 +104,5 @@ The browser adapter follows Playwright's CDP connection contract and closes owne
 - [Playwright browser close](https://playwright.dev/python/docs/api/class-browser#browser-close)
 - [LangGraph graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api)
 - [Playwright persistent contexts](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-persistent-context)
+
+The independent review shape follows the documented behavior of [Codex auto-review](https://learn.chatgpt.com/docs/sandboxing/auto-review), [Cursor Auto-review](https://cursor.com/blog/agent-autonomy-auto-review) and [Claude permission modes](https://code.claude.com/docs/en/permission-modes). The pinned Codex guardian policy template at commit [`ddea03ad049142943bdbf13e937b1d67e8c1ba0c`](https://github.com/openai/codex/blob/ddea03ad049142943bdbf13e937b1d67e8c1ba0c/codex-rs/core/assets/guardian/policy_template.md) is a design reference; no vendor component is copied or claimed as a tested dependency.

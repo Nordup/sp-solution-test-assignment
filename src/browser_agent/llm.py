@@ -38,10 +38,11 @@ class Gateway:
         return self.budget.cost_usd
 
     async def call(self, request, purpose="actor"):
+        effort = "medium" if purpose == "security" else self.settings.reasoning
         req = dict(
             request,
             model=self.settings.model,
-            reasoning={"effort": self.settings.reasoning},
+            reasoning={"effort": effort},
         )
         rates = PRICES[self.settings.model]
         for attempt in range(self.settings.max_retries + 1):
@@ -66,6 +67,7 @@ class Gateway:
                 "model_admitted",
                 {
                     "purpose": purpose,
+                    "effort": effort,
                     "attempt": attempt + 1,
                     "input_tokens": tokens,
                     "reserved_microusd": reserved,
@@ -97,6 +99,7 @@ class Gateway:
                 "model_usage",
                 {
                     "purpose": purpose,
+                    "effort": effort,
                     "input_tokens": usage.input_tokens,
                     "output_tokens": usage.output_tokens,
                     "cost_microusd": actual,

@@ -31,6 +31,7 @@ from .tools import ProtocolError, parse_call, protocol_pair
 class State(TypedDict, total=False):
     observation: dict
     history: list
+    clarifications: list
     notebook: str
     steps: int
     failures: int
@@ -74,16 +75,23 @@ class AgentGraph:
 
     def compile(self):
         graph = StateGraph(State)
-        for name in ("observe", "decide", "approve", "execute", "recover"):
+        for name in ("observe", "decide", "review", "approve", "execute", "recover"):
             graph.add_node(name, getattr(self, name))
         graph.add_edge(START, "observe")
-        for name in ("observe", "decide", "approve", "execute", "recover"):
+        for name in ("observe", "decide", "review", "approve", "execute", "recover"):
             graph.add_conditional_edges(
                 name,
                 lambda state: state["route"],
                 {
                     key: key
-                    for key in ("observe", "decide", "approve", "execute", "recover")
+                    for key in (
+                        "observe",
+                        "decide",
+                        "review",
+                        "approve",
+                        "execute",
+                        "recover",
+                    )
                 }
                 | {"end": END},
             )
@@ -105,28 +113,128 @@ class AgentGraph:
         self.deadline += time.monotonic() - started  # Human time is not active runtime.
         return answer
 
-    async def security_review(self, action, metadata, assessment):
+    async def security_review(self, action, metadata, assessment, state):
         """Ask the same budgeted gateway for one structured, tool-free review."""
         request = security_review_request(
-            self.task, action, metadata, assessment
+            self.task,
+            action,
+            metadata,
+            assessment,
+            state.get("clarifications", []),
+            state.get("history", []),
         )
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise SecurityReviewError(
+                "security_review_timeout", "Security review deadline reached", terminal=True
+            )
         try:
             response = await asyncio.wait_for(
                 self.gateway.call(request, purpose="security"),
-                timeout=max(0.1, self.deadline - time.monotonic()),
+                timeout=remaining,
             )
             return parse_security_review(response)
         except SecurityReviewError:
             raise
-        except (BudgetExceeded, ContextOverflow, ProviderFailure, TimeoutError) as exc:
+        except BudgetExceeded as exc:
             raise SecurityReviewError(
-                "security_review_failed",
-                "Security review could not complete within the shared budget or time limit",
+                "budget_exceeded",
+                "Security review reached the shared task budget",
+                terminal=True,
+            ) from exc
+        except ContextOverflow as exc:
+            raise SecurityReviewError(
+                "security_review_context_overflow",
+                "Security review context exceeded the shared input limit",
+                terminal=True,
+            ) from exc
+        except (ProviderFailure, TimeoutError) as exc:
+            code = (
+                "security_review_timeout"
+                if isinstance(exc, TimeoutError)
+                else "security_review_failed"
+            )
+            raise SecurityReviewError(
+                code,
+                "Security review could not complete",
+                terminal=isinstance(exc, TimeoutError),
             ) from exc
         except Exception as exc:
             raise SecurityReviewError(
                 "security_review_failed", "Security review failed before dispatch"
             ) from exc
+
+    async def review(self, state):
+        """Apply the independent review result before any browser dispatch."""
+        metadata, assessment = state["metadata"], state["assessment"]
+        if not security_review_complete(metadata):
+            return {
+                "route": "recover",
+                "error": {
+                    "code": "incomplete_security_review_context",
+                    "message": "Security review context was truncated; choose a fresh target",
+                    "uncertain": False,
+                },
+            }
+        try:
+            review = await self.security_review(
+                {"tool": state["call"]["name"], "args": state["call"]["arguments"]},
+                metadata,
+                assessment,
+                state,
+            )
+        except SecurityReviewError as exc:
+            if exc.terminal:
+                return {
+                    "route": "end",
+                    "result": {
+                        "status": "partial",
+                        "summary": "Security review stopped: " + exc.message,
+                        "remaining": ["Review the browser state before retrying."],
+                        "error": exc.as_dict(),
+                    },
+                }
+            return {"route": "recover", "error": exc.as_dict()}
+        self.emit(
+            "security_review",
+            {
+                "step": state.get("steps", 0),
+                "decision": review["decision"],
+                "reason": review["reason"][:500],
+            },
+        )
+        decision = review["decision"]
+        if decision == "deny":
+            return self.stop(
+                "The independent security review denied this action.",
+                "needs_user",
+                {"kind": "clarification", "question": review["reason"]},
+            )
+        if decision == "replan":
+            return {
+                "route": "recover",
+                "error": {
+                    "code": "security_replan",
+                    "message": review["reason"],
+                    "uncertain": False,
+                },
+            }
+        reviewed = replace(
+            assessment,
+            classification=(
+                "consequential" if decision == "approval" else "ordinary"
+            ),
+            reason=(
+                "Confirm this exact action after independent security review"
+                if decision == "approval"
+                else "Independent security review classified this as ordinary"
+            ),
+            requires_review=False,
+        )
+        return {
+            "route": "approve" if reviewed.requires_approval else "execute",
+            "assessment": reviewed,
+        }
 
     def append_result(self, state, result):
         history = [
@@ -261,9 +369,17 @@ class AgentGraph:
             answer = await self.ask(args)
             if answer is None:
                 return updates | self.stop(args["question"], "needs_user", args)
+            clarifications = list(state.get("clarifications", []))
+            clarifications.append(
+                {
+                    "question": str(args["question"]),
+                    "answer": str(answer),
+                }
+            )
             return updates | {
                 "route": "observe",
                 "history": self.append_result(current, {"answer": str(answer)[:6000]}),
+                "clarifications": clarifications[-12:],
                 "failures": 0,
             }
         if tool == "read":
@@ -301,52 +417,11 @@ class AgentGraph:
                 question = {"kind": "clarification", "question": assessment.reason}
                 return updates | self.stop(assessment.reason, "needs_user", question)
             if assessment.requires_review:
-                if not security_review_complete(metadata):
-                    return updates | {
-                        "route": "recover",
-                        "error": {
-                            "code": "incomplete_security_review_context",
-                            "message": "Security review context was truncated; choose a fresh target",
-                            "uncertain": False,
-                        },
-                    }
-                try:
-                    review = await self.security_review(
-                        {"tool": tool, "args": args}, metadata, assessment
-                    )
-                except SecurityReviewError as exc:
-                    return updates | {"route": "recover", "error": exc.as_dict()}
-                self.emit(
-                    "security_review",
-                    {
-                        "step": step,
-                        "decision": review["decision"],
-                        "reason": review["reason"][:500],
-                    },
-                )
-                if review["decision"] == "deny":
-                    return updates | self.stop(
-                        "The independent security review denied this ambiguous action.",
-                        "needs_user",
-                        {
-                            "kind": "clarification",
-                            "question": review["reason"],
-                        },
-                    )
-                assessment = replace(
-                    assessment,
-                    classification=(
-                        "consequential"
-                        if review["decision"] == "approval"
-                        else "ordinary"
-                    ),
-                    reason=(
-                        "Confirm this exact action after independent security review"
-                        if review["decision"] == "approval"
-                        else "Independent security review classified this as ordinary"
-                    ),
-                    requires_review=False,
-                )
+                return updates | {
+                    "route": "review",
+                    "metadata": metadata,
+                    "assessment": assessment,
+                }
             return updates | {
                 "route": "approve" if assessment.requires_approval else "execute",
                 "metadata": metadata,

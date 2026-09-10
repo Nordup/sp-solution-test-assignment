@@ -75,14 +75,14 @@ class Finish(Action):
 class SecurityReview(Strict):
     """The private reviewer has no notebook or browser-action fields."""
 
-    decision: Literal["allow", "approval", "deny"]
+    decision: Literal["allow", "approval", "replan", "deny"]
     reason: str = Field(min_length=1, max_length=1000)
 
 
 SECURITY_REGISTRY = {
     "security_review": (
         SecurityReview,
-        "Classify one host-resolved browser action as ordinary reversible work, requiring exact user approval, or unsafe to execute.",
+        "Classify one host-resolved browser action: allow it, require exact user approval, request fresh evidence and a new plan, or deny it.",
     )
 }
 

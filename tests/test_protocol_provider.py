@@ -91,6 +91,21 @@ async def test_provider_retries_transient_error_and_charges_unknown_attempt():
     assert client.responses.create.call_args.kwargs["store"] is False
 
 
+async def test_security_review_uses_same_budgeted_client_at_medium_effort():
+    client = fake_client()
+    events = []
+    gateway = Gateway(Settings(reasoning="low"), client=client, emit=lambda e, d: events.append((e, d)))
+    await gateway.call({"input": "actor"})
+    await gateway.call({"input": "security"}, purpose="security")
+    calls = client.responses.create.await_args_list
+    assert calls[0].kwargs["reasoning"] == {"effort": "low"}
+    assert calls[1].kwargs["reasoning"] == {"effort": "medium"}
+    usages = [data for event, data in events if event == "model_usage"]
+    assert [item["purpose"] for item in usages] == ["actor", "security"]
+    assert [item["effort"] for item in usages] == ["low", "medium"]
+    assert gateway.cost_usd > 0
+
+
 async def test_provider_retry_exhaustion_is_bounded_and_not_refunded():
     lost = APIConnectionError(
         request=httpx.Request("POST", "https://api.openai.com/v1/responses")

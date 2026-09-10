@@ -646,8 +646,15 @@ class BrowserSession:
             # review, never the label of the back/scroll/tab/navigation action.
             # Keep the full raw page/fields in the fingerprint below so changes
             # still invalidate review and approval before dispatch.
+            fields = raw.get("fields", [])
+            fields_complete = (
+                len(fields) <= 60
+                and len(json.dumps(fields, ensure_ascii=False).encode()) <= 12000
+            )
+            context["fields"] = fields if fields_complete else _bounded(fields)
             context["page_text"] = context.pop("text", "")
             context["page_text_truncated"] = len(raw.get("text", "")) > 1600
+            context["context_complete"] = fields_complete
             context.update(
                 {
                     "page_id": self.page_id,

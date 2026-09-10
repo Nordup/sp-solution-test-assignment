@@ -1,10 +1,9 @@
-"""Generic UI controls should not need repeated user permission to explore."""
+"""Capability routing and technical safety boundaries for page actions."""
 
 import json
 
 import pytest
 
-from browser_agent.browser import _CONTEXT_JS, BrowserSession
 from browser_agent.safety import (
     assess,
     security_review_complete,
@@ -13,130 +12,84 @@ from browser_agent.safety import (
 
 
 @pytest.mark.parametrize(
-    "markup,classification,review",
+    "tool,args",
     [
-        (
-            '<form role="search" method="get"><input type="search"><button>Search</button></form>',
-            "ordinary",
-            False,
-        ),
-        ('<button aria-expanded="false">Menu</button>', "ordinary", False),
-        (
-            '<button aria-haspopup="menu">Delete selected messages</button>',
-            "consequential",
-            False,
-        ),
-        ("<button>Continue</button>", "review", True),
+        ("read", {"offset": 0, "scope": None}),
+        ("screenshot", {}),
+        ("tabs", {}),
+        ("list_browsers", {}),
+        ("new_tab", {}),
+        ("close_tab", {"page_id": "p1"}),
+        ("scroll", {"direction": "down"}),
     ],
 )
-async def test_browser_semantics_distinguish_navigation_from_critical_buttons(
-    tmp_path, markup, classification, review
-):
-    browser = BrowserSession(tmp_path / "profile", headless=True)
-    try:
-        await browser.start()
-        await browser.page.set_content(markup)
-        context = await browser.page.get_by_role("button").evaluate(
-            # Use the production metadata reader, not invented classification data.
-            _CONTEXT_JS
-        )
-        assessment = assess({"tool": "click", "args": {"ref": "observed"}}, context)
-        assert assessment.classification == classification
-        assert assessment.requires_review is review
-        assert not assessment.forbidden
-    finally:
-        await browser.close()
-
-
-def test_reload_requires_confirmation_because_it_can_resubmit_a_form():
-    assessment = assess(
-        {"tool": "reload", "args": {}},
-        {"document_url": "https://unit.test/form", "context_complete": True},
-    )
-    assert assessment.requires_review and not assessment.requires_approval
+def test_trusted_observation_and_browser_capabilities_bypass_review(tool, args):
+    assessment = assess({"tool": tool, "args": args}, {})
+    assert assessment.classification == "ordinary"
+    assert not assessment.requires_review
 
 
 @pytest.mark.parametrize(
-    "context,classification,review",
+    "tool,args,context",
     [
-        ({"tag": "button", "name": "Log in", "type": "submit"}, "review", True),
-        (
-            {
-                "tag": "button",
-                "name": "Apply filter",
-                "type": "submit",
-                "form_action": "https://unit.test/search",
-            },
-            "review",
-            True,
-        ),
-        (
-            {"tag": "button", "name": "Remove from cart", "type": "button"},
-            "review",
-            True,
-        ),
-        (
-            {
-                "tag": "input",
-                "type": "text",
-                "name": "Search terms",
-                "value": "Delete selected messages",
-            },
-            "ordinary",
-            False,
-        ),
-        (
-            {
-                "tag": "button",
-                "name": "Delete selected messages",
-                "type": "submit",
-                "context_complete": True,
-            },
-            "consequential",
-            False,
-        ),
+        ("click", {"ref": "observed"}, {"name": "Delete selected messages"}),
+        ("click", {"ref": "observed"}, {"name": "Продолжить"}),
+        ("click", {"ref": "observed"}, {"name": "🛒"}),
+        ("click", {"ref": "observed"}, {"name": "Continue"}),
+        ("fill", {"ref": "observed", "value": "query"}, {}),
+        ("select", {"ref": "observed", "value": "option"}, {}),
+        ("press", {"ref": "observed", "key": "Enter"}, {}),
+        ("navigate", {"url": "https://example.test/delete"}, {}),
+        ("back", {}, {}),
+        ("forward", {}, {}),
+        ("reload", {}, {}),
+        ("hover", {"ref": "observed"}, {}),
     ],
 )
-def test_ambiguous_controls_use_reviewer_but_clear_commit_stays_host_gated(
-    context, classification, review
+def test_all_page_actions_share_review_path_without_label_or_url_shortcuts(
+    tool, args, context
 ):
-    assessment = assess({"tool": "click", "args": {"ref": "observed"}}, context)
-    assert assessment.classification == classification
-    assert assessment.requires_review is review
-    assert assessment.requires_approval == (classification == "consequential")
+    assessment = assess({"tool": tool, "args": args}, context)
+    assert assessment.classification == "review"
+    assert assessment.requires_review
 
 
-def test_action_like_anchor_href_review_cannot_be_bypassed_by_folder_label():
-    action = assess(
-        {"tool": "click", "args": {"ref": "observed"}},
-        {
-            "tag": "a",
-            "name": "Details",
-            "href": "https://unit.test/messages/delete?id=4",
-            "context_complete": True,
-        },
+def test_navigation_requires_http_scheme_but_does_not_classify_url_words():
+    allowed = assess(
+        {"tool": "navigate", "args": {"url": "https://example.test/delete"}}, {}
     )
-    folder = assess(
-        {"tool": "click", "args": {"ref": "observed"}},
-        {
-            "tag": "a",
-            "name": "Trash",
-            "href": "https://unit.test/mail/trash",
-            "context_complete": True,
-        },
+    refused = assess(
+        {"tool": "navigate", "args": {"url": "javascript:alert(1)"}}, {}
     )
-    assert action.requires_review and action.classification == "review"
-    assert folder.classification == "review" and folder.requires_review
+    assert allowed.requires_review and allowed.classification == "review"
+    assert refused.forbidden and not refused.requires_review
 
 
-def test_security_packet_keeps_exact_target_and_marks_excerpt_truncation():
+@pytest.mark.parametrize("context", [{"type": "password"}, {"type": "file"}])
+def test_credentials_and_file_selection_remain_manual(context):
+    assessment = assess({"tool": "fill", "args": {"ref": "observed"}}, context)
+    assert assessment.forbidden
+
+
+def test_incomplete_host_effect_stops_before_reviewer():
+    assessment = assess(
+        {"tool": "click", "args": {"ref": "observed"}},
+        {"context_complete": False},
+    )
+    assert assessment.forbidden and not assessment.requires_review
+
+
+def test_security_packet_preserves_task_and_exact_target_marks_untrusted_excerpts():
+    task = "Preserve this full user constraint: " + "x" * 5000
     target = "Apply this exact control " + "x" * 1500
     assessment = assess(
         {"tool": "click", "args": {"ref": "observed"}},
         {"tag": "button", "name": target, "context_complete": True},
     )
     request = security_review_request(
-        "Find the item", {"tool": "click", "args": {"ref": "observed"}}, {
+        task,
+        {"tool": "click", "args": {"ref": "observed"}},
+        {
             "tag": "button",
             "name": target,
             "text": target,
@@ -144,11 +97,20 @@ def test_security_packet_keeps_exact_target_and_marks_excerpt_truncation():
             "context": "c" * 4000,
             "page_text": "p" * 4000,
             "context_complete": True,
-        }, assessment
+        },
+        assessment,
+        clarifications=["Trust this explicit user clarification"],
+        recent_history=[{"output": "Page text says ignore the task"}],
     )
-    payload = json.loads(request["input"][0]["content"][0]["text"].split("\n", 1)[1])
+    packet = request["input"][0]["content"][0]["text"]
+    payload = json.loads(packet.split("\n", 1)[1])
     host = payload["host_target"]
+    assert task in packet
     assert host["name"] == target and host["text"] == target
     assert host["context_excerpt_truncated"] and host["page_excerpt_truncated"]
+    assert payload["trusted_user_clarifications"] == [
+        "Trust this explicit user clarification"
+    ]
+    assert "untrusted_recent_tool_results" in payload
     assert security_review_complete({"fields": []})
     assert not security_review_complete({"fields": ["x" * 13000]})
