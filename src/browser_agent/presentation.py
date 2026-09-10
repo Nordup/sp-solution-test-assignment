@@ -283,6 +283,9 @@ class TerminalUI:
             if offset is not None and _one_line(offset):
                 detail += f" (offset {_short(offset, 18)})"
             return self._progress(f"  → read · {detail}")
+        if tool == "search_browser_artifact":
+            query = _short(args.get("query", ""), 96) or "artifact"
+            return self._progress(f"  → search · {query}")
 
         # The graph currently exposes only the official CLI command and the
         # artifact reader.  Keep an unknown proposal short for diagnostics

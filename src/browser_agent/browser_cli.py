@@ -15,6 +15,7 @@ import json
 import os
 import re
 import signal
+import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -110,22 +111,6 @@ _READ_ONLY_COMMANDS = frozenset(
     }
 )
 
-# Commands whose result can contain a fresh page snapshot.  Other command
-# output (for example a screenshot path or console text) is useful operation
-# metadata, but must not replace the page evidence used by a later reviewer.
-_PAGE_EVIDENCE_COMMANDS = frozenset(
-    {
-        "open",
-        "attach",
-        "snapshot",
-        "find",
-        "goto",
-        "go-back",
-        "go-forward",
-        "reload",
-    }
-)
-
 _SENSITIVE_ENV_PARTS = (
     "API_KEY",
     "TOKEN",
@@ -138,6 +123,9 @@ _MAX_OUTPUT_CHARS = 40_000
 _MAX_EVIDENCE_CHARS = 1_000_000
 _MAX_ARTIFACT_TEXT = 12_000
 _MAX_ARTIFACT_BYTES = 12 * 1024 * 1024
+_MAX_INLINE_ACTOR_CHARS = 12_000
+_MAX_SEARCH_HITS = 10
+_MAX_SEARCH_CHARS = 6_000
 _SNAPSHOT_SUFFIXES = (".yml", ".yaml", ".txt", ".json")
 _IMAGE_TYPES = {
     ".png": "image/png",
@@ -496,12 +484,33 @@ class PlaywrightCLI:
         return list(dict.fromkeys(paths))
 
     def _read_snapshot_for_evidence(
-        self, payload: dict[str, Any], *, command: str | None = None
+        self,
+        payload: dict[str, Any],
+        *,
+        command: str | None = None,
+        fresh_after_ns: int | None = None,
     ) -> str:
-        if command is not None and command not in _PAGE_EVIDENCE_COMMANDS:
-            return ""
+        # ``read_browser_artifact`` never calls this helper.  For a browser
+        # command, inspect every upstream snapshot envelope because actions
+        # such as click/fill can return a newly generated snapshot file too.
+        # A timestamp guard keeps a stale path echoed by a result from
+        # replacing current evidence.  Do not scan arbitrary prose for old
+        # ``.yml`` strings: only snapshot-bearing fields are eligible.
+        sources: list[Any] = []
+        if command == "snapshot":
+            sources.append(payload)
+        else:
+            if "snapshot" in payload:
+                sources.append(payload["snapshot"])
+            result = payload.get("result")
+            if isinstance(result, dict) and "snapshot" in result:
+                sources.append(result["snapshot"])
+        raw_paths: list[str] = []
+        for source in sources:
+            raw_paths.extend(self._extract_paths(source))
+        raw_paths = list(dict.fromkeys(raw_paths))
         chunks: list[str] = []
-        for raw_path in self._extract_paths(payload):
+        for raw_path in raw_paths:
             try:
                 path = self._artifact_path(raw_path)
             except BrowserError:
@@ -509,6 +518,11 @@ class PlaywrightCLI:
             if path.suffix.lower() not in _SNAPSHOT_SUFFIXES or not path.is_file():
                 continue
             try:
+                if (
+                    fresh_after_ns is not None
+                    and path.stat().st_mtime_ns <= fresh_after_ns
+                ):
+                    continue
                 text = path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
@@ -517,8 +531,31 @@ class PlaywrightCLI:
                 break
         return "\n\n".join(chunks)[:_MAX_EVIDENCE_CHARS]
 
-    def _update_evidence(self, command: str, payload: dict[str, Any]):
-        snapshot = self._read_snapshot_for_evidence(payload, command=command)
+    @staticmethod
+    def _snapshot_scope_target(args: list[str]) -> str | None:
+        skip_next = False
+        for value in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if value in {"--depth", "--filename"}:
+                skip_next = True
+                continue
+            if value.startswith("--"):
+                continue
+            return value
+        return None
+
+    def _update_evidence(
+        self,
+        command: str,
+        payload: dict[str, Any],
+        *,
+        fresh_after_ns: int | None = None,
+    ):
+        snapshot = self._read_snapshot_for_evidence(
+            payload, command=command, fresh_after_ns=fresh_after_ns
+        )
         result = payload.get("result")
         if result is None and any(key in payload for key in ("snapshot", "url", "title")):
             result = {
@@ -541,7 +578,20 @@ class PlaywrightCLI:
         # retaining the latest full snapshot.  Every other command leaves the
         # page cache untouched so a screenshot, help output, or artifact path
         # cannot hide the target the reviewer just saw.
-        inline_snapshot = command == "snapshot" and bool(output)
+        inline_snapshot = False
+        snapshot_value = payload.get("snapshot")
+        if snapshot_value is None and isinstance(result, dict):
+            snapshot_value = result.get("snapshot")
+        if snapshot_value is not None:
+            # A file descriptor points at an artifact handled above.  Inline
+            # arrays/objects/text are actual current-page evidence; a stale
+            # file path alone must leave the previous cache untouched.
+            inline_snapshot = not (
+                isinstance(snapshot_value, dict)
+                and set(snapshot_value).issubset({"file", "path"})
+            )
+        if command == "snapshot" and output and snapshot_value is None:
+            inline_snapshot = True
         if snapshot or inline_snapshot:
             self._page_evidence = output[:_MAX_EVIDENCE_CHARS]
         elif command == "find" and output:
@@ -571,6 +621,122 @@ class PlaywrightCLI:
             details.append(f"{command}: {output}")
         if details:
             self._evidence = "\n".join(details)[:_MAX_EVIDENCE_CHARS]
+
+    def _write_generated_text_artifact(self, command: str, text: str) -> Path:
+        self._session_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        safe_command = re.sub(r"[^a-zA-Z0-9_.-]", "_", command)[:40] or "browser"
+        path = self._session_dir / f"{safe_command}-{uuid4().hex}.txt"
+        try:
+            path.write_text(text, encoding="utf-8")
+            path.chmod(0o600)
+        except OSError as exc:
+            raise BrowserError(
+                "artifact_write_failed",
+                "Could not save the browser result artifact",
+                uncertain=True,
+            ) from exc
+        return path
+
+    def _compact_actor_payload(
+        self, command: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Persist oversized inline snapshot/find output before actor delivery."""
+
+        if command not in {"snapshot", "find"}:
+            return payload
+        value = payload.get("result")
+        source: Any = value
+        if value is None and command == "snapshot" and "snapshot" in payload:
+            source = payload
+            value = payload["snapshot"]
+        if value is None:
+            return payload
+        if isinstance(value, str):
+            serialized = value
+        elif isinstance(value, (dict, list)):
+            serialized = json.dumps(source, ensure_ascii=False, indent=2)
+        else:
+            return payload
+        if len(serialized) <= _MAX_INLINE_ACTOR_CHARS:
+            return payload
+        artifact = self._write_generated_text_artifact(command, serialized)
+        size = len(serialized.encode("utf-8"))
+        compact = dict(payload)
+        compact["result"] = {
+            "artifact": str(artifact),
+            "size": size,
+            "truncated": True,
+            "guidance": (
+                "Read with read_browser_artifact using offset, or search with "
+                "search_browser_artifact using a literal query."
+            ),
+        }
+        if command == "snapshot":
+            compact.pop("snapshot", None)
+        compact["artifact_path"] = str(artifact)
+        compact["artifact_size"] = size
+        return compact
+
+    async def _search_artifact(self, args: dict[str, Any]) -> dict[str, Any]:
+        path = self._artifact_path(args.get("path"))
+        query = args.get("query")
+        if not isinstance(query, str) or not query:
+            raise BrowserError("invalid_search_query", "A non-empty literal query is required")
+        if len(query) > 2000 or "\x00" in query:
+            raise BrowserError("invalid_search_query", "The literal query is too long")
+        if path.suffix.lower() not in _SNAPSHOT_SUFFIXES:
+            raise BrowserError("text_artifact_required", "Only generated text artifacts can be searched")
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise BrowserError("artifact_read_failed", "Could not inspect the browser artifact") from exc
+        if size > _MAX_ARTIFACT_BYTES:
+            raise BrowserError("artifact_too_large", "The requested browser artifact is too large")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise BrowserError("artifact_read_failed", "Could not read the browser artifact") from exc
+
+        needle = query.casefold()
+        matches: list[dict[str, Any]] = []
+        total = 0
+        excerpt_chars = 0
+        line_start = 0
+        truncated = False
+        for line_number, raw_line in enumerate(text.splitlines(keepends=True), 1):
+            line = raw_line.rstrip("\r\n")
+            folded = line.casefold()
+            match_at = folded.find(needle)
+            if match_at < 0:
+                line_start += len(raw_line)
+                continue
+            total += 1
+            if len(matches) < _MAX_SEARCH_HITS and excerpt_chars < _MAX_SEARCH_CHARS:
+                remaining = _MAX_SEARCH_CHARS - excerpt_chars
+                excerpt = line[:remaining]
+                if len(excerpt) < len(line):
+                    truncated = True
+                matches.append(
+                    {
+                        "line": line_number,
+                        "offset": line_start + match_at,
+                        "text": excerpt,
+                    }
+                )
+                excerpt_chars += len(excerpt)
+            else:
+                truncated = True
+            line_start += len(raw_line)
+        if total > len(matches):
+            truncated = True
+        return {
+            "status": "searched",
+            "path": str(path),
+            "query": query,
+            "matches": matches,
+            "count": total,
+            "truncated": truncated,
+        }
 
     def _screenshot_args(self, args: list[str]) -> tuple[list[str], Path]:
         path: Path | None = None
@@ -764,8 +930,24 @@ class PlaywrightCLI:
                     if command in {"open", "attach"}:
                         self._browser_open = True
                         self._attached = command == "attach"
+                    dispatch_ns = time.time_ns()
                     payload = await self._run_cli(command, cli_args)
-                    self._update_evidence(command, payload)
+                    self._update_evidence(
+                        command, payload, fresh_after_ns=dispatch_ns
+                    )
+                    actor_payload = self._compact_actor_payload(command, payload)
+                    if command == "snapshot":
+                        scope_target = self._snapshot_scope_target(cli_args)
+                        if scope_target:
+                            actor_payload = dict(actor_payload)
+                            actor_payload["scope_hint"] = {
+                                "target": scope_target,
+                                "warning": (
+                                    "This targeted snapshot replaces the active reference "
+                                    "scope. Use a full snapshot or find before using refs "
+                                    "outside this target."
+                                ),
+                            }
                     if command in {"open", "attach"}:
                         self._browser_open = True
                         self._attached = command == "attach"
@@ -775,7 +957,7 @@ class PlaywrightCLI:
                     "status": "executed",
                     "tool": tool,
                     "command": command,
-                    "output": payload,
+                    "output": actor_payload,
                 }
                 if screenshot_path is not None and screenshot_path.is_file():
                     result["content"] = [
@@ -794,7 +976,13 @@ class PlaywrightCLI:
             if tool == "read_browser_artifact":
                 async with self._lock:
                     return await self._read_artifact(args)
-            raise BrowserError("unknown_tool", "Only playwright and read_browser_artifact are available")
+            if tool == "search_browser_artifact":
+                async with self._lock:
+                    return await self._search_artifact(args)
+            raise BrowserError(
+                "unknown_tool",
+                "Only playwright, read_browser_artifact, and search_browser_artifact are available",
+            )
         except BrowserError as exc:
             return {
                 "status": "error",

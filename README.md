@@ -46,7 +46,7 @@ The double-Esc shortcut requires an interactive terminal. Stopping a task cannot
 
 ## Configuration and results
 
-[.env.example](.env.example) lists the configuration options. Existing environment variables take precedence over `.env.local`.
+[.env.example](.env.example) lists the configuration options. Existing environment variables take precedence over `.env.local`. Restart the agent after changing configuration. For a separate test profile, set `AGENT_BROWSER_PROFILE_DIR=artifacts/profiles/acceptance`.
 
 The actor uses Luna at max reasoning; the reviewer uses Luna at medium reasoning. Each task has a shared model budget of at most $5. You can lower it with `AGENT_BUDGET_USD`. The current price tables support Luna only.
 
@@ -57,7 +57,7 @@ Local output is saved under `artifacts/`:
 - `browser/<session>/`: Playwright output and generated snapshots.
 - `profiles/default/`: persistent browser login state.
 
-LangSmith tracing is optional. Enable it in `.env.local` to export metrics and status. Browser content is sent to OpenAI as needed for the task; LangSmith receives no task text, page content, tool arguments, or user answers. See [data handling](docs/ARCHITECTURE.md#data-handling).
+LangSmith tracing is optional. Enable it in `.env.local` to export metrics and status. Browser content is sent to OpenAI as needed for the task; LangSmith receives no task text, page content, tool arguments, or user answers. See the data handling section in [Architecture](docs/architecture.md).
 
 ## Review and verification
 
@@ -66,8 +66,12 @@ uv run ruff check .
 uv run pytest -q
 ```
 
-The [testing guide](docs/TESTING.md) records current results, known gaps, and the three live-account acceptance tasks. Local tests do not establish that those website workflows are complete.
+The [testing guide](docs/testing.md) records current results and known gaps. Before submission, follow the [final acceptance runbook](docs/acceptance-tests.md): setup, automated checks, browser behavior, the three assignment tasks, failure cases, and the final repository/video review. Local tests do not establish that the live-account workflows are complete.
 
-- [Architecture](docs/ARCHITECTURE.md): agent loop, browser tools, approvals, context, and failure handling.
-- [Testing](docs/TESTING.md): automated checks and manual acceptance.
-- [Original assignment](docs/assignment.ru.md) and [evaluation criteria](docs/hr-requirements.ru.md): preserved Russian source material, including the reference screenshots.
+## Assignment and documentation
+
+The [preserved assignment](docs/assignment.md) and [HR evaluation criteria](docs/evaluation-criteria.md) are the source of truth for requirements and implementation decisions. They contain the Russian source text, all three nested task descriptions, and local reference screenshots. Reading them does not require the original website. [AGENTS.md](AGENTS.md) gives coding agents the required reading order.
+
+- [Architecture](docs/architecture.md): agent loop, browser tools, approvals, context, and failure handling.
+- [Testing](docs/testing.md): automated coverage and recorded verification results.
+- [Acceptance tests](docs/acceptance-tests.md): ordered steps, expected outcomes, and evidence to collect before handoff.

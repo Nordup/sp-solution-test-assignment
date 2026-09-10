@@ -41,7 +41,7 @@ Playwright owns element references, navigation, waiting, tabs, snapshots, and br
 
 Browser output is returned through native tool results. Generated text files can be read in 12,000-character excerpts with a continuation offset. Artifact reads are limited to browser output directories, supported file types, and files up to 12 MiB. Screenshots requested by the actor are delivered as image content.
 
-The host also caches recent browser evidence, including generated snapshots, for the reviewer. It selects a bounded excerpt around the proposed action's target. This cache is not automatically added to actor input. The host does not insert extra screenshot calls before or after actions.
+The host also caches up to 1,000,000 characters of recent browser evidence, including generated snapshots, locally for the reviewer. It selects a bounded excerpt around the proposed action's target. This cache is not automatically added to actor input. The host does not insert extra screenshot calls before or after actions.
 
 A named Playwright session lives across tasks. The default profile is `artifacts/profiles/default`. The actor may open an owned browser or attach through Playwright's session, CDP, or extension support. Shutdown attempts to close an owned browser or detach from an external one.
 
@@ -49,7 +49,7 @@ A named Playwright session lives across tasks. The default profile is `artifacts
 
 [The reviewer](../src/browser_agent/safety.py) receives the proposed command, its arguments, and up to 6,000 characters of current browser evidence. It returns only `needs_approval: true | false`.
 
-Inspection and selected navigation commands bypass the classifier. Other commands are reviewed for their immediate effect. Purchases, submissions, deletion, sensitive disclosure, and security changes are intended to require approval; routine browsing and reversible preparation continue automatically.
+Inspection commands bypass the classifier. Navigation and other commands are reviewed for their immediate effect; classification alone does not ask the user for approval. Purchases, submissions, deletion, sensitive disclosure, and security changes are intended to require approval; routine browsing and reversible preparation continue automatically.
 
 When approval is required, the host presents a short question with `[y/N]`. An affirmative answer must match the pending request ID before the exact command is dispatched. A decline produces `skipped_by_user` and returns control to the actor. If classification fails, the host asks the user to decide.
 

@@ -28,13 +28,18 @@ class Playwright(Strict):
     )
     args: list[str] = Field(
         max_length=32,
-        description="The literal positional arguments for that command; do not write a shell command or flags that run code.",
+        description="The literal arguments and supported flags for that command; do not write a shell command or flags that run code.",
     )
 
 
 class ReadBrowserArtifact(Strict):
     path: str = Field(min_length=1, max_length=4000)
     offset: int = Field(ge=0, le=1_000_000)
+
+
+class SearchBrowserArtifact(Strict):
+    path: str = Field(min_length=1, max_length=4000)
+    query: str = Field(min_length=1, max_length=500)
 
 
 class AskUser(Strict):
@@ -69,7 +74,11 @@ REGISTRY = {
     ),
     "read_browser_artifact": (
         ReadBrowserArtifact,
-        "Read a bounded snapshot, text, or image artifact produced by Playwright CLI. Use this only when the command returned an artifact path.",
+        "Read one bounded excerpt from a snapshot, text, or image artifact produced by Playwright CLI. Use this only when a command returned an artifact path; continue from next_offset when needed.",
+    ),
+    "search_browser_artifact": (
+        SearchBrowserArtifact,
+        "Search one returned text or snapshot artifact case-insensitively without browser I/O; returns at most 10 bounded excerpts and 6000 characters.",
     ),
     "ask_user": (
         AskUser,

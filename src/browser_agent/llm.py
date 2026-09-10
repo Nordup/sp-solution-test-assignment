@@ -13,6 +13,7 @@ from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
 from .budget import Budget
 from .context import ContextOverflow
+from .provider_stream import own_stream_iterators
 from .telemetry import diagnostic_span
 
 # Official Luna pricing checked 2026-09-09; reserve the cache-write premium.
@@ -205,7 +206,8 @@ async def _diagnostic_stream_context(stream, emit, context):
     await stream.__aenter__()
     exception = None
     try:
-        yield
+        async with own_stream_iterators(stream):
+            yield
     except BaseException:  # noqa: BLE001 - preserve exact exception for stream __aexit__
         exception = sys.exc_info()
     async with diagnostic_span(emit, "stream_close", **context) as progress:

@@ -20,7 +20,7 @@ from browser_agent.llm import (
     usage_metadata,
 )
 from browser_agent.prompts import ACTOR
-from browser_agent.tools import ProtocolError, parse_call
+from browser_agent.tools import ProtocolError, parse_call, tool_specs
 
 
 def native(
@@ -82,6 +82,25 @@ def test_actual_cli_image_is_native_input_image_and_text_is_preserved():
     assert {block["type"] for block in output} == {"input_text", "input_image"}
     assert "shot.png" in output[0]["text"]
     assert output[1]["image_url"].startswith("data:image/png;base64,")
+
+
+def test_search_browser_artifact_has_separate_literal_path_query_contract():
+    call = parse_call(
+        native(
+            "search_browser_artifact",
+            '{"path":"snapshot.yml","query":"Delete"}',
+        )
+    )
+    assert call["arguments"] == {"path": "snapshot.yml", "query": "Delete"}
+    spec = next(item for item in tool_specs() if item["name"] == "search_browser_artifact")
+    assert spec["parameters"]["required"] == ["path", "query"]
+    assert "case-insensitively" in spec["description"]
+
+
+def test_actor_prompt_allows_agent_chosen_screenshots_and_outcome_verification():
+    assert "unfamiliar" in ACTOR and "progress is unclear" in ACTOR
+    assert "search_browser_artifact" in ACTOR
+    assert "initial screenshot" not in ACTOR
 
 
 @pytest.mark.parametrize(
@@ -799,7 +818,7 @@ def test_native_cli_arguments_are_lossless_and_no_notebook_is_required():
     assert call["arguments"] == original
     assert json.loads(protocol_pair(call, {"executed": True})[0]["arguments"]) == original
     specs = tool_specs()
-    assert {"playwright", "read_browser_artifact", "ask_user", "finish"} == {
+    assert {"playwright", "read_browser_artifact", "search_browser_artifact", "ask_user", "finish"} == {
         item["name"] for item in specs
     }
 
@@ -810,7 +829,7 @@ def test_cli_tools_are_explicit_and_no_custom_selector_tools_remain():
     spec = next(item for item in tool_specs() if item["name"] == "playwright")
     assert set(spec["parameters"]["required"]) == {"command", "args"}
     names = {item["name"] for item in tool_specs()}
-    assert names == {"playwright", "read_browser_artifact", "ask_user", "finish"}
+    assert names == {"playwright", "read_browser_artifact", "search_browser_artifact", "ask_user", "finish"}
     read_spec = next(item for item in tool_specs() if item["name"] == "read_browser_artifact")
     assert set(read_spec["parameters"]["required"]) >= {"path", "offset"}
     assert "PUBLIC PROGRESS" not in ACTOR

@@ -320,6 +320,32 @@ def test_read_browser_artifact_row_shows_path_and_offset_without_result_dump():
     assert "PRIVATE DOM" not in output
 
 
+def test_search_browser_artifact_row_shows_query_and_hides_matches():
+    ui, stream = rendered()
+    ui.event(
+        "tool_proposed",
+        {
+            "tool": "search_browser_artifact",
+            "arguments": {"path": "/tmp/browser-artifact.txt", "query": "Armenia"},
+        },
+    )
+    ui.event(
+        "tool_result",
+        {
+            "tool": "search_browser_artifact",
+            "result": {
+                "status": "found",
+                "matches": [{"line": 3, "text": "PRIVATE MATCH"}],
+            },
+        },
+    )
+    output = stream.getvalue()
+    assert "search · Armenia" in output
+    assert "PRIVATE MATCH" not in output
+    assert "pending" not in output
+    assert "completed" not in output
+
+
 def test_approval_preserves_graph_prompt_and_hides_private_action_packet():
     ui, stream = rendered()
     prompt = "Send the message to team@example.test?"

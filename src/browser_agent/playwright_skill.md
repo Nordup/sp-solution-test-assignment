@@ -28,7 +28,7 @@ that blocks the requested task; do not assume access to another account.
 ## Find, act, inspect
 
 Use `find` with visible text to get matching accessibility nodes and element
-references. Use `snapshot` for page structure, `snapshot e12` for one observed
+references. Use `snapshot` for the full page structure, `snapshot e12` for one observed
 element, or `snapshot --depth=4` for a shallower view. These commands are supplied
 by Playwright; references such as `e12` identify the actual observed elements.
 
@@ -37,15 +37,26 @@ long labels. If a reference is missing or stale, inspect the current page with
 `find` or `snapshot` and choose an appropriate next action. Do not repeat an
 action whose outcome is uncertain without checking the page first.
 
-The CLI may return a snapshot file path after an action. Use
-`read_browser_artifact` to read that file when its contents are useful. Text
-reads are bounded; continue using the returned `next_offset` when necessary.
-There is no requirement to read every generated snapshot.
+A scoped snapshot replaces the active reference set. A reference outside that
+scope requires a new full snapshot or `find`; never combine refs from unrelated
+scopes. Snapshot and list responses are previews of controls and page structure,
+not proof of a task outcome. Read focused details or the returned artifact when
+the full content or read/status state matters, then verify the requested outcome
+directly after the relevant action.
 
-Use `screenshot` when visual layout or image-only content matters. The host
-attaches the resulting image to the tool response. A screenshot does not supply
-element references: use `find` or `snapshot` to identify a control. Choose when
-to capture screenshots; there is no before/after screenshot routine.
+The CLI may return a snapshot file path after an action. Use
+`read_browser_artifact` to read a bounded excerpt when its contents are useful;
+continue from `next_offset` only when more content is needed. Use
+`search_browser_artifact` with a literal case-insensitive query to find relevant
+lines in a large snapshot instead of paging through the whole document. Search
+returns bounded excerpts and never refreshes the browser.
+
+Use `screenshot` when a page is unfamiliar and needs orientation, when a click's
+visual change or ambiguous text needs understanding, when image-only content
+matters, or when progress is unclear. The host attaches the resulting image to
+the tool response. A screenshot does not supply element references: use `find`
+or `snapshot` to identify a control. Screenshots are agent-chosen; there is no
+automatic initial, before/after, or fixed screenshot routine.
 
 ## Commands
 

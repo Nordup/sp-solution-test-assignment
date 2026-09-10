@@ -255,6 +255,13 @@ class AgentGraph:
                 raise TimeoutError("security review deadline reached")
             async with diagnostic_span(self.emit, "review_request_build", step=state.get("steps", 0)) as diagnostic:
                 request = security_review_request(action, state.get("metadata", {}))
+                # This phase is local-only diagnostic evidence. It lets us
+                # explain a classifier decision from the exact packet it saw
+                # without sending page content to the terminal or LangSmith.
+                diagnostic["review_request"] = {
+                    "instructions": request.get("instructions", ""),
+                    "input": request.get("input", []),
+                }
                 diagnostic["status"] = "ok"
             async with diagnostic_span(self.emit, "reviewer_call", step=state.get("steps", 0)) as diagnostic:
                 response = await asyncio.wait_for(
