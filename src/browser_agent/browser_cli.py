@@ -697,36 +697,54 @@ class PlaywrightCLI:
         except OSError as exc:
             raise BrowserError("artifact_read_failed", "Could not read the browser artifact") from exc
 
-        needle = query.casefold()
+        lines = text.splitlines(keepends=True)
+        line_starts: list[int] = []
+        cursor = 0
+        for line in lines:
+            line_starts.append(cursor)
+            cursor += len(line)
         matches: list[dict[str, Any]] = []
         total = 0
         excerpt_chars = 0
-        line_start = 0
         truncated = False
-        for line_number, raw_line in enumerate(text.splitlines(keepends=True), 1):
+        escaped_query = re.escape(query)
+        for line_index, raw_line in enumerate(lines):
+            line_number = line_index + 1
             line = raw_line.rstrip("\r\n")
-            folded = line.casefold()
-            match_at = folded.find(needle)
-            if match_at < 0:
-                line_start += len(raw_line)
+            match = re.search(escaped_query, line, flags=re.IGNORECASE)
+            if match is None:
                 continue
             total += 1
             if len(matches) < _MAX_SEARCH_HITS and excerpt_chars < _MAX_SEARCH_CHARS:
                 remaining = _MAX_SEARCH_CHARS - excerpt_chars
-                excerpt = line[:remaining]
-                if len(excerpt) < len(line):
+                context_start_line = max(0, line_index - 1)
+                context_end_line = min(len(lines), line_index + 2)
+                context = "".join(lines[context_start_line:context_end_line]).rstrip(
+                    "\r\n"
+                )
+                target_offset = (
+                    line_starts[line_index]
+                    - line_starts[context_start_line]
+                    + match.start()
+                )
+                if len(context) > remaining:
+                    excerpt_start = max(0, target_offset - remaining // 2)
+                    if excerpt_start + remaining > len(context):
+                        excerpt_start = max(0, len(context) - remaining)
+                    excerpt = context[excerpt_start : excerpt_start + remaining]
                     truncated = True
+                else:
+                    excerpt = context
                 matches.append(
                     {
                         "line": line_number,
-                        "offset": line_start + match_at,
+                        "offset": line_starts[line_index] + match.start(),
                         "text": excerpt,
                     }
                 )
                 excerpt_chars += len(excerpt)
             else:
                 truncated = True
-            line_start += len(raw_line)
         if total > len(matches):
             truncated = True
         return {

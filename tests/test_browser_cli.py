@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -123,6 +124,10 @@ async def test_cli_navigates_fills_clicks_and_screenshots(browser):
     assert _item(filled_snapshot["output"], "Country").get("text") == "Armenia"
     click = await browser.execute("playwright", {"command": "click", "args": [send]})
     assert click["status"] == "executed"
+    # The CLI click result contains a fresh snapshot artifact.  The transport
+    # must make its post-click warning/state available to the reviewer without
+    # requiring an automatic follow-up browser call.
+    assert "Clicked" in browser.evidence
 
     after = await browser.execute("playwright", {"command": "snapshot", "args": []})
     def contains_clicked(items):
@@ -185,6 +190,105 @@ def test_cli_screenshot_output_does_not_erase_page_evidence(tmp_path):
     )
     assert "Delete" in browser.evidence and "e5" in browser.evidence
     assert "screenshot.png" in browser.evidence
+
+
+@pytest.mark.asyncio
+async def test_search_browser_artifact_returns_bounded_context_and_offsets(tmp_path):
+    browser = PlaywrightCLI(_settings(tmp_path), session_name="search-artifact")
+    await browser.start()
+    path = browser.browser_session_dir / "page.yml"
+    path.write_text(
+        "before: inbox\n"
+        "name: ordinary\n"
+        "ref: e5\n"
+        "name: Delete permanently\n"
+        "warning: permanent deletion\n"
+        "after: inbox\n",
+        encoding="utf-8",
+    )
+    result = await browser.execute(
+        "search_browser_artifact",
+        {"path": str(path), "query": "delete"},
+    )
+    assert result["status"] == "searched"
+    assert result["count"] == 1
+    assert result["matches"][0]["line"] == 4
+    assert result["matches"][0]["offset"] == path.read_text(encoding="utf-8").index("Delete")
+    assert "ref: e5" in result["matches"][0]["text"]
+    assert "warning: permanent deletion" in result["matches"][0]["text"]
+    await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_search_browser_artifact_finds_late_query_in_huge_line(tmp_path):
+    browser = PlaywrightCLI(_settings(tmp_path), session_name="search-late")
+    await browser.start()
+    path = browser.browser_session_dir / "large.yml"
+    prefix = "x" * 20_000
+    path.write_text(prefix + " Delete warning ref=e25 " + "y" * 20_000, encoding="utf-8")
+    result = await browser.execute(
+        "search_browser_artifact",
+        {"path": str(path), "query": "delete warning"},
+    )
+    assert result["count"] == 1
+    assert result["matches"][0]["offset"] == len(prefix) + 1
+    assert "Delete warning" in result["matches"][0]["text"]
+    assert sum(len(item["text"]) for item in result["matches"]) <= 6_000
+    await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_oversized_inline_snapshot_is_externalized_but_reviewer_keeps_full_result(
+    monkeypatch, tmp_path
+):
+    browser = PlaywrightCLI(_settings(tmp_path), session_name="large-snapshot")
+    await browser.start()
+    large_snapshot = {
+        "snapshot": [
+            {"role": "generic", "ref": "e1", "text": "x" * 4000},
+            {"role": "button", "ref": "e250", "name": "Delete warning"},
+            {"role": "generic", "ref": "e251", "text": "y" * 4000},
+        ]
+    }
+
+    async def fake_run(_command, _args):
+        return large_snapshot
+
+    monkeypatch.setattr(browser, "_run_cli", fake_run)
+    result = await browser.execute(
+        "playwright", {"command": "snapshot", "args": []}
+    )
+    assert result["status"] == "executed"
+    compact = result["output"]["result"]
+    assert compact["truncated"] is True
+    artifact = compact["artifact"]
+    assert artifact.endswith(".txt")
+    assert browser.evidence.find('"ref": "e250"') >= 0
+    read = await browser.execute(
+        "read_browser_artifact", {"path": artifact, "offset": 0}
+    )
+    assert read["status"] == "read"
+    assert '"ref": "e250"' in read["text"]
+    await browser.close()
+
+
+def test_stale_snapshot_path_does_not_replace_current_page_evidence(tmp_path):
+    browser = PlaywrightCLI(_settings(tmp_path), session_name="stale-evidence")
+    browser._update_evidence(
+        "snapshot",
+        {"result": {"snapshot": [{"ref": "e5", "name": "Current inbox"}]}},
+    )
+    old = browser.browser_session_dir / "old.yml"
+    old.parent.mkdir(parents=True, exist_ok=True)
+    old.write_text("ref: e99\nname: Old warning\n", encoding="utf-8")
+    before = time.time_ns()
+    browser._update_evidence(
+        "click",
+        {"result": {"snapshot": {"file": str(old)}}},
+        fresh_after_ns=before,
+    )
+    assert "Current inbox" in browser.evidence
+    assert "Old warning" not in browser.evidence
 
 
 class _FakeProcess:
