@@ -5,7 +5,6 @@ description = "Autonomous browser agent test assignment"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "langgraph==1.2.11",
-  "langgraph-checkpoint-sqlite==3.1.1",
   "openai==3.10.0",
   "pydantic==2.13.5",
   "playwright==1.62.0",

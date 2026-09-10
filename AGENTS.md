@@ -1,14 +1,14 @@
 # Project instructions
 
-- Work directly on `main`. Never create a second branch, feature branch, or separate worktree. This is the user's explicit instruction, 2026-09-09.
-- Read `docs/SETUP.md` first: reuse the private `.env.local`, existing OpenAI/LangSmith projects and locked dependencies. User now chose `gpt-5.6-luna` and will add credits later; do not silently upgrade models or purchase credits.
-- Read `docs/SYSTEM-DESIGN.md` as the current engineering specification, then `docs/HANDOFF.md`, `docs/assignment.ru.md`, and `docs/hr-requirements.ru.md` before implementation. Review all three images in `docs/assets/`.
-- Use a real terminal beside the controlled browser for the interaction and demo, matching all three original screenshots. Do not substitute a browser-based agent console. User clarification: 2026-09-10.
-- Speak with the user in English. Preserve Russian source quotations exactly, including source typos.
-- Current stage: runtime implementation and validation in progress. Read docs/VALIDATION.md for actual evidence; do not infer release readiness from implemented mechanisms. Before implementation read `docs/SYSTEM-DESIGN.md` and `docs/IMPLEMENTATION-PLAN.md`; research documents explain rationale. User chose Python, OpenAI API access, and LangSmith evaluations. Recommended baseline: LangGraph StateGraph + SQLite checkpoints + native OpenAI Responses SDK + Pydantic + Playwright. Read `docs/LANGGRAPH-RESEARCH.md` for the latest orchestration recommendation; follow the documented plan when implementation is requested.
-- Enforce the user's $5 cap per logical task run, including helpers, retries and any LLM evaluators; persist the ledger across resume. Bound aggregate evaluation experiments separately.
-- Use Playwright for browser automation (user decision). Runtime models must satisfy the assignment's Claude/OpenAI requirement; coding-assistant recommendations are a separate matter.
-- Build a universal agent: no site-specific workflows, hardcoded site selectors, or hidden task-specific navigation hints. Evaluation expectations must not be fed to the runtime as scripts.
-- Keep browser profiles, credentials, private chat evidence, and private account data out of Git. `docs/private/` is local-only.
-- Implement and pass the ordered acceptance runbook `docs/FINAL-TEST.md` before final submission. Its proposed commands must become real tested commands; missing/skipped tests are not passes.
-- Document actual implemented behavior, validation results, limitations, and architecture decisions. Do not claim unrun evaluations passed.
+- Work directly on `main`; never create a branch or worktree.
+- **Scope correction, user 2026-09-10:** this is a two-day test assignment. Implement the original assignment and HR criteria, without adding production infrastructure or model-review layers. The former elaborate design and release gates are superseded.
+- Read `docs/SETUP.md`, `docs/assignment.ru.md`, `docs/hr-requirements.ru.md`, and `docs/SYSTEM-DESIGN.md`. Review the three original images in `docs/assets/`.
+- Use Python, LangGraph, Playwright, native structured OpenAI calls, `gpt-5.6-luna`, and LangSmith evaluations. The user explicitly reaffirmed LangGraph on 2026-09-10; keep a small StateGraph for the single actor loop. No runtime memory/clarification/endpoint/factual/risk reviewer models or SQLite checkpoint engine.
+- Show a real terminal beside the visible browser, as in the reference screenshots. Persistent browser profiles support manual login.
+- Keep context bounded with the current snapshot, recent tool results, and a small actor-maintained notebook. Implement actual bounded retry/replanning, and pause after an uncertain consequential action instead of replaying it.
+- Show exact browser-resolved targets and form values for critical-action approval. Revalidate the target before execution. Denial stops the task. Never offer an approve-all production mode.
+- Preserve the user's $5 maximum per task, including retries and any model evaluation. Reuse `.env.local` and the existing OpenAI/LangSmith projects; do not buy credits or upgrade the model.
+- No site-specific runtime workflows, selectors, routes, or expected-answer hints. Keep fixture setup/answers in evaluation code.
+- Speak English; preserve Russian source text exactly. Keep credentials, profiles, private chat/account data and raw run artifacts out of Git.
+- Use the small requirement-focused runbook `docs/FINAL-TEST.md`. Test the three source tasks and meaningful failure paths. Do not recreate hundreds of adversarial tests or rerun unrelated suites after every edit.
+- Record actual results and limitations in `docs/VALIDATION.md`; never claim unrun tests or synthetic runs establish live-site compatibility.

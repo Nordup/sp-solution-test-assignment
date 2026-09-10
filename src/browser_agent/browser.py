@@ -495,6 +495,12 @@ class BrowserSession:
         else:
             raw = await self.page.evaluate(_PAGE_JS)
             context = _bounded(raw)
+            # No element was selected: source-page prose is evidence for risk
+            # review, never the label of the back/scroll/tab/navigation action.
+            # Keep the full raw page/fields in the fingerprint below so changes
+            # still invalidate review and approval before dispatch.
+            context["page_text"] = context.pop("text", "")
+            context["page_text_truncated"] = len(raw.get("text", "")) > 1600
             context.update(
                 {
                     "page_id": self.page_id,
@@ -534,7 +540,7 @@ class BrowserSession:
         expected_fingerprint: str | None = None,
         before_dispatch=None,
     ) -> dict:
-        """Execute once. Caller must authorize/journal first; this never retries effects."""
+        """Execute once after caller authorization; never retry effects here."""
         if tool in {"observe", "read"}:
             return await self.observe(
                 offset=args.get("offset", 0), scope=args.get("ref")
@@ -594,7 +600,7 @@ class BrowserSession:
             dispatched = False
 
             async def admit():
-                # Revalidate immediately before durable admission, including after
+                # Revalidate immediately before dispatch, including after
                 # Playwright's actionability wait. No external effect precedes it.
                 fresh = await self._action_context_unlocked(tool, args, observation_id)
                 if fresh["fingerprint"] != context["fingerprint"]:

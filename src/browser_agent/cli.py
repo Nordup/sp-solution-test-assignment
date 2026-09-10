@@ -1,4 +1,4 @@
-"""Visible browser + terminal interface."""
+"""A real terminal beside the visible browser."""
 
 import asyncio
 import importlib.metadata
@@ -16,7 +16,7 @@ from .runner import run_agent, safe_name
 
 app = typer.Typer(
     no_args_is_help=True,
-    help="Autonomous browser tasks with exact approvals and a persistent $5 maximum.",
+    help="Autonomous browser tasks with exact critical-action approval.",
 )
 console = Console()
 
@@ -24,8 +24,16 @@ console = Console()
 async def human(question):
     console.print(
         Panel(
-            json.dumps(question, ensure_ascii=False, indent=2),
-            title="WAITING FOR YOU",
+            json.dumps(
+                {
+                    k: v
+                    for k, v in question.items()
+                    if k != "effect" or "details" not in question
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            title="YOUR INPUT",
             border_style="yellow",
         ),
         markup=False,
@@ -38,43 +46,34 @@ async def human(question):
             "request_id": question["request_id"],
             "approved": answer.strip().lower() == "yes",
         }
-    answer = await asyncio.to_thread(input, "Reply, or type /pause to save and exit: ")
-    return None if answer.strip() == "/pause" else {"answer": answer}
+    answer = await asyncio.to_thread(input, "Reply, or /stop to end this task: ")
+    return None if answer.strip() in {"/stop", "/pause"} else answer
 
 
 @app.command()
-def doctor(
-    online: bool = False, budget_usd: float = 5, release_session: str | None = None
-):
-    """Check local setup without displaying secrets. Online checks require an explicit budget."""
-    settings = Settings.load(budget_usd=budget_usd)
+def doctor():
+    """Check local configuration without displaying credentials or making paid calls."""
+    settings = Settings.load()
     settings.prepare()
-    report = {
-        "python": sys.version.split()[0],
-        "model": settings.model,
-        "openai_key_present": bool(settings.api_key.get_secret_value()),
-        "langsmith_key_present": bool(os.getenv("LANGSMITH_API_KEY")),
-        "artifact_dir": str(settings.artifact_dir.resolve()),
-        "versions": {
-            p: importlib.metadata.version(p)
-            for p in ["playwright", "langgraph", "openai", "langsmith"]
-        },
-        "online": online,
-    }
-    if online:
-        from evals.preflight import preflight
-
-        report["online_result"] = asyncio.run(preflight(settings, release_session))
-    console.print_json(data=report)
-    if not report["openai_key_present"] or (
-        online and not report["online_result"].get("passed")
-    ):
+    console.print_json(
+        data={
+            "python": sys.version.split()[0],
+            "model": settings.model,
+            "openai_key_present": bool(settings.api_key.get_secret_value()),
+            "langsmith_key_present": bool(os.getenv("LANGSMITH_API_KEY")),
+            "versions": {
+                p: importlib.metadata.version(p)
+                for p in ["playwright", "langgraph", "openai", "langsmith"]
+            },
+        }
+    )
+    if not settings.api_key.get_secret_value():
         raise typer.Exit(1)
 
 
 @app.command()
 def login(url: str = "about:blank", profile: str = "default"):
-    """Open a dedicated browser for manual login; close the window when finished."""
+    """Log in manually in a dedicated persistent profile."""
     settings = Settings.load()
     settings.prepare()
     safe_name(profile)
@@ -84,7 +83,7 @@ def login(url: str = "about:blank", profile: str = "default"):
         try:
             await browser.start(None if url == "about:blank" else url)
             await asyncio.to_thread(
-                input, "Log in manually, then press Enter here to save and close: "
+                input, "Log in manually, then press Enter to save and close: "
             )
         finally:
             await browser.close()
@@ -98,38 +97,24 @@ def run(
     url: str | None = None,
     profile: str = "default",
     budget_usd: float = 5,
-    release_session: str | None = None,
     headless: bool = False,
 ):
-    """Run an ordinary natural-language task; headed browser is the default."""
+    """Enter a task and watch the agent work; the browser is visible by default."""
     task = task or typer.prompt("Task")
-    settings = Settings.load(budget_usd=budget_usd)
     result = asyncio.run(
         run_agent(
-            settings,
-            task,
-            url,
-            profile,
+            Settings.load(budget_usd=budget_usd),
+            task=task,
+            url=url,
+            profile=profile,
             headless=headless,
             responder=human,
             console=console,
-            release_session=release_session,
         )
     )
     console.print(
         Panel(json.dumps(result, ensure_ascii=False, indent=2), title="RESULT"),
         markup=False,
     )
-    if result["status"] != "completed":
-        raise typer.Exit(2)
-
-
-@app.command()
-def resume(run_id: str):
-    """Resume the latest checkpoint with the same profile and spending ledger."""
-    result = asyncio.run(
-        run_agent(Settings.load(), run_id=run_id, responder=human, console=console)
-    )
-    console.print_json(data=result)
     if result["status"] != "completed":
         raise typer.Exit(2)

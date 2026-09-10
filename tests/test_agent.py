@@ -1,0 +1,282 @@
+"""Exercise the actual small LangGraph and Chromium; only paid model calls are faked."""
+
+import asyncio
+import json
+import re
+from uuid import uuid4
+
+import pytest
+from langgraph.graph import StateGraph
+from langsmith.run_helpers import get_tracing_context
+
+from browser_agent.browser import BrowserError, BrowserSession
+from browser_agent.config import Settings
+from browser_agent.runner import run_agent
+
+FORM = '<form onsubmit="event.preventDefault();window.effects=(window.effects||0)+1"><textarea aria-label="Message">Original text</textarea><button type="submit">Send</button></form>'
+
+
+def ref(observation, label):
+    line = next(
+        line
+        for line in observation["text"].splitlines()
+        if f'"{label}"' in line and "[ref=" in line
+    )
+    return re.search(r"\[ref=([^\]]+)\]", line).group(1)
+
+
+def click(label):
+    return lambda observation: ("click", {"ref": ref(observation, label)})
+
+
+def finish(status="completed"):
+    return lambda _observation: (
+        "finish",
+        {
+            "status": status,
+            "summary": "Observed test result",
+            "remaining": [] if status == "completed" else ["Work remains"],
+        },
+    )
+
+
+class ScriptedGateway:
+    def __init__(self, script):
+        self.script, self.calls, self.cost_usd = list(script), 0, 0
+        self.requests, self.closed, self.trace_enabled = [], False, None
+
+    async def call(self, request):
+        self.calls += 1
+        self.requests.append(request)
+        self.trace_enabled = get_tracing_context().get("enabled")
+        text = request["input"][-1]["content"][0]["text"]
+        observation = json.loads(
+            text.split("Current browser observation:\n", 1)[1].split(
+                "\nRuntime feedback:", 1
+            )[0]
+        )
+        tool, args = self.script.pop(0)(observation)
+        return {
+            "status": "completed",
+            "output": [
+                {
+                    "type": "function_call",
+                    "name": tool,
+                    "call_id": str(uuid4()),
+                    "arguments": json.dumps(args),
+                }
+            ],
+        }
+
+    async def close(self):
+        self.closed = True
+
+
+def browser_factory(
+    html, state, *, stale=False, uncertain=False, observation_failure=False
+):
+    class TestBrowser(BrowserSession):
+        failed_once = False
+        dispatched = False
+
+        async def start(self, url=None):
+            await super().start(None)
+            await self.context.route(
+                "**/*", lambda route: route.fulfill(body=html, content_type="text/html")
+            )
+            await self.page.goto("https://unit.test/start")
+            state["browser"] = self
+
+        async def action_context(self, *args, **kwargs):
+            if stale and not self.failed_once:
+                self.failed_once = True
+                raise BrowserError(
+                    "stale_ref", "Synthetic target replacement before dispatch"
+                )
+            return await super().action_context(*args, **kwargs)
+
+        async def execute(self, *args, **kwargs):
+            result = await super().execute(*args, **kwargs)
+            self.dispatched = True
+            if uncertain:
+                raise BrowserError(
+                    "navigation_timeout", "Response lost after effect", uncertain=True
+                )
+            return result
+
+        async def observe(self, *args, **kwargs):
+            if observation_failure and self.dispatched:
+                raise BrowserError("observation_timeout", "Cannot inspect result")
+            return await super().observe(*args, **kwargs)
+
+        async def close(self):
+            if self.page and not self.page.is_closed():
+                state["effects"] = await self.page.evaluate("window.effects || 0")
+            await super().close()
+
+    return TestBrowser
+
+
+async def run_case(tmp_path, script, *, html=FORM, responder=None, **browser_options):
+    state = {}
+    gateway = ScriptedGateway(script)
+    result = await run_agent(
+        Settings(artifact_dir=tmp_path),
+        "Perform the requested test action",
+        headless=True,
+        responder=responder(state) if responder else None,
+        browser_factory=browser_factory(html, state, **browser_options),
+        gateway_factory=lambda _settings, **_kwargs: gateway,
+    )
+    return result, state, gateway
+
+
+async def test_actual_langgraph_run_records_result_and_disables_external_tracing(
+    tmp_path, monkeypatch
+):
+    compiled = []
+    original = StateGraph.compile
+
+    def compile_graph(graph, *args, **kwargs):
+        compiled.append(True)
+        return original(graph, *args, **kwargs)
+
+    monkeypatch.setattr(StateGraph, "compile", compile_graph)
+    result, _state, gateway = await run_case(
+        tmp_path, [finish()], html="<h1>Research result</h1>"
+    )
+    assert compiled == [True] and result["status"] == "completed"
+    assert gateway.closed and gateway.trace_enabled is False
+    saved = json.loads(
+        (tmp_path / "runs" / result["run_id"] / "result.json").read_text()
+    )
+    assert saved == result and result["steps"] == 1 and result["cost_usd"] == 0
+
+
+@pytest.mark.parametrize("answer", ["approve", "deny", "wrong_id"])
+async def test_exact_approval_controls_one_actual_effect(tmp_path, answer):
+    questions = []
+
+    def responder(_state):
+        async def respond(question):
+            questions.append(question)
+            assert question["details"]["fields"][0]["value"] == "Original text"
+            return {
+                "request_id": question["request_id"]
+                if answer != "wrong_id"
+                else "different",
+                "approved": answer != "deny",
+            }
+
+        return respond
+
+    result, state, gateway = await run_case(
+        tmp_path, [click("Send"), finish()], responder=responder
+    )
+    assert len(questions) == 1
+    assert state["effects"] == (1 if answer == "approve" else 0)
+    assert gateway.calls == (2 if answer == "approve" else 1)
+    assert result["status"] == ("completed" if answer == "approve" else "partial")
+
+
+async def test_changed_form_after_approval_prevents_dispatch_and_replans(tmp_path):
+    def responder(state):
+        async def respond(question):
+            await (
+                state["browser"]
+                .page.get_by_role("textbox", name="Message")
+                .fill("Changed after review")
+            )
+            return {"request_id": question["request_id"], "approved": True}
+
+        return respond
+
+    result, state, gateway = await run_case(
+        tmp_path, [click("Send"), finish("partial")], responder=responder
+    )
+    assert result["status"] == "partial" and state["effects"] == 0
+    assert gateway.calls == 2
+    errors = [
+        json.loads(item["output"])["error"]
+        for item in gateway.requests[-1]["input"]
+        if item.get("type") == "function_call_output"
+    ]
+    assert errors[0]["code"] in {"stale_ref", "approval_changed"}
+    assert "Changed after review" in json.dumps(gateway.requests[-1])
+
+
+async def test_stale_reference_requires_new_actor_decision_before_effect(tmp_path):
+    def responder(_state):
+        async def respond(question):
+            return {"request_id": question["request_id"], "approved": True}
+
+        return respond
+
+    result, state, gateway = await run_case(
+        tmp_path,
+        [click("Send"), click("Send"), finish()],
+        responder=responder,
+        stale=True,
+    )
+    assert (
+        result["status"] == "completed" and state["effects"] == 1 and gateway.calls == 3
+    )
+    assert "stale_ref" in json.dumps(gateway.requests[1])
+
+
+@pytest.mark.parametrize("failure", ["uncertain", "observation_failure"])
+async def test_uncertain_effect_is_never_replayed(tmp_path, failure):
+    def responder(_state):
+        async def respond(question):
+            return {"request_id": question["request_id"], "approved": True}
+
+        return respond
+
+    result, state, gateway = await run_case(
+        tmp_path, [click("Send"), click("Send")], responder=responder, **{failure: True}
+    )
+    assert result["status"] == "needs_user" and state["effects"] == 1
+    assert gateway.calls == 1 and gateway.closed
+
+
+@pytest.mark.parametrize(
+    "html,kind",
+    [
+        ("<p>Verify you are human</p>", "challenge"),
+        ('<input type="password" aria-label="Password">', "login"),
+    ],
+)
+async def test_login_and_challenge_pause_without_model_polling(tmp_path, html, kind):
+    result, _state, gateway = await run_case(tmp_path, [], html=html)
+    assert result["status"] == "needs_user" and result["question"]["kind"] == kind
+    assert gateway.calls == 0
+
+
+async def test_cancelled_run_keeps_actual_effect_and_cleans_up(tmp_path, monkeypatch):
+    original_call = ScriptedGateway.call
+
+    async def interrupted(self, request):
+        if self.calls == 1:
+            self.cost_usd = 0.01
+            raise asyncio.CancelledError()
+        return await original_call(self, request)
+
+    monkeypatch.setattr(ScriptedGateway, "call", interrupted)
+
+    def responder(_state):
+        async def respond(question):
+            return {"request_id": question["request_id"], "approved": True}
+
+        return respond
+
+    result, state, gateway = await run_case(
+        tmp_path, [click("Send")], responder=responder
+    )
+    assert result["status"] == "partial" and state["effects"] == 1
+    assert result["steps"] >= 1 and result["cost_usd"] == 0.01
+    saved = json.loads(
+        (tmp_path / "runs" / result["run_id"] / "result.json").read_text()
+    )
+    assert saved == result
+    assert "did not start" not in result["summary"]
+    assert gateway.closed and gateway.calls == 1

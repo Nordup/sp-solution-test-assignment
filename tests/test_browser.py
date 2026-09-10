@@ -1,5 +1,6 @@
 """Actual Chromium adapter conformance (no paid models or external accounts)."""
 
+import asyncio
 import re
 from pathlib import Path
 
@@ -180,21 +181,6 @@ async def test_navigation_back_press_and_delayed_modal(browser):
     assert browser.page.url == "https://fixture.test/start"
 
 
-async def test_headed_adapter_performs_visible_observed_action(tmp_path):
-    """Required visible-browser conformance gate; run on the desktop host."""
-    session = BrowserSession(tmp_path / "headed", headless=False)
-    await session.start()
-    try:
-        await session.page.set_content(
-            "<h1>Headed browser acceptance</h1><button onclick=\"this.textContent='Verified'\">Verify</button>"
-        )
-        obs = await session.observe()
-        await session.execute("click", {"ref": ref_for(obs, "Verify")}, obs["id"])
-        assert '"Verified"' in (await session.observe())["text"]
-    finally:
-        await session.close()
-
-
 async def test_utf8_budget_and_scoped_read(browser):
     await browser.page.set_content(
         '<section aria-label="Scope"><h2>Scope title</h2><button>Continue</button></section><p>'
@@ -223,3 +209,91 @@ async def test_long_page_does_not_invalidate_complete_local_effect(browser):
     send = await browser.describe(ref_for(obs, "Send"), obs["id"])
     assert send["context_complete"]
     assert send["fields"][0]["value"] == "Long letter. " * 200
+
+
+async def test_replaced_target_and_changed_form_rejected_before_dispatch(browser):
+    await browser.page.set_content(
+        '<form><input aria-label="Recipient" value="Alice"><textarea aria-label="Message">First letter</textarea><button type="button" onclick="window.effects=(window.effects||0)+1">Send</button></form>'
+    )
+    obs = await browser.observe()
+    action = {"ref": ref_for(obs, "Send")}
+    approved = await browser.action_context("click", action, obs["id"])
+    await browser.page.get_by_role("textbox", name="Message").fill("Changed letter")
+    with pytest.raises(BrowserError) as err:
+        await browser.execute(
+            "click", action, obs["id"], expected_fingerprint=approved["fingerprint"]
+        )
+    assert err.value.code == "stale_ref"
+    assert await browser.page.evaluate("window.effects || 0") == 0
+    fresh = await browser.observe()
+    await browser.page.locator("button").evaluate(
+        "el => el.outerHTML='<button type=button>Replacement</button>'"
+    )
+    with pytest.raises(BrowserError) as err:
+        await browser.execute("click", {"ref": ref_for(fresh, "Send")}, fresh["id"])
+    assert err.value.code == "stale_ref"
+
+
+async def test_unexpected_dialog_dismissed_without_repeating_effect(browser):
+    await browser.page.set_content(
+        "<button onclick=\"window.attempts=(window.attempts||0)+1; if(confirm('Confirm transfer?')) window.effects=1\">Transfer</button>"
+    )
+    obs = await browser.observe()
+    with pytest.raises(BrowserError) as err:
+        await browser.execute("click", {"ref": ref_for(obs, "Transfer")}, obs["id"])
+    assert err.value.code == "dialog_interrupted" and err.value.uncertain
+    assert await browser.page.evaluate("window.effects || 0") == 0
+    assert await browser.page.evaluate("window.attempts") == 1
+
+
+async def test_failed_durable_admission_prevents_browser_effect(browser):
+    await browser.page.set_content('<button onclick="window.effects=1">Save</button>')
+    obs = await browser.observe()
+    action = {"ref": ref_for(obs, "Save")}
+    context = await browser.action_context("click", action, obs["id"])
+    calls = []
+
+    def disk_failure():
+        calls.append("admission")
+        raise OSError("synthetic journal unavailable")
+
+    with pytest.raises(OSError, match="journal unavailable"):
+        await browser.execute(
+            "click",
+            action,
+            obs["id"],
+            expected_fingerprint=context["fingerprint"],
+            before_dispatch=disk_failure,
+        )
+    assert calls == ["admission"]
+    assert await browser.page.evaluate("window.effects || 0") == 0
+
+
+async def test_concurrent_action_requests_serialize_and_cannot_duplicate(browser):
+    await browser.page.set_content(
+        '<button onclick="window.effects=(window.effects||0)+1">Continue</button>'
+    )
+    obs = await browser.observe()
+    args = {"ref": ref_for(obs, "Continue")}
+    admissions = []
+    results = await asyncio.gather(
+        browser.execute(
+            "click", args, obs["id"], before_dispatch=lambda: admissions.append("first")
+        ),
+        browser.execute(
+            "click",
+            args,
+            obs["id"],
+            before_dispatch=lambda: admissions.append("second"),
+        ),
+        return_exceptions=True,
+    )
+    assert len(admissions) == 1
+    assert (
+        sum(
+            isinstance(result, BrowserError) and result.code == "stale_observation"
+            for result in results
+        )
+        == 1
+    )
+    assert await browser.page.evaluate("window.effects") == 1

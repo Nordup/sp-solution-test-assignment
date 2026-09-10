@@ -1,8 +1,7 @@
-"""Validated local configuration. Importing this module never reads credentials."""
+"""Local settings; credentials are loaded only when explicitly requested."""
 
 import os
 from pathlib import Path
-from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -14,12 +13,12 @@ class Settings(BaseModel):
     api_key: SecretStr = SecretStr("")
     artifact_dir: Path = Path("artifacts")
     budget_usd: float = Field(default=5, gt=0, le=5)
-    max_input_tokens: int = Field(default=20_000, ge=1000, le=20_000)
+    max_input_tokens: int = Field(default=20000, ge=1000, le=20000)
     max_output_tokens: int = Field(default=2048, ge=128, le=2048)
     max_decisions: int = Field(default=60, ge=1, le=120)
     active_seconds: int = Field(default=1200, ge=1, le=1200)
+    max_retries: int = Field(default=2, ge=0, le=3)
     reasoning: str = "low"
-    completion_reasoning: Literal["low", "medium", "high"] = "medium"
 
     @classmethod
     def load(cls, **overrides):
@@ -36,6 +35,5 @@ class Settings(BaseModel):
 
     def prepare(self):
         self.artifact_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.artifact_dir.chmod(0o700)
-        for subdir in ["state", "runs", "profiles", "evals", "final"]:
-            (self.artifact_dir / subdir).mkdir(mode=0o700, exist_ok=True)
+        for directory in ("runs", "profiles", "evals", "final"):
+            (self.artifact_dir / directory).mkdir(mode=0o700, exist_ok=True)

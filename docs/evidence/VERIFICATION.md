@@ -22,6 +22,6 @@ Captured 2026-09-09 from [the employer's Craft assignment](https://kolbasa.craft
 
 The Russian assignment intentionally omits “С чего начать”, “Немного о нас”, “Аналог решения”, “Полезное”, closing encouragement, author metadata, and navigation/reaction controls. The useful engineering expectations from HR remain in their own source document. Source highlighting is represented as bold; disclosure layout becomes Markdown nesting. Markdown is a semantic transcription, not a pixel-exact page replica.
 
-Raw HTML/text and full private HR messages are retained in Git-ignored `docs/private/` for local auditing. They are not required to read the public handoff. The combined `docs/CONTEXT.md` is generated from the handoff and both public source documents; update it whenever those documents change.
+Raw HTML/text and full private HR messages are retained in Git-ignored `docs/private/` for local auditing. They are not required to read the public handoff. The former combined context bundle is preserved in the local superseded-design archive and Git history; the public source documents above remain authoritative.
 
 This verifies the original context capture only. At capture time, implementation and evaluations had not started. Current runtime and evaluation evidence are recorded in [VALIDATION.md](../VALIDATION.md).

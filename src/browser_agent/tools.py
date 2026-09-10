@@ -1,4 +1,4 @@
-"""Closed native function registry. No extraction of JSON from model prose."""
+"""Strict native tools for the single browser actor."""
 
 import json
 from typing import Literal
@@ -8,6 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class Empty(Strict):
+    pass
 
 
 class Ref(Strict):
@@ -27,13 +31,9 @@ class Navigate(Strict):
 
 
 class Read(Strict):
-    offset: int = Field(
-        ge=0,
-        le=1000000,
-        description="Start at 0; for continuation use the observation's next_offset exactly.",
-    )
+    offset: int = Field(ge=0, le=1000000)
     scope: str | None = Field(
-        description="Use null for the whole page, or an exact current element ref from the observation to read its subtree. Never use a CSS selector, role, label, or description such as 'menu'. If the wanted content is beyond a truncated excerpt, use scope=null and its next_offset.",
+        description="Null for whole page, or an exact current element ref. Never a selector. Use next_offset for continuation."
     )
 
 
@@ -45,141 +45,51 @@ class Tab(Strict):
     page_id: str
 
 
-class Empty(Strict):
-    pass
-
-
 class Ask(Strict):
-    question: str = Field(
-        min_length=1,
-        max_length=1500,
-        description="Ask for a genuinely missing fact, necessary choice, or manual authentication/challenge. Never ask for browser-action approval here: propose that concrete action through its browser tool so the host requests exact approval before dispatch.",
-    )
+    question: str = Field(min_length=1, max_length=1500)
     kind: Literal["clarification", "login", "challenge"]
 
 
-class ScopeItem(Strict):
-    identity: str = Field(
-        min_length=1,
-        max_length=250,
-        description="Exact observed name or URL appearing within the supporting quote; never invent an identifier.",
-    )
-    evidence_id: str
-    quote: str = Field(min_length=3, max_length=700)
-
-
-class CollectionScope(Strict):
-    boundary: str = Field(min_length=1, max_length=1500)
-    items: list[ScopeItem] = Field(min_length=1, max_length=60)
-
-
 class Note(Strict):
-    notes: str = Field(
-        min_length=1,
-        max_length=6000,
-        description="Cumulative facts, completed work, pending work and evidence IDs. Preserve earlier facts as rolling history expires.",
-    )
-    scope: CollectionScope | None = Field(
-        description="For a bounded collection defined by the original task, freeze its originally observed identities BEFORE changes shift membership/order. Use exact evidence quotes. Null if not yet observable, not a fixed-collection task, or already frozen. Never redefine an existing scope."
-    )
-
-
-class Claim(Strict):
-    claim: str = Field(min_length=1, max_length=1500)
-    evidence_id: str
-    quote: str = Field(
-        min_length=3,
-        max_length=1500,
-        description="Exact short substring of the supporting saved page content. Quote its actual words, excluding element refs or host-added recall annotations such as '[historical; not actionable]'.",
-    )
-
-
-class Recall(Strict):
-    evidence_id: str
-    offset: int = Field(ge=0, le=1000000)
-
-
-class Reconcile(Strict):
-    action_id: str
-    evidence_id: str
-    quote: str = Field(min_length=3, max_length=1500)
-    claim: str = Field(min_length=1, max_length=1500)
+    notes: str = Field(min_length=1, max_length=6000)
 
 
 class Finish(Strict):
-    status: Literal["completed", "partial", "failed"] = Field(
-        description="Completion is relative to the user's requested outcome AND explicit stopping boundary. Completed means all requested work within that boundary is verified; deliberately excluded future actions do not make the task partial."
-    )
+    status: Literal["completed", "partial", "failed"]
     summary: str = Field(min_length=1, max_length=4000)
-    claims: list[Claim] = Field(max_length=20)
-    remaining: list[str] = Field(
-        max_length=20,
-        description="Only unmet requested requirements belong here. Use [] when the requested outcome and explicit stopping boundary are satisfied. Never list deliberately excluded/prohibited future actions or safety reminders as unfinished work; state those boundaries in summary instead.",
-    )
+    remaining: list[str] = Field(max_length=20)
 
-
-_PROPOSAL_GATE = " The host resolves the effect, reviews it and requests exact approval when needed BEFORE dispatch. Calling this tool never grants approval."
 
 REGISTRY = {
-    "recall": (
-        Recall,
-        "Recall a saved observation by an evidence ID you previously received. Historical references are not actionable; current browser observation remains authoritative.",
-    ),
-    "reconcile": (
-        Reconcile,
-        "Resolve a previously uncertain action ONLY when new observation proves its effect occurred. Never infer no effect from missing evidence; no browser mutation.",
-    ),
     "click": (
         Ref,
-        "Propose clicking exactly one currently observed element reference."
-        + _PROPOSAL_GATE,
+        "Click a current observed ref. The host asks for exact approval when necessary.",
     ),
-    "fill": (
-        Fill,
-        "Propose replacing editable field content. Password fields are unavailable."
-        + _PROPOSAL_GATE,
-    ),
-    "select": (
-        Fill,
-        "Propose selecting a currently observed option value or label."
-        + _PROPOSAL_GATE,
-    ),
-    "press": (
-        Press,
-        "Propose pressing a restricted key on the observed target." + _PROPOSAL_GATE,
-    ),
-    "navigate": (
-        Navigate,
-        "Propose navigating to a user-supplied or observed HTTP(S) destination."
-        + _PROPOSAL_GATE,
-    ),
-    "back": (Empty, "Propose going back one page in current tab." + _PROPOSAL_GATE),
+    "fill": (Fill, "Replace editable content. Password entry is manual."),
+    "select": (Fill, "Select an observed option by value or label."),
+    "press": (Press, "Press a permitted key on a current ref."),
+    "navigate": (Navigate, "Open a user-supplied or observed HTTP(S) URL."),
+    "back": (Empty, "Go back in the current tab."),
     "read": (
         Read,
-        "Read a bounded page excerpt. scope is null or an exact current element ref, never a selector or descriptive label. Continue a truncated excerpt using next_offset.",
+        "Read a bounded current-page excerpt or subtree. Continue with next_offset.",
     ),
-    "scroll": (
-        Scroll,
-        "Propose scrolling the current page a viewport, then observe." + _PROPOSAL_GATE,
-    ),
-    "tabs": (Empty, "List known browser tabs."),
-    "switch_tab": (
-        Tab,
-        "Propose switching to an existing observed tab ID." + _PROPOSAL_GATE,
-    ),
-    "close_tab": (Tab, "Propose closing an existing tab." + _PROPOSAL_GATE),
-    "screenshot": (
-        Empty,
-        "Inspect the current viewport visually when semantic observation is insufficient.",
+    "scroll": (Scroll, "Scroll one viewport and observe."),
+    "tabs": (Empty, "List browser tabs."),
+    "switch_tab": (Tab, "Switch to an observed tab ID."),
+    "close_tab": (Tab, "Close an observed tab ID."),
+    "screenshot": (Empty, "Inspect the actual current viewport visually."),
+    "remember": (
+        Note,
+        "Replace your cumulative notebook with observed facts, selected original items, completed actions and remaining work. Older conversation expires.",
     ),
     "ask_user": (
         Ask,
-        "Pause for a genuinely missing fact or necessary choice, manual login or a security challenge; no polling while paused. Do not request action approval with ask_user: propose the concrete browser action through its native tool instead; the host will request exact approval before dispatch.",
+        "Ask for missing information or manual login/challenge. Action approval is handled by the host; propose the action instead.",
     ),
-    "remember": (Note, "Save bounded working notes from observations for long tasks."),
     "finish": (
         Finish,
-        "Report actual result with exact quotes from saved observations. Completion requires evidence, not just a successful click.",
+        "Report the observed outcome honestly. Completed means the requested work and stopping boundary are reached; remaining lists only unmet requested work.",
     ),
 }
 
@@ -193,45 +103,44 @@ def tool_specs(registry=None):
         {
             "type": "function",
             "name": name,
-            "description": desc,
+            "description": description,
             "strict": True,
-            "parameters": cls.model_json_schema(),
+            "parameters": schema.model_json_schema(),
         }
-        for name, (cls, desc) in (registry or REGISTRY).items()
+        for name, (schema, description) in (
+            REGISTRY if registry is None else registry
+        ).items()
     ]
 
 
 def parse_call(response, registry=None):
-    registry = registry or REGISTRY
+    registry = REGISTRY if registry is None else registry
     data = (
         response.model_dump(mode="json")
         if hasattr(response, "model_dump")
         else response
     )
     if data.get("status") != "completed":
-        raise ProtocolError(
-            "Native response is incomplete or failed; no action dispatched."
-        )
-    output = data.get("output", [])
-    if any(
-        c.get("type") == "refusal" for item in output for c in item.get("content", [])
+        raise ProtocolError("Incomplete native response; no action executed.")
+    calls = [
+        item for item in data.get("output", []) if item.get("type") == "function_call"
+    ]
+    if (
+        len(calls) != 1
+        or calls[0].get("name") not in registry
+        or not calls[0].get("call_id")
     ):
-        raise ProtocolError("Model refused; no action dispatched.")
-    calls = [item for item in output if item.get("type") == "function_call"]
-    if len(calls) != 1:
         raise ProtocolError(
-            "Exactly one native function call is required; no partial dispatch."
+            "Exactly one known native tool call with a call ID is required."
         )
     call = calls[0]
-    if call.get("name") not in registry or not call.get("call_id"):
-        raise ProtocolError("Unknown function or missing native call ID.")
     try:
-        payload = registry[call["name"]][0].model_validate_json(call["arguments"])
+        arguments = registry[call["name"]][0].model_validate_json(call["arguments"])
     except (ValueError, TypeError, KeyError) as exc:
-        raise ProtocolError("Tool arguments failed strict schema validation.") from exc
+        raise ProtocolError("Native arguments failed strict validation.") from exc
     return {
         "name": call["name"],
-        "arguments": payload.model_dump(),
+        "arguments": arguments.model_dump(),
         "call_id": call["call_id"],
     }
 

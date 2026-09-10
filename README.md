@@ -1,102 +1,56 @@
 # Autonomous browser agent
 
-A Python agent that uses a visible Playwright browser to solve natural-language tasks. LangGraph coordinates observation, native OpenAI tool calls, independent risk review, exact approvals, execution and recovery. The default model is **GPT-5.6 Luna**.
+A Python agent that uses **LangGraph + Playwright** to carry out natural-language tasks in a visible browser. A real terminal shows the task, tool calls, approvals and final report. The acting model is **GPT-5.6 Luna** through the OpenAI API.
 
-**Validation is in progress; the solution is not ready for submission.** The previous full attempt passed all three core tasks, both generalization tasks, both recovery tasks and 513 extended tests, but only two of five model-driven failure scenarios. Subsequent evidence and grading repairs exposed a report projection bug in the next core attempt (2/3). That bug is now fixed: 45 focused tests and three native positive/negative report checks passed. Fresh ordered validation is running on the corrected candidate. The actual native-terminal video and final audit remain pending. Live Yandex still needs a genuine delivery address. See [validation status](docs/VALIDATION.md) and [all retained attempts](docs/EVALUATION-RESULTS.md).
+**Status:** the simplified LangGraph implementation passes 39 focused tests and lint. The three model-driven task evaluations and demo remain pending. See [validation](docs/VALIDATION.md) for actual results.
 
-## Start
+## Run
 
 ```bash
 uv sync --frozen
 uv run playwright install chromium
-cp .env.example .env.local  # only on a NEW checkout; preserve an existing configured file
+cp .env.example .env.local  # new checkout only; preserve an existing configured file
 chmod 600 .env.local
-# Set OPENAI_API_KEY in .env.local using your editor.
+# Fill in OPENAI_API_KEY locally.
 uv run browser-agent doctor
-uv run browser-agent run --url 'https://example.com' 'Read this page and summarize what it offers.'
+uv run browser-agent run --url https://example.com 'Read this page and summarize what it offers.'
 ```
 
-On the prepared machine, reuse `.env.local`; credentials and projects already exist. The application loads this filename explicitly and does not print keys. Python 3.12 and the pinned Chromium adapter are required. macOS is the tested platform; other operating systems have not been certified.
+Python 3.12 is required. On the prepared machine, credentials already exist in the ignored `.env.local`; reuse them.
 
-For an authenticated task, use a dedicated profile:
+For a signed-in service:
 
 ```bash
-uv run browser-agent login --url 'https://your-service.example' --profile demo
-uv run browser-agent run --profile demo 'Your task, including the service URL'
-uv run browser-agent resume '<run-id>'
+uv run browser-agent login --url https://your-service.example --profile demo
+uv run browser-agent run --profile demo --url https://your-service.example 'Your task'
 ```
 
-Log in manually in the opened browser, then press Enter in the terminal to close and save it. Only one process may own a profile. The prepared real-site profile is `demo`; close any previous launcher before reuse. Password controls are redacted and unavailable to the agent.
-
-The terminal displays actual proposed tools, arguments, results and spending. A consequential action shows its destination, selected content and submitted values. Type `yes` to approve that exact action; anything else denies it. Denial ends the run as partial. At a clarification prompt, `/pause` saves and exits. Browser verification challenges pause automation and model calls until explicit continuation. Genuine missing facts still reach the user. A nonacting clarification reviewer redirects pure action-permission questions to the existing exact approval path, or grounded already-known questions back to the actor, at most twice under the same task budget; it never fabricates a user answer.
-
-## Terminal and browser demonstration
-
-Use a real terminal beside the visible Playwright browser, as in the three reference screenshots. Running without a task argument prompts for it in the terminal:
-
-```bash
-uv run browser-agent run --profile demo --budget-usd 5 --release-session final-candidate
-```
-
-The task, actual tool calls/results, approval questions and final report stay in the terminal. See [DEMO.md](docs/DEMO.md) for the isolated synthetic launcher, live-account limits and recording instructions.
+Log in manually in the opened browser, then press Enter in Terminal to save and close the profile. One process can use a profile at a time. Keep Terminal beside the controlled browser, as in the [original reference screenshots](docs/assignment.ru.md).
 
 ## How it works
 
-```mermaid
-flowchart LR
-  O[Observe] --> D[Decide]
-  D --> P[Independent risk review]
-  P -->|critical or uncertain| H[Exact approval]
-  P -->|ordinary| E[Execute once]
-  H --> E
-  E --> V[Observe result]
-  V --> D
-  E -->|failure| R[Recover and replan]
-  R --> O
-  D --> F[Evidence and completion review]
-  F -->|repair, at most twice| D
-  F -->|verified or bounded stop| Z[Result]
-```
+LangGraph connects observation, one model decision, host safety checks, execution and recovery. Tools reference elements discovered from the current accessibility snapshot; there are no site-specific selectors or task scripts. OpenAI native tool calls are validated by Pydantic.
 
-The browser adapter exposes current accessibility references, bounded reading, screenshots, form controls, navigation and tabs. The model receives no arbitrary JavaScript, shell, cookies, site selectors or hidden fixture state. Routes and controls must be discovered from observations or supplied by the user. The original task, accumulated user clarifications and starting URL retain their navigation authority across resume. Generated feedback cannot authorize new destinations; URL identity preserves path, query and fragment.
+The actor sees a bounded current snapshot, recent tool results and a small notebook. It can read long content in segments. Stale elements trigger a fresh observation and replanning; provider errors have bounded retry/backoff. An uncertain consequential action stops for inspection instead of being repeated.
 
-Observations are paginated at 18 KB of UTF-8 text. Whole reads share a 10-second deadline; transient DOM changes can trigger at most three fresh full snapshots inside that deadline, with no effect replay. Scoped/continuation reads never silently reset, and exhausted reads hand control back to the user. The gateway counts the exact request, including tools and any current screenshot, and refuses inputs above 20,000 tokens. Six complete tool/result groups and bounded working notes are retained. User constraints remain separate from page data. The initial limits are 60 decisions, 2,048 output tokens per call and 20 minutes of active execution.
+Critical actions show the actual destination, target and form values. Type `yes` to approve that exact action; a denial ends the task. The browser checks that the target has not changed before executing. Unknown JavaScript buttons are conservatively confirmed. This is a practical safety gate, not a guarantee about arbitrary website code.
 
-Structured memory runs before the first consequential effect and every four decisions. Original collection membership is frozen from observed evidence; durable notes and action receipts survive checkpoint rewind. Rejected completion returns precise feedback for up to two correction attempts under the same limits and approval rules. If verification still fails, the result explicitly says completion is unverified. An explicitly requested stopping point defines task completion; deliberately excluded later actions are not unfinished work. The host never silently changes a partial result to completed.
+Each task has a maximum **$5 model budget**, including retries. The application checks a conservative estimate before a request and reconciles actual usage. Browser profiles persist; arbitrary program checkpoint recovery is outside this take-home scope.
 
-Endpoint review receives up to 32 KB of actual archived observations with provenance and explicit omissions, still subject to whole-request token admission. A separate factual-report review checks the exact summary and claims against archived evidence and the current-run action journal, distinguishing pre-existing state from newly performed actions. Completed reports receive factual review after the endpoint check passes; actor-authored partial reports receive factual review without requiring endpoint completion. Both statuses share the existing two-repair limit. Both final reviewers use medium reasoning; the acting agent, risk and clarification reviewers remain low. Unresolved review problems survive memory refreshes and checkpoint resume. Working notes are not treated as proof, and missing packet content is not treated as proof that an effect failed. Task-level successes on earlier versions are retained; the current candidate still needs its complete matching acceptance sequence.
-
-Every model request—including reviewers, evaluators and retries—uses a durable spending ledger. Each logical task is capped at **$5**; unknown billed attempts retain reservations. Only Luna currently has a verified price configuration. Model changes require explicit pricing support and evaluation. The local estimate uses a conservative cache-write premium; this is not an account-wide spending limit.
-
-SQLite checkpoints store graph progress. A separate SQLite journal consumes approvals and records dispatch **before** browser effects. A restart cannot reset spending or reuse an approval. Uncertain effects require inspection; the agent can reconcile an effect only with observed evidence and independent review. It does not blindly repeat submissions.
-
-## Validation
+## Verify
 
 ```bash
 uv run ruff check .
-uv run pytest tests -q
+uv run pytest -q
+uv run python -m evals.run --headed --langsmith
 ```
 
-Follow [FINAL-TEST.md](docs/FINAL-TEST.md) for the ordered release checks. Paid evaluations require current successful deterministic reports, a configured LangSmith key/project/dataset, and an explicit aggregate allowance:
+The evaluation runner uses isolated synthetic versions of the three supplied task families: reading mail/removing spam, history-based food checkout, and resume-based job applications. LangSmith records synthetic inputs, outputs and scores. Fixture expectations are not available to the actor. The current command interface has been checked; task outcomes remain pending until the new evaluations run. Old-version results are not new passes.
 
-```bash
-uv run python -m evals.release init --session final-candidate --max-total-usd 45
-uv run browser-agent doctor --online --budget-usd 5 --release-session final-candidate
-uv run python -m evals.run --suite core --seeds 101,102,103 --repetitions 1 --headed --max-experiment-usd 15 --release-session final-candidate
-uv run python -m evals.report --release-session final-candidate --require-final-suite
-```
+Use [FINAL-TEST.md](docs/FINAL-TEST.md) for the focused acceptance checks and [SYSTEM-DESIGN.md](docs/SYSTEM-DESIGN.md) for requirement mapping. The exact Russian [assignment](docs/assignment.ru.md) and [HR criteria](docs/hr-requirements.ru.md) are preserved.
 
-The three core fixtures preserve the semantics of the supplied mail, food and job tasks. Food tasks explicitly append the assignment-permitted stop-before-payment constraint; the stored source prompt remains unchanged. Their data and state graders are separate from the runtime. Synthetic approvals are constrained to the registered fixture origin and exact permitted effects. Real browser state, recorded submissions, approval chronology and an independent factual evaluator determine task results. A generated “done” response is insufficient.
+## Demo and limitations
 
-Real-account graph and provider traces are disabled even when `LANGSMITH_TRACING=true`. Evaluations export only isolated synthetic runs to LangSmith. Local profiles, checkpoints, event logs and screenshots remain private under Git-ignored `artifacts/`.
+The final video must show the real terminal and browser together. It is still pending. A synthetic demonstration will be labeled explicitly. The prepared Yandex session previously reached a request for a genuine delivery address; a complete live food task and useful last-week history remain unverified.
 
-## Limits and source material
-
-Risk assessment combines code-enforced invariants with a nonacting model reviewer. It cannot prove arbitrary websites honest or guarantee avoiding bot checks. Unknown effects require human input. Canvas-only controls, arbitrary coordinate clicks, uploads/downloads, MCP and Claude support are outside this implementation. Real-site compatibility must be reported separately from fixture performance.
-
-The preserved [Russian assignment](docs/assignment.ru.md), [HR criteria](docs/hr-requirements.ru.md), [reference screenshots](docs/assets/ideal-solution-01.jpg), [design](docs/SYSTEM-DESIGN.md), [research](docs/LANGGRAPH-RESEARCH.md) and [setup record](docs/SETUP.md) explain the requirements and decisions. Original design documents describe intended release gates; [validation status](docs/VALIDATION.md) records what has actually been run.
-
-Repository: https://github.com/Nordup/sp-solution-test-assignment. Work directly on **main**; do not create another branch or worktree.
-
-
-Factual wording remains an LLM limitation: a retained-input risk-review calibration accepted two subtle source expansions. Drafting/memory instructions now preserve source scope, but the risk reviewer is not a proven factual filter. Review exact outbound text; current autonomous results and calibration failures are recorded in VALIDATION.md.
+Credentials, profiles, account evidence and raw run artifacts are ignored by Git. Live account content is not automatically exported to LangSmith. Do not submit payments, delete real mail or send real applications merely to produce a demonstration.
