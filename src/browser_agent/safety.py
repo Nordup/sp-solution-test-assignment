@@ -55,7 +55,15 @@ _CRITICAL = (
     "сброс",
 )
 _READ_ONLY = {"read", "tabs", "screenshot", "finish", "ask_user"}
-_VIEWING = {"back", "scroll", "switch_tab"}
+_VIEWING = {
+    "back",
+    "close_tab",
+    "forward",
+    "hover",
+    "new_tab",
+    "scroll",
+    "switch_tab",
+}
 
 
 def _action_link(context):

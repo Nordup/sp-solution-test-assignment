@@ -9,7 +9,7 @@ import pytest
 from langgraph.graph import StateGraph
 from langsmith.run_helpers import get_tracing_context
 
-from browser_agent.agent import run_agent
+from browser_agent.agent import run_task
 from browser_agent.browser import BrowserError, BrowserSession
 from browser_agent.config import Settings
 
@@ -125,15 +125,42 @@ def browser_factory(
 async def run_case(tmp_path, script, *, html=FORM, responder=None, **browser_options):
     state = {}
     gateway = ScriptedGateway(script)
-    result = await run_agent(
+    result = await run_isolated(
         Settings(artifact_dir=tmp_path),
         "Perform the requested test action",
-        headless=True,
         responder=responder(state) if responder else None,
         browser_factory=browser_factory(html, state, **browser_options),
         gateway_factory=lambda _settings, **_kwargs: gateway,
     )
     return result, state, gateway
+
+
+async def run_isolated(
+    settings,
+    task,
+    *,
+    url=None,
+    profile="default",
+    headless=True,
+    responder=None,
+    browser_factory=BrowserSession,
+    gateway_factory=None,
+):
+    """Test-only harness for a fresh browser around the shared task runner."""
+    settings.prepare()
+    browser = browser_factory(
+        settings.artifact_dir / "profiles" / profile,
+        headless=headless,
+        artifact_dir=settings.artifact_dir / "test-evidence",
+    )
+    try:
+        await browser.start(url)
+        kwargs = {"responder": responder}
+        if gateway_factory is not None:
+            kwargs["gateway_factory"] = gateway_factory
+        return await run_task(settings, task, browser, **kwargs)
+    finally:
+        await browser.close()
 
 
 async def test_actual_langgraph_run_records_result_and_disables_external_tracing(
@@ -156,6 +183,43 @@ async def test_actual_langgraph_run_records_result_and_disables_external_tracing
         (tmp_path / "runs" / result["run_id"] / "result.json").read_text()
     )
     assert saved == result and result["steps"] == 1 and result["cost_usd"] == 0
+
+
+async def test_shared_task_runs_reset_refs_evidence_and_budget(tmp_path):
+    settings = Settings(artifact_dir=tmp_path)
+    browser = BrowserSession(tmp_path / "profile", headless=True)
+    gateway_instances = [ScriptedGateway([finish()]), ScriptedGateway([finish()])]
+    gateways = list(gateway_instances)
+
+    def gateway_factory(_settings, **_kwargs):
+        return gateways.pop(0)
+
+    await browser.start()
+    try:
+        first = await run_task(
+            settings,
+            "Read the current page",
+            browser,
+            gateway_factory=gateway_factory,
+        )
+        first_observation = browser._observation["id"]
+        first_evidence = browser.artifact_dir
+        second = await run_task(
+            settings,
+            "Read the current page again",
+            browser,
+            gateway_factory=gateway_factory,
+        )
+        assert first["status"] == second["status"] == "completed"
+        assert first["cost_usd"] == second["cost_usd"] == 0
+        assert first_evidence != browser.artifact_dir
+        with pytest.raises(BrowserError, match="current"):
+            await browser.execute("tabs", {}, first_observation)
+        assert all(gateway.closed for gateway in gateway_instances)
+        assert (tmp_path / "runs" / first["run_id"] / "result.json").exists()
+        assert (tmp_path / "runs" / second["run_id"] / "result.json").exists()
+    finally:
+        await browser.close()
 
 
 @pytest.mark.parametrize("answer", ["approve", "deny", "wrong_id"])
@@ -319,10 +383,9 @@ async def test_disabled_target_reobserves_before_approval_or_stops_at_retry_boun
         if becomes_enabled
         else [click("Send")] * 3
     )
-    result = await run_agent(
+    result = await run_isolated(
         Settings(artifact_dir=tmp_path, max_retries=2),
         "Send the message",
-        headless=True,
         browser_factory=LoadingBrowser,
         gateway_factory=lambda *_args, **_kwargs: gateway,
         responder=respond,

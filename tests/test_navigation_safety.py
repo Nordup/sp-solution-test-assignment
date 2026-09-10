@@ -34,3 +34,11 @@ async def test_browser_semantics_distinguish_navigation_from_critical_buttons(
         assert not assessment.forbidden
     finally:
         await browser.close()
+
+
+def test_reload_requires_confirmation_because_it_can_resubmit_a_form():
+    assessment = assess(
+        {"tool": "reload", "args": {}},
+        {"document_url": "https://unit.test/form", "context_complete": True},
+    )
+    assert assessment.requires_approval

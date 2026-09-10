@@ -46,7 +46,7 @@ class Read(Action):
 
 
 class Scroll(Action):
-    direction: Literal["up", "down"]
+    direction: Literal["up", "down", "left", "right"]
 
 
 class Tab(Action):
@@ -72,8 +72,18 @@ REGISTRY = {
     "fill": (Fill, "Replace editable content. Password entry is manual."),
     "select": (Fill, "Select an observed option by value or label."),
     "press": (Press, "Press a permitted key on a current ref."),
-    "navigate": (Navigate, "Open a user-supplied or observed HTTP(S) URL."),
+    "navigate": (
+        Navigate,
+        "Navigate to an HTTP(S) URL you choose, including a public homepage or search engine. Inspect the result; discover site-specific routes from the page.",
+    ),
+    "new_tab": (Empty, "Open and switch to a new blank browser tab."),
     "back": (Empty, "Go back in the current tab."),
+    "forward": (Empty, "Go forward in the current tab."),
+    "reload": (Empty, "Reload the current page; may resubmit a previous form."),
+    "hover": (
+        Ref,
+        "Move the pointer over a current observed element to reveal hover controls.",
+    ),
     "read": (
         Read,
         "Read a bounded current-page excerpt or subtree. Continue with next_offset.",
@@ -89,7 +99,7 @@ REGISTRY = {
     ),
     "finish": (
         Finish,
-        "Report the observed outcome honestly. Completed requires the requested stopping boundary: finish permitted preparation/review stages before stopping at a final consequential action. Include actual counts and identities, including retained items. Remaining lists unmet requested work.",
+        "Report the observed outcome against the user's task and stopping boundary. Include relevant counts and identities. Remaining lists unmet requested work.",
     ),
 }
 

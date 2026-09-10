@@ -152,6 +152,98 @@ async def test_new_tab_switch_invalidates_old_observation(browser):
     assert "Destination" in (await browser.observe())["text"]
 
 
+async def test_start_blank_and_actor_chosen_navigation(browser):
+    assert browser.page.url == "about:blank"
+    await browser.context.route(
+        "https://fixture.test/**",
+        lambda route: route.fulfill(body="<h1>Chosen destination</h1>"),
+    )
+    observation = await browser.observe()
+    await browser.execute(
+        "navigate",
+        {"url": "https://fixture.test/public"},
+        observation["id"],
+    )
+    destination = await browser.observe()
+    assert destination["url"] == "https://fixture.test/public"
+    assert "Chosen destination" in destination["text"]
+
+
+async def test_new_tab_close_last_tab_and_tab_identity(browser):
+    await browser.context.route(
+        "https://fixture.test/**",
+        lambda route: route.fulfill(body="<h1>Second tab</h1>"),
+    )
+    blank = await browser.observe()
+    first_page = blank["tabs"][0]["page_id"]
+    opened = await browser.execute("new_tab", {}, blank["id"])
+    second_page = next(tab["page_id"] for tab in opened["tabs"] if tab["active"])
+    assert second_page != first_page and len(opened["tabs"]) == 2
+    with pytest.raises(BrowserError, match="current"):
+        await browser.execute("tabs", {}, blank["id"])
+
+    current = await browser.observe()
+    await browser.execute(
+        "navigate", {"url": "https://fixture.test/second"}, current["id"]
+    )
+    current = await browser.observe()
+    await browser.execute("switch_tab", {"page_id": first_page}, current["id"])
+    switched = await browser.observe()
+    assert switched["tabs"] == [
+        {"page_id": first_page, "url": "about:blank", "active": True},
+        {"page_id": second_page, "url": "https://fixture.test/second", "active": False},
+    ]
+
+    await browser.execute("close_tab", {"page_id": first_page}, switched["id"])
+    remaining = await browser.observe()
+    assert remaining["tabs"] == [
+        {"page_id": second_page, "url": "https://fixture.test/second", "active": True}
+    ]
+    await browser.execute("close_tab", {"page_id": second_page}, remaining["id"])
+    blank_again = await browser.observe()
+    assert len(blank_again["tabs"]) == 1
+    assert blank_again["tabs"][0]["active"]
+    assert blank_again["url"] == "about:blank"
+
+
+async def test_hover_and_forward_are_observed_browser_actions(browser):
+    await browser.context.route(
+        "https://fixture.test/one",
+        lambda route: route.fulfill(body="<h1>One</h1>"),
+    )
+    await browser.context.route(
+        "https://fixture.test/two",
+        lambda route: route.fulfill(body="<h1>Two</h1>"),
+    )
+    observation = await browser.observe()
+    await browser.execute(
+        "navigate", {"url": "https://fixture.test/one"}, observation["id"]
+    )
+    observation = await browser.observe()
+    await browser.execute(
+        "navigate", {"url": "https://fixture.test/two"}, observation["id"]
+    )
+    observation = await browser.observe()
+    await browser.execute("back", {}, observation["id"])
+    observation = await browser.observe()
+    assert observation["url"] == "https://fixture.test/one"
+    await browser.execute("forward", {}, observation["id"])
+    assert browser.page.url == "https://fixture.test/two"
+
+    await browser.page.set_content(
+        '<button onmouseenter="document.querySelector(\'#revealed\').hidden=false">Menu</button>'
+        '<a id="revealed" hidden href="https://fixture.test/item">Revealed item</a>'
+    )
+    observation = await browser.observe()
+    await browser.execute(
+        "hover", {"ref": ref_for(observation, "Menu")}, observation["id"]
+    )
+    hovered = await browser.observe()
+    assert "Revealed item" in hovered["text"]
+    await browser.execute("reload", {}, hovered["id"])
+    assert browser.page.url == "https://fixture.test/two"
+
+
 async def test_navigation_back_press_and_delayed_modal(browser):
     await browser.context.route(
         "https://fixture.test/**",

@@ -152,6 +152,9 @@ class BrowserSession:
                 self.generation = uuid4().hex
                 self._pages, self._registry = {}, {}
                 self._observation = None
+                self._snapshot_text = ""
+                self._dialogs = []
+                self._http_status = {}
                 self.context.on("close", lambda _: setattr(self, "_closed", True))
                 self.context.on("page", self._register_page)
                 for page in self.context.pages:
@@ -205,6 +208,18 @@ class BrowserSession:
     async def close(self):
         async with self.lock:
             await self._close_unlocked()
+
+    async def prepare_task(self):
+        """Invalidate the previous task's references and transient evidence."""
+        async with self.lock:
+            self._ensure_open()
+            self.generation = uuid4().hex
+            self.revision = 0
+            self._registry.clear()
+            self._observation = None
+            self._snapshot_text = ""
+            self._dialogs = []
+            self._http_status = {}
 
     async def _close_unlocked(self):
         try:
@@ -560,7 +575,10 @@ class BrowserSession:
                 if args.get("ref")
                 else None
             )
-            if tool in {"click", "fill", "select", "press"} and locator is None:
+            if (
+                tool in {"click", "fill", "select", "press", "hover"}
+                and locator is None
+            ):
                 raise BrowserError(
                     "missing_ref", "This action requires a current observed ref"
                 )
@@ -586,6 +604,10 @@ class BrowserSession:
                 )
             if tool not in {
                 "navigate",
+                "new_tab",
+                "forward",
+                "reload",
+                "hover",
                 "back",
                 "click",
                 "fill",
@@ -621,6 +643,8 @@ class BrowserSession:
                         await admit()
                         await target.bring_to_front()
                         self.page = target
+                        self._registry.clear()
+                        self._observation = None
                     else:
                         await admit()
                         dispatched = True
@@ -630,6 +654,28 @@ class BrowserSession:
                                 (p for p in self._pages.values() if not p.is_closed()),
                                 None,
                             )
+                            if self.page is None:
+                                self.page = await self.context.new_page()
+                                self._register_page(self.page)
+                            await self.page.bring_to_front()
+                elif tool == "new_tab":
+                    await admit()
+                    self.page = await self.context.new_page()
+                    self._register_page(self.page)
+                    await self.page.bring_to_front()
+                    dispatched = True
+                elif tool == "hover":
+                    await admit()
+                    dispatched = True
+                    await locator.hover()
+                elif tool == "forward":
+                    await admit()
+                    dispatched = True
+                    await self.page.go_forward(wait_until="domcontentloaded")
+                elif tool == "reload":
+                    await admit()
+                    dispatched = True
+                    await self.page.reload(wait_until="domcontentloaded")
                 elif tool == "navigate":
                     await admit()
                     dispatched = True

@@ -7,54 +7,35 @@ from uuid import uuid4
 from langgraph.errors import NodeCancelledError
 from langsmith import tracing_context
 
-from .browser import BrowserSession
 from .graph import AgentGraph
 from .llm import Gateway
 from .telemetry import Events
 
 
-def safe_name(value):
-    if (
-        not value
-        or len(value) > 100
-        or any(
-            c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
-            for c in value
-        )
-    ):
-        raise ValueError("Use a simple alphanumeric name with hyphens/underscores.")
-    return value
-
-
-async def run_agent(
+async def run_task(
     settings,
     task,
-    url=None,
-    profile="default",
-    headless=False,
+    browser,
+    *,
     responder=None,
     console=None,
-    synthetic=False,
-    browser_factory=BrowserSession,
     gateway_factory=Gateway,
-    new_run_id=None,
+    raise_on_cancel=False,
 ):
+    """Run one model task in the caller's browser; leave the browser open."""
     if not isinstance(task, str) or not task.strip():
         raise ValueError("A task is required.")
     settings.prepare()
-    profile = safe_name(profile)
-    run_id = safe_name(new_run_id or str(uuid4()))
+    profile = browser.profile.name
+    run_id = str(uuid4())
     directory = settings.artifact_dir / "runs" / run_id
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
     events = Events(directory / "events.jsonl", console)
-    browser = browser_factory(
-        settings.artifact_dir / "profiles" / profile,
-        headless=headless,
-        artifact_dir=directory / "evidence",
-    )
+    browser.artifact_dir = directory / "evidence"
     gateway = None
     engine = None
     steps = 0
+    cancelled = False
     result = {
         "status": "failed",
         "summary": "Task did not start.",
@@ -63,19 +44,17 @@ async def run_agent(
     metadata = {
         "run_id": run_id,
         "task": task,
-        "url": url,
+        "url": browser.page.url if browser.page else None,
         "model": settings.model,
         "profile": profile,
-        "synthetic": synthetic,
         "budget_usd": settings.budget_usd,
     }
     events("run_started", metadata)
     try:
-        await browser.start(url)
+        await browser.prepare_task()
         gateway = gateway_factory(settings, emit=events)
         engine = AgentGraph(browser, gateway, settings, task, events, responder)
         # Live account content must never follow LANGSMITH_TRACING=true into cloud traces.
-        # Synthetic evaluation exports are explicit and owned by the evaluator.
         with tracing_context(enabled=False):
             state = await engine.compile().ainvoke(
                 {
@@ -91,6 +70,7 @@ async def run_agent(
         result = state["result"]
         steps = state.get("steps", 0)
     except (asyncio.CancelledError, NodeCancelledError):
+        cancelled = True
         result = {
             "status": "partial",
             "summary": "Task stopped by cancellation. A pending action may already have taken effect; it was not replayed.",
@@ -115,16 +95,14 @@ async def run_agent(
             "steps": steps,
             "cost_usd": float(getattr(gateway, "cost_usd", 0)),
             "profile": profile,
-            "synthetic": synthetic,
         }
         path = directory / "result.json"
         path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
         path.chmod(0o600)
         events("result", result)
-        try:
-            await browser.close()
-        finally:
-            events.close()
-            if gateway is not None and hasattr(gateway, "close"):
-                await gateway.close()
+        events.close()
+        if gateway is not None and hasattr(gateway, "close"):
+            await gateway.close()
+    if cancelled and raise_on_cancel:
+        raise asyncio.CancelledError
     return result

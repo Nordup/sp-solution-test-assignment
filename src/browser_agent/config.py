@@ -35,5 +35,5 @@ class Settings(BaseModel):
 
     def prepare(self):
         self.artifact_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        for directory in ("runs", "profiles", "evals", "final"):
+        for directory in ("runs", "profiles"):
             (self.artifact_dir / directory).mkdir(mode=0o700, exist_ok=True)

@@ -1,23 +1,18 @@
-"""A real terminal beside the visible browser."""
+"""Start a visible browser and accept tasks in the terminal."""
 
 import asyncio
-import importlib.metadata
 import json
-import os
-import sys
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from .agent import run_agent, safe_name
-from .browser import BrowserSession
+from .agent import run_task
+from .browser import BrowserError, BrowserSession
 from .config import Settings
+from .llm import ProviderFailure
 
-app = typer.Typer(
-    no_args_is_help=True,
-    help="Autonomous browser tasks with exact critical-action approval.",
-)
+app = typer.Typer(add_completion=False)
 console = Console()
 
 
@@ -50,71 +45,53 @@ async def human(question):
     return None if answer.strip() in {"/stop", "/pause"} else answer
 
 
-@app.command()
-def doctor():
-    """Check local configuration without displaying credentials or making paid calls."""
-    settings = Settings.load()
+async def session(settings):
     settings.prepare()
-    console.print_json(
-        data={
-            "python": sys.version.split()[0],
-            "model": settings.model,
-            "openai_key_present": bool(settings.api_key.get_secret_value()),
-            "langsmith_key_present": bool(os.getenv("LANGSMITH_API_KEY")),
-            "versions": {
-                p: importlib.metadata.version(p)
-                for p in ["playwright", "langgraph", "openai", "langsmith"]
-            },
-        }
-    )
     if not settings.api_key.get_secret_value():
-        raise typer.Exit(1)
-
-
-@app.command()
-def login(url: str = "about:blank", profile: str = "default"):
-    """Log in manually in a dedicated persistent profile."""
-    settings = Settings.load()
-    settings.prepare()
-    safe_name(profile)
-
-    async def launch():
-        browser = BrowserSession(settings.artifact_dir / "profiles" / profile)
-        try:
-            await browser.start(None if url == "about:blank" else url)
-            await asyncio.to_thread(
-                input, "Log in manually, then press Enter to save and close: "
-            )
-        finally:
-            await browser.close()
-
-    asyncio.run(launch())
-
-
-@app.command()
-def run(
-    task: str | None = typer.Argument(None),
-    url: str | None = None,
-    profile: str = "default",
-    budget_usd: float = 5,
-    headless: bool = False,
-):
-    """Enter a task and watch the agent work; the browser is visible by default."""
-    task = task or typer.prompt("Task")
-    result = asyncio.run(
-        run_agent(
-            Settings.load(budget_usd=budget_usd),
-            task=task,
-            url=url,
-            profile=profile,
-            headless=headless,
-            responder=human,
-            console=console,
+        raise ValueError("Set OPENAI_API_KEY in .env.local before starting.")
+    browser = BrowserSession(settings.artifact_dir / "profiles" / "default")
+    try:
+        await browser.start()
+        console.print(
+            "Browser ready. Enter a task, or /exit to close. You can log in manually in the browser."
         )
-    )
-    console.print(
-        Panel(json.dumps(result, ensure_ascii=False, indent=2), title="RESULT"),
-        markup=False,
-    )
-    if result["status"] != "completed":
-        raise typer.Exit(2)
+        while True:
+            try:
+                task = (await asyncio.to_thread(input, "Task: ")).strip()
+            except EOFError:
+                break
+            if task == "/exit":
+                break
+            if not task:
+                continue
+            result = await run_task(
+                settings,
+                task,
+                browser,
+                responder=human,
+                console=console,
+                raise_on_cancel=True,
+            )
+            console.print(
+                Panel(json.dumps(result, ensure_ascii=False, indent=2), title="RESULT"),
+                markup=False,
+            )
+            if browser.page is None or browser.page.is_closed():
+                break
+    finally:
+        await browser.close()
+
+
+@app.command()
+def main():
+    """Open the browser and enter tasks. No startup URL or task options."""
+    try:
+        asyncio.run(session(Settings.load()))
+    except (KeyboardInterrupt, EOFError, asyncio.CancelledError):
+        pass
+    except (BrowserError, OSError, ProviderFailure, RuntimeError, ValueError) as exc:
+        console.print(
+            f"Session stopped ({type(exc).__name__}). Check configuration and close any other process using the browser profile.",
+            markup=False,
+        )
+        raise typer.Exit(1) from None

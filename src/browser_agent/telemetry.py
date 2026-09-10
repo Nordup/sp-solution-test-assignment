@@ -1,4 +1,4 @@
-"""Private local event sink. External tracing is explicitly enabled only by fixtures."""
+"""Private local event sink for task runs."""
 
 import json
 import os
