@@ -29,7 +29,6 @@ packages = ["src/browser_agent", "evals"]
 
 [tool.ruff]
 target-version = "py312"
-exclude = ["docs/research"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

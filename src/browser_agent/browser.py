@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import hashlib
-import inspect
 import json
 import re
 from pathlib import Path
@@ -540,7 +539,6 @@ class BrowserSession:
         args: dict,
         observation_id: str,
         expected_fingerprint: str | None = None,
-        before_dispatch=None,
     ) -> dict:
         """Execute once after caller authorization; never retry effects here."""
         if tool in {"observe", "read"}:
@@ -609,10 +607,6 @@ class BrowserSession:
                     raise BrowserError(
                         "approval_changed", "Action changed before dispatch"
                     )
-                if before_dispatch:
-                    result = before_dispatch()
-                    if inspect.isawaitable(result):
-                        await result
 
             try:
                 if tool == "tabs":

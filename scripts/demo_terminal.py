@@ -8,9 +8,9 @@ import typer
 from rich.panel import Panel
 
 from browser_agent import cli
+from browser_agent.agent import run_agent, safe_name
 from browser_agent.browser import BrowserSession
 from browser_agent.config import Settings
-from browser_agent.runner import run_agent, safe_name
 from evals.fixtures import FixtureServer
 from evals.run import CORE, fixture_browser_factory
 

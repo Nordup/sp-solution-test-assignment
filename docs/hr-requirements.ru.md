@@ -1,6 +1,6 @@
 # Уточнения по оценке тестового задания
 
-Source: HR Telegram evaluation message, visible at 5:18 PM, read with Computer Use on 2026-09-09 and verified against the full text supplied by the user on the same date. The preceding assignment-delivery message was supplied by the user after Telegram pointer/scroll controls returned `AXError.notImplemented`. Personal conversation, course/VPN access details, and compensation are excluded from this public extract; full messages are retained locally in `docs/private/hr-messages.ru.md`.
+Source: HR guidance received via Telegram on 2026-09-09. The deadline and evaluation criteria below are preserved verbatim; private conversation is excluded.
 
 ## Срок выполнения — из первого сообщения
 

@@ -14,10 +14,10 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from .browser import BrowserError
+from .budget import BudgetExceeded
 from .context import HISTORY_MESSAGES, ContextOverflow, build_request
 from .llm import ProviderFailure
 from .safety import assess
-from .storage import BudgetExceeded
 from .tools import ProtocolError, parse_call, protocol_pair
 
 

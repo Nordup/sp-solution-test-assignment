@@ -246,49 +246,17 @@ async def test_unexpected_dialog_dismissed_without_repeating_effect(browser):
     assert await browser.page.evaluate("window.attempts") == 1
 
 
-async def test_failed_durable_admission_prevents_browser_effect(browser):
-    await browser.page.set_content('<button onclick="window.effects=1">Save</button>')
-    obs = await browser.observe()
-    action = {"ref": ref_for(obs, "Save")}
-    context = await browser.action_context("click", action, obs["id"])
-    calls = []
-
-    def disk_failure():
-        calls.append("admission")
-        raise OSError("synthetic journal unavailable")
-
-    with pytest.raises(OSError, match="journal unavailable"):
-        await browser.execute(
-            "click",
-            action,
-            obs["id"],
-            expected_fingerprint=context["fingerprint"],
-            before_dispatch=disk_failure,
-        )
-    assert calls == ["admission"]
-    assert await browser.page.evaluate("window.effects || 0") == 0
-
-
 async def test_concurrent_action_requests_serialize_and_cannot_duplicate(browser):
     await browser.page.set_content(
         '<button onclick="window.effects=(window.effects||0)+1">Continue</button>'
     )
     obs = await browser.observe()
     args = {"ref": ref_for(obs, "Continue")}
-    admissions = []
     results = await asyncio.gather(
-        browser.execute(
-            "click", args, obs["id"], before_dispatch=lambda: admissions.append("first")
-        ),
-        browser.execute(
-            "click",
-            args,
-            obs["id"],
-            before_dispatch=lambda: admissions.append("second"),
-        ),
+        browser.execute("click", args, obs["id"]),
+        browser.execute("click", args, obs["id"]),
         return_exceptions=True,
     )
-    assert len(admissions) == 1
     assert (
         sum(
             isinstance(result, BrowserError) and result.code == "stale_observation"

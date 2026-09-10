@@ -2,16 +2,13 @@
 .env
 .env.*
 !.env.example
-node_modules/
 .venv/
+dist/
 __pycache__/
 *.pyc
 .playwright-cli/
 output/
 docs/private/
-.browser-profile/
-browser-profile/
-playwright/.auth/
 artifacts/
 
 # Local tooling caches

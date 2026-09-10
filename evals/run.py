@@ -11,10 +11,10 @@ from urllib.parse import urlsplit
 from pydantic import Field
 from rich.console import Console
 
+from browser_agent.agent import run_agent
 from browser_agent.browser import BrowserError, BrowserSession
 from browser_agent.config import Settings
 from browser_agent.llm import Gateway
-from browser_agent.runner import run_agent
 from browser_agent.tools import Strict, parse_call, tool_specs
 from evals.fixtures import FixtureServer
 from evals.graders import grade_fixture

@@ -5,14 +5,13 @@ import math
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 
+from .budget import Budget
 from .context import ContextOverflow
-from .storage import Budget
 
 # Official Luna pricing checked 2026-09-09; reserve the cache-write premium.
 # Microdollars per token: standard input $0.20/M, conservative input $0.25/M;
 # output $1.20/M. Charging input conservatively also covers cached requests.
 PRICES = {"gpt-5.6-luna": (0.25, 1.2)}
-PRICE_VERSION = "openai-2026-09-09-cache-write-premium"
 
 
 class ProviderFailure(RuntimeError):

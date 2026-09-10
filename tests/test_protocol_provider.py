@@ -8,10 +8,10 @@ import httpx
 import pytest
 from openai import APIConnectionError, APIStatusError
 
+from browser_agent.budget import BudgetExceeded
 from browser_agent.config import Settings
 from browser_agent.context import HISTORY_MESSAGES, ContextOverflow, build_request
 from browser_agent.llm import Gateway, ProviderFailure
-from browser_agent.storage import BudgetExceeded
 from browser_agent.tools import ProtocolError, parse_call
 
 

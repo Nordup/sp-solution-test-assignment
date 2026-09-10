@@ -10,9 +10,9 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
+from .agent import run_agent, safe_name
 from .browser import BrowserSession
 from .config import Settings
-from .runner import run_agent, safe_name
 
 app = typer.Typer(
     no_args_is_help=True,

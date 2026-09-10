@@ -9,9 +9,9 @@ import pytest
 from langgraph.graph import StateGraph
 from langsmith.run_helpers import get_tracing_context
 
+from browser_agent.agent import run_agent
 from browser_agent.browser import BrowserError, BrowserSession
 from browser_agent.config import Settings
-from browser_agent.runner import run_agent
 
 FORM = '<form onsubmit="event.preventDefault();window.effects=(window.effects||0)+1"><textarea aria-label="Message">Original text</textarea><button type="submit">Send</button></form>'
 

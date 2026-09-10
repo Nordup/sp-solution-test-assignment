@@ -38,12 +38,7 @@ async def run_agent(
     browser_factory=BrowserSession,
     gateway_factory=Gateway,
     new_run_id=None,
-    **compatibility,
 ):
-    if compatibility.get("run_id"):
-        raise ValueError(
-            "Tasks do not resume; start a new task using the saved browser profile."
-        )
     if not isinstance(task, str) or not task.strip():
         raise ValueError("A task is required.")
     settings.prepare()

@@ -1,6 +1,6 @@
 # Final test
 
-This runbook follows the employer's requirements and the user's September 10 scope correction. It replaces the previous production-style release sequence. Current results are recorded in [VALIDATION.md](VALIDATION.md).
+Run these checks in order. Recorded results and limitations are in [VALIDATION.md](VALIDATION.md).
 
 ## 1. Install and check
 

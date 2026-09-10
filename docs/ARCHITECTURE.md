@@ -1,6 +1,6 @@
-# Design
+# Architecture
 
-This is a take-home browser-agent implementation. The original [assignment](assignment.ru.md) and [HR criteria](hr-requirements.ru.md) define its scope. The user reaffirmed **LangGraph + Playwright** on September 10, 2026.
+The [assignment](assignment.ru.md) and [HR criteria](hr-requirements.ru.md) define the requirements below.
 
 ## Stack and flow
 
@@ -50,3 +50,19 @@ The actor verifies the latest browser state and writes a concise final report. I
 Synthetic success demonstrates the agent loop and controlled task behavior. It does not certify compatibility with every live service or bypass login/security challenges. Current results belong in [VALIDATION.md](VALIDATION.md).
 
 The existing adapter is tested on macOS and uses a POSIX profile lock. Windows support is not certified.
+
+## Code map
+
+- `agent.py` owns the task lifecycle and cleanup; `graph.py` defines the decision loop.
+- `browser.py` resolves observed element references and executes Playwright actions; `safety.py` classifies those actions for confirmation.
+- `tools.py` defines native function schemas; `prompts.py` and `context.py` construct bounded model input.
+- `llm.py` handles the OpenAI client and retries; `budget.py` enforces the per-task spending cap.
+- `cli.py` provides terminal interaction; `telemetry.py` records private local events.
+
+## Technical references
+
+LangGraph makes state transitions explicit without requiring a hosted service or checkpoint database. Native OpenAI function calls and Pydantic provide structured arguments. Playwright supplies persistent browser profiles and visible interaction. LangSmith stores synthetic evaluation results independently of the live agent.
+
+- [LangGraph graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api)
+- [Playwright persistent contexts](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-persistent-context)
+- [LangSmith code evaluators](https://docs.langchain.com/langsmith/code-evaluator-sdk)

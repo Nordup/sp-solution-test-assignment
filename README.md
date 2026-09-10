@@ -1,43 +1,47 @@
 # Autonomous browser agent
 
-A Python agent that uses **LangGraph + Playwright** to carry out natural-language tasks in a visible browser. A real terminal shows the task, tool calls, approvals and final report. The acting model is **GPT-5.6 Luna** through the OpenAI API.
+A Python browser agent built with **LangGraph, Playwright and OpenAI**. Give it a task in a terminal and watch it navigate a visible browser, read pages, fill forms and ask for confirmation before consequential actions.
 
-**Status:** 54 focused tests and the three model-driven synthetic task checks pass. LangSmith uploads have been read back and verified. See [validation](docs/VALIDATION.md) for results and limitations.
+[Watch the demo](docs/assets/synthetic-agent-demo.mp4) · [Architecture](docs/ARCHITECTURE.md) · [Test runbook](docs/FINAL-TEST.md) · [Validation results](docs/VALIDATION.md)
 
-## Run
+## Quick start
+
+Requires Python 3.12, [uv](https://docs.astral.sh/uv/) and an OpenAI API key. Tested on macOS.
 
 ```bash
 uv sync --frozen
 uv run playwright install chromium
-cp .env.example .env.local  # new checkout only; preserve an existing configured file
+test -e .env.local || cp .env.example .env.local
 chmod 600 .env.local
-# Fill in OPENAI_API_KEY locally.
+```
+
+Set `OPENAI_API_KEY` in `.env.local`. Preserve an existing configured file. The configured model is `gpt-5.6-luna`; each task has a maximum $5 model budget, including retries.
+
+```bash
 uv run browser-agent doctor
 uv run browser-agent run --url https://example.com 'Read this page and summarize what it offers.'
 ```
 
-Python 3.12 is required. On the prepared machine, credentials already exist in the ignored `.env.local`; reuse them.
+Omit the task argument to enter it interactively. The terminal shows tools, their arguments, observed results and the final report.
 
-For a signed-in service:
+### Signed-in services
 
 ```bash
-uv run browser-agent login --url https://your-service.example --profile demo
-uv run browser-agent run --profile demo --url https://your-service.example 'Your task'
+uv run browser-agent login --url https://your-service.example --profile personal
+uv run browser-agent run --profile personal --url https://your-service.example 'Your task'
 ```
 
-Log in manually in the opened browser, then press Enter in Terminal to save and close the profile. One process can use a profile at a time. Keep Terminal beside the controlled browser, as in the [original reference screenshots](docs/assignment.ru.md).
+Log in manually in the opened browser, then press Enter to save the profile. Only one process can use a profile at a time. For action confirmations, inspect the displayed destination, target and form values, then type `yes` to approve that exact action. Any other answer declines it and stops the task.
 
-## How it works
+## Design
 
-LangGraph connects observation, one model decision, host safety checks, execution and recovery. Tools reference elements discovered from the current accessibility snapshot; there are no site-specific selectors or task scripts. OpenAI native tool calls are validated by Pydantic.
+One LangGraph loop connects observation, a typed model decision, host approval, execution and recovery. The model selects elements from current accessibility snapshots. It receives no site-specific selectors, navigation recipes or expected task answers.
 
-The actor sees a bounded current snapshot, ten recent tool exchanges and a cumulative notebook required in every tool call. This keeps completed work and earlier source facts available without a helper model. It can read long content in segments. Stale elements trigger a fresh observation and replanning; provider errors have bounded retry/backoff. An uncertain consequential action stops for inspection instead of being repeated.
+Context consists of a bounded current snapshot, ten recent tool exchanges and a cumulative factual notebook required in each tool call. Scoped reads handle long pages. Transient provider errors use bounded backoff; stale elements trigger a fresh observation and replanning. An uncertain consequential action stops without automatic replay.
 
-Critical actions show the actual destination, target and form values. Type `yes` to approve that exact action; a denial ends the task. The browser checks that the target has not changed before executing. Unknown JavaScript buttons are conservatively confirmed. This is a practical safety gate, not a guarantee about arbitrary website code.
+See [architecture and requirement mapping](docs/ARCHITECTURE.md) for tools, limits and technical choices.
 
-Each task has a maximum **$5 model budget**, including retries. The application checks a conservative estimate before a request and reconciles actual usage. Browser profiles persist; arbitrary program checkpoint recovery is outside this take-home scope.
-
-## Verify
+## Tests and evaluations
 
 ```bash
 uv run ruff check .
@@ -45,12 +49,32 @@ uv run pytest -q
 uv run python -m evals.run --headed --langsmith
 ```
 
-The evaluation runner uses isolated synthetic versions of the three supplied task families: reading mail/removing spam, history-based food checkout, and resume-based job applications. LangSmith records synthetic inputs, outputs and scores. Fixture expectations are not available to the actor. [Evaluation attempts](docs/EVALUATION-RESULTS.md) include failures as well as passes.
+Tests exercise the actual LangGraph and Chromium with mocked model responses. The evaluation command uses the real model and three isolated synthetic apps: mail cleanup, food checkout and resume-based job applications. Set `LANGSMITH_API_KEY` for `--langsmith`, or omit the flag to keep results local. Each case is capped at $5; the full evaluation has a maximum of $15.
 
-Use [FINAL-TEST.md](docs/FINAL-TEST.md) for the focused acceptance checks and [SYSTEM-DESIGN.md](docs/SYSTEM-DESIGN.md) for requirement mapping. The exact Russian [assignment](docs/assignment.ru.md) and [HR criteria](docs/hr-requirements.ru.md) are preserved.
+All three task families have passed their state checks. The successful three-case run cost approximately $0.11. [Validation](docs/VALIDATION.md) includes the evidence, earlier failures and limitations; these results do not establish universal live-site compatibility.
 
-## Demo and limitations
+### Reproduce the video
 
-[Watch the synthetic terminal-and-browser demo](docs/assets/synthetic-agent-demo.mp4) (2 minutes 20 seconds). It shows the real actor, human approvals and final payment review without placing an order. The prepared Yandex session previously reached a request for a genuine delivery address; a complete live food task and useful last-week history remain unverified.
+```bash
+uv run python scripts/demo_terminal.py --fixture food_previous_order --seed 102
+```
 
-Credentials, profiles, account evidence and raw run artifacts are ignored by Git. Live account content is not automatically exported to LangSmith. Do not submit payments, delete real mail or send real applications merely to produce a demonstration.
+Enter the task below. The launcher opens an isolated synthetic browser and pauses so you can arrange it beside Terminal. Press Enter to begin, and review each approval yourself.
+
+> Тестовый сценарий: 9 сентября 2026. Закажи мне BBQ-бургер и картошку фри из того места, откуда я заказывал на прошлой неделе. Остановись перед финальным подтверждением оплаты; заказ не размещай.
+
+The [2-minute-20-second recording](docs/assets/synthetic-agent-demo.mp4) shows the real actor reaching final payment review without placing an order. It is a continuous capture at normal speed, with excess idle footage after the final report removed.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `src/browser_agent/` | Agent lifecycle, graph, browser tools, safety, context, model client and budget |
+| `evals/` | Synthetic applications, independent state checks and LangSmith export |
+| `tests/` | Browser, graph, protocol, safety and evaluator tests |
+| `scripts/demo_terminal.py` | Interactive synthetic demo using the same agent |
+| `docs/` | Architecture, test instructions, results and original assignment materials |
+
+The original Russian [assignment](docs/assignment.ru.md), [HR criteria](docs/hr-requirements.ru.md) and three reference screenshots are preserved. Development for this assignment stays on `main`.
+
+Credentials, browser profiles and raw run artifacts are ignored by Git. Live account content is not automatically exported to LangSmith. Manual login/security checks are supported; arbitrary process resume and Windows support are outside the validated scope. Live Yandex checkout remains unverified.
