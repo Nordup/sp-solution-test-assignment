@@ -7,15 +7,19 @@ dependencies = [
   "langgraph==1.2.11",
   "openai==3.10.0",
   "pydantic==2.13.5",
-  "playwright==1.62.0",
   "langsmith==0.12.2",
   "rich==15.0.0",
   "typer==0.27.2",
   "python-dotenv>=1.0,<2",
+  "prompt-toolkit>=3.0.52,<4",
 ]
 
 [dependency-groups]
-dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2", "ruff>=0.16,<0.17"]
+dev = [
+    "pytest>=9,<10",
+    "pytest-asyncio>=1,<2",
+    "ruff>=0.16,<0.17",
+]
 
 [build-system]
 requires = ["hatchling>=1.27,<2"]

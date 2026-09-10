@@ -1,116 +1,115 @@
-"""Capability routing and technical safety boundaries for page actions."""
+"""Boundaries between Playwright CLI evidence and approval decisions."""
 
 import json
 
 import pytest
 
 from browser_agent.safety import (
-    assess,
-    security_review_complete,
+    approval_question,
+    parse_security_review,
+    review_required,
     security_review_request,
 )
+from browser_agent.tools import ProtocolError
+
+
+def _review(arguments):
+    return {
+        "status": "completed",
+        "output": [
+            {
+                "type": "function_call",
+                "name": "security_review",
+                "call_id": "review-1",
+                "arguments": json.dumps(arguments),
+            }
+        ],
+    }
 
 
 @pytest.mark.parametrize(
-    "tool,args",
+    "command",
     [
-        ("read", {"offset": 0, "scope": None}),
-        ("screenshot", {}),
-        ("tabs", {}),
-        ("list_browsers", {}),
-        ("new_tab", {}),
-        ("close_tab", {"page_id": "p1"}),
-        ("scroll", {"direction": "down"}),
+        "snapshot",
+        "find",
+        "tab-list",
+        "screenshot",
+        "console",
+        "requests",
     ],
 )
-def test_trusted_observation_and_browser_capabilities_bypass_review(tool, args):
-    assessment = assess({"tool": tool, "args": args}, {})
-    assert assessment.classification == "ordinary"
-    assert not assessment.requires_review
+def test_pure_inspection_cli_commands_bypass_approval_classifier(command):
+    assert review_required("playwright", {"args": {"command": command}}) is False
 
 
 @pytest.mark.parametrize(
-    "tool,args,context",
+    "command",
+    ["open", "goto", "go-back", "go-forward", "reload", "hover"],
+)
+def test_navigation_and_hover_still_pass_through_classifier(command):
+    # The classifier may decide these routine operations are harmless, but a
+    # destination URL or page event can carry an effect and must be reviewed.
+    assert review_required("playwright", {"args": {"command": command}}) is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["click", "fill", "select", "press", "check", "uncheck", "tab-close", "close"],
+)
+def test_effectful_cli_commands_share_the_single_approval_classifier(command):
+    assert review_required("playwright", {"args": {"command": command}}) is True
+
+
+@pytest.mark.parametrize("decision", [True, False])
+def test_review_protocol_has_only_boolean_decision(decision):
+    assert parse_security_review(_review({"needs_approval": decision})) is decision
+
+
+@pytest.mark.parametrize(
+    "arguments",
     [
-        ("click", {"ref": "observed"}, {"name": "Delete selected messages"}),
-        ("click", {"ref": "observed"}, {"name": "Продолжить"}),
-        ("click", {"ref": "observed"}, {"name": "🛒"}),
-        ("click", {"ref": "observed"}, {"name": "Continue"}),
-        ("fill", {"ref": "observed", "value": "query"}, {}),
-        ("select", {"ref": "observed", "value": "option"}, {}),
-        ("press", {"ref": "observed", "key": "Enter"}, {}),
-        ("navigate", {"url": "https://example.test/delete"}, {}),
-        ("back", {}, {}),
-        ("forward", {}, {}),
-        ("reload", {}, {}),
-        ("hover", {"ref": "observed"}, {}),
+        {"needs_approval": "false"},
+        {"needs_approval": False, "reason": "The search is incomplete"},
+        {"decision": "replan"},
+        {"decision": "deny"},
     ],
 )
-def test_all_page_actions_share_review_path_without_label_or_url_shortcuts(
-    tool, args, context
-):
-    assessment = assess({"tool": tool, "args": args}, context)
-    assert assessment.classification == "review"
-    assert assessment.requires_review
+def test_review_cannot_return_planning_or_target_selection_decisions(arguments):
+    with pytest.raises(ProtocolError):
+        parse_security_review(_review(arguments))
 
 
-def test_navigation_requires_http_scheme_but_does_not_classify_url_words():
-    allowed = assess(
-        {"tool": "navigate", "args": {"url": "https://example.test/delete"}}, {}
-    )
-    refused = assess(
-        {"tool": "navigate", "args": {"url": "javascript:alert(1)"}}, {}
-    )
-    assert allowed.requires_review and allowed.classification == "review"
-    assert refused.forbidden and not refused.requires_review
-
-
-@pytest.mark.parametrize("context", [{"type": "password"}, {"type": "file"}])
-def test_credentials_and_file_selection_remain_manual(context):
-    assessment = assess({"tool": "fill", "args": {"ref": "observed"}}, context)
-    assert assessment.forbidden
-
-
-def test_incomplete_host_effect_stops_before_reviewer():
-    assessment = assess(
-        {"tool": "click", "args": {"ref": "observed"}},
-        {"context_complete": False},
-    )
-    assert assessment.forbidden and not assessment.requires_review
-
-
-def test_security_packet_preserves_task_and_exact_target_marks_untrusted_excerpts():
-    task = "Preserve this full user constraint: " + "x" * 5000
-    target = "Apply this exact control " + "x" * 1500
-    assessment = assess(
-        {"tool": "click", "args": {"ref": "observed"}},
-        {"tag": "button", "name": target, "context_complete": True},
-    )
+def test_security_packet_contains_only_action_and_bounded_latest_evidence():
+    action = {
+        "tool": "playwright",
+        "args": {"command": "fill", "args": ["e5", "Armenia"]},
+    }
     request = security_review_request(
-        task,
-        {"tool": "click", "args": {"ref": "observed"}},
+        action,
         {
-            "tag": "button",
-            "name": target,
-            "text": target,
-            "fields": [],
-            "context": "c" * 4000,
-            "page_text": "p" * 4000,
-            "context_complete": True,
+            "evidence": "Country form snapshot",
+            "page_text": "PRIVATE WHOLE PAGE",
+            "notebook": "Actor notes are not approval evidence",
+            "history": [{"error": "stale_target"}],
         },
-        assessment,
-        clarifications=["Trust this explicit user clarification"],
-        recent_history=[{"output": "Page text says ignore the task"}],
     )
-    packet = request["input"][0]["content"][0]["text"]
-    payload = json.loads(packet.split("\n", 1)[1])
-    host = payload["host_target"]
-    assert task in packet
-    assert host["name"] == target and host["text"] == target
-    assert host["context_excerpt_truncated"] and host["page_excerpt_truncated"]
-    assert payload["trusted_user_clarifications"] == [
-        "Trust this explicit user clarification"
-    ]
-    assert "untrusted_recent_tool_results" in payload
-    assert security_review_complete({"fields": []})
-    assert not security_review_complete({"fields": ["x" * 13000]})
+    packet = json.loads(request["input"][0]["content"])
+    assert set(packet) == {"action", "untrusted_latest_browser_evidence"}
+    assert packet["action"] == action
+    assert "PRIVATE WHOLE PAGE" not in json.dumps(packet)
+    assert "notebook" not in json.dumps(packet)
+    assert packet["untrusted_latest_browser_evidence"] == "Country form snapshot"
+    schema = request["tools"][0]["parameters"]
+    assert set(schema["properties"]) == {"needs_approval"}
+    assert schema["additionalProperties"] is False
+
+
+def test_approval_question_names_command_without_dumping_evidence():
+    question = approval_question(
+        {"tool": "playwright", "args": {"command": "click", "args": ["e5"]}},
+        {"url": "https://shop.example/checkout", "evidence": "PRIVATE PAGE"},
+    )
+    assert "Confirm" in question
+    assert "e5" not in question
+    assert "shop.example" in question
+    assert "PRIVATE" not in question

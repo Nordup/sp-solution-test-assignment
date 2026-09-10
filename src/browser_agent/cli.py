@@ -1,95 +1,120 @@
 """Start a visible browser and accept tasks in the terminal."""
 
 import asyncio
-import json
+from functools import partial
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
 
 from .agent import run_task
-from .browser import BrowserError
+from .browser_cli import BrowserError, PlaywrightCLI
 from .config import Settings
 from .llm import ProviderFailure
-from .workspace import BrowserWorkspace
+from .presentation import TerminalUI
+from .terminal import Terminal
 
 app = typer.Typer(add_completion=False)
 console = Console()
 
 
-async def human(question):
-    console.print(
-        Panel(
-            json.dumps(
-                {
-                    k: v
-                    for k, v in question.items()
-                    if k != "effect" or "details" not in question
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            title="YOUR INPUT",
-            border_style="yellow",
-        ),
-        markup=False,
-    )
+async def human(question, *, read, ui=None):
+    if ui is not None:
+        ui.question(question)
     if question["kind"] == "approval":
-        answer = await asyncio.to_thread(
-            input, "Approve this exact action? Type yes; anything else denies: "
-        )
-        return {
-            "request_id": question["request_id"],
-            "approved": answer.strip().lower() == "yes",
-        }
-    answer = await asyncio.to_thread(input, "Reply, or /stop to end this task: ")
+        prompt = "[y/N]: "
+        while True:
+            answer = await read(prompt, erase_when_done=True)
+            normalized = answer.strip().casefold()
+            if normalized in {"y", "yes", "n", "no", "", "/stop", "/pause"}:
+                if ui is not None:
+                    # Empty input is the default No; make that decision visible
+                    # in the transcript instead of printing a blank user turn.
+                    ui.user(answer if normalized else "No")
+                return {
+                    "request_id": question["request_id"],
+                    "approved": normalized in {"y", "yes"},
+                }
+            prompt = "Please enter y or n [y/N]: "
+    answer = await read("Reply, or /stop to end this task: ", erase_when_done=True)
+    if ui is not None:
+        ui.user(answer)
     return None if answer.strip() in {"/stop", "/pause"} else answer
 
 
-async def session(settings):
+async def session(settings, *, debug=False):
     settings.prepare()
     if not settings.api_key.get_secret_value():
         raise ValueError("Set OPENAI_API_KEY in .env.local before starting.")
-    workspace = BrowserWorkspace(settings.artifact_dir / "profiles")
+    browser = PlaywrightCLI(settings)
+    ui = TerminalUI(console, debug=debug)
+    terminal = Terminal()
     try:
-        console.print(
-            "Browser workspace ready. Enter a task, or /exit to close. Choose or launch a browser from the task."
-        )
+        # The official CLI keeps an interactive session in its own process.
+        # Start and close it in this same owning task; individual model runs
+        # only reset the private evidence cache and reuse the visible profile.
+        await browser.start()
+        ui.welcome()
         while True:
             try:
-                task = (await asyncio.to_thread(input, "Task: ")).strip()
+                task = (await terminal.read("Task: ", erase_when_done=True)).strip()
             except EOFError:
                 break
             if task == "/exit":
                 break
             if not task:
                 continue
-            result = await run_task(
-                settings,
-                task,
-                workspace,
-                responder=human,
-                console=console,
-                raise_on_cancel=True,
+            ui.user(task)
+            result = await terminal.run(
+                run_task(
+                    settings,
+                    task,
+                    browser,
+                    responder=partial(human, read=terminal.read, ui=ui),
+                    console=console,
+                    raise_on_cancel=True,
+                    debug=debug,
+                    ui=ui,
+                )
             )
-            console.print(
-                Panel(json.dumps(result, ensure_ascii=False, indent=2), title="RESULT"),
-                markup=False,
-            )
+            if result is None:
+                result = {
+                    "status": "partial",
+                    "summary": "Task stopped. The browser remains open. An action already sent to the browser may have taken effect; inspect it before retrying.",
+                    "remaining": [],
+                }
+            ui.result(result)
     finally:
-        await workspace.close()
+        ui.close()
+        terminal.close()
+        await browser.close()
 
 
 @app.command()
-def main():
+def main(
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Show selected diagnostic events while keeping full artifacts private.",
+    ),
+):
     """Open the browser workspace and enter tasks. No startup browser is chosen."""
     try:
-        asyncio.run(session(Settings.load()))
+        settings = Settings.load()
+        asyncio.run(session(settings, debug=debug))
     except (KeyboardInterrupt, EOFError, asyncio.CancelledError):
         pass
     except (BrowserError, OSError, ProviderFailure, RuntimeError, ValueError) as exc:
-        console.print(
-            f"Session stopped ({type(exc).__name__}). Check configuration and close any other process using the browser profile.",
-            markup=False,
-        )
+        if isinstance(exc, ValueError) and "OPENAI_API_KEY" in str(exc):
+            console.print(
+                "Set OPENAI_API_KEY in .env.local before starting.", markup=False
+            )
+            if debug:
+                console.print(f"Session stopped ({type(exc).__name__}).", markup=False)
+        elif debug:
+            console.print(f"Session stopped ({type(exc).__name__}).", markup=False)
+        else:
+            console.print(
+                "Could not start the browser agent session. Check configuration and browser availability.",
+                markup=False,
+            )
         raise typer.Exit(1) from None

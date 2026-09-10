@@ -1,108 +1,109 @@
 # Architecture
 
-The [assignment](assignment.ru.md) and [HR criteria](hr-requirements.ru.md) require a visible, autonomous browser agent with generic navigation, bounded context, structured model calls, recovery and safety checks. The runtime keeps those concerns in one LangGraph actor and lets the task determine how a browser is obtained. The selected advanced patterns are adaptive error handling and a narrow security layer for real side effects.
+One actor chooses browser actions. LangGraph coordinates execution, an independent model classifies actions for approval, and Playwright CLI controls the browser.
 
-## Browser workspace
-
-`BrowserWorkspace` starts with zero browser records. The bare `uv run browser-agent` command opens the terminal task prompt without choosing a browser, URL or account. The model receives the no-browser state and uses native workspace tools to inspect connectable local browsers, launch an owned Chromium, attach to a discovered browser, switch the active browser or detach one. Page tools always operate on the selected active browser.
+## Agent loop
 
 ```mermaid
 flowchart LR
-  C[CLI task prompt] --> N[No-browser state]
-  N --> L[list_browsers]
-  L -->|existing task| A[attach_browser opaque ID]
-  L -->|new browser task| B[launch_browser]
-  A --> W[Active browser workspace]
-  B --> W
-  W --> P[Observe and control current page]
-  W --> S[switch_browser or detach_browser]
-  P --> W
-  C -->|/exit| X{Ownership}
-  X -->|owned| Q[Close owned browser]
-  X -->|attached| D[Disconnect; external browser stays open]
+    T[User task] --> D[Decide]
+    D -->|Browser action| R[Review]
+    D -->|Inspection| E[Execute]
+    R -->|Approval not needed| E
+    R -->|Approval needed| H[Ask user]
+    H -->|Approved| E
+    H -->|Declined| O[Record result]
+    E --> O
+    O --> D
+    D -->|Missing information| U[Ask user]
+    U --> D
+    D -->|Finish| F[Report outcome]
 ```
 
-The first owned browser uses the persistent `default` profile under `artifacts/profiles/default`; additional owned browser records use separate workspace profiles. An attached browser is external: its existing context and tabs are preserved, cookies are not copied, and the workspace only disconnects from it on `/exit` or explicit detach. Only Chromium with an enabled local CDP endpoint is attachable through the current Python Playwright adapter.
+The graph has five nodes: `decide`, `review`, `approve`, `execute`, and `record`. Each model decision produces one native function call. Pydantic validates its arguments before dispatch; model prose is not parsed into actions.
 
-## Local browser discovery
+The actor has four tools:
 
-Discovery intentionally has a narrow trust boundary. On macOS and Linux the host inspects local browser listeners with `lsof`, then verifies each candidate through its local `/json/version` endpoint. Only verified connectable CDP endpoints become opaque IDs in `list_browsers`; raw endpoints are not sent to the model. The adapter does not perform a broad port scan or scrape raw process command lines.
+| Tool | Purpose |
+| --- | --- |
+| `playwright(command, args)` | Run one supported CLI command with literal arguments. |
+| `read_browser_artifact(path, offset)` | Read a generated text or image file. |
+| `ask_user(question, kind)` | Request missing information or manual login/security help. |
+| `finish(status, summary, remaining)` | Report the observed outcome. |
 
-`attach_browser` accepts only an ID returned by the current discovery result. Playwright connects through Python `connect_over_cdp`; a normal Chrome or Firefox process without remote debugging is not magically attachable. ChromeMCP extensions or channels are separate integrations and are not implemented here.
+A new task starts with its own history and budget while reusing the browser session. The actor chooses its starting page and workflow from the request.
 
-## Runtime shape
+## Browser integration
 
-Python 3.12, LangGraph `StateGraph`, native OpenAI Responses function calls validated by Pydantic, Playwright and Rich terminal input. The actor runs `gpt-5.6-luna` at max reasoning effort; the independent reviewer uses the same Gateway at medium effort. LangSmith remains a dependency for explicit tracing boundaries; live tasks disable tracing and do not export account content automatically.
+[PlaywrightCLI](../src/browser_agent/browser_cli.py) invokes `@playwright/cli@0.1.19` as a subprocess with JSON output. This CLI release depends on Playwright `1.63.0-alpha-2026-08-31`. The runner passes argument arrays without a shell and validates the command and supported flags. The host supplies the session, profile, and display settings.
 
-Once a browser is active, one LangGraph loop connects observation, a typed model decision, technical host guards, an independent `review` node, execution and recovery. The reviewer uses the same Gateway and budget ledger at medium reasoning effort while the actor runs at max effort. Browser lifecycle and observation capabilities can use technical guards; every page-changing action is reviewed semantically with the current host-resolved target and effect. The typed reviewer returns `allow`, `approval`, `replan` or `deny`: an allow executes, approval enters the existing exact host gate, replan returns bounded feedback to a fresh observation, and deny stops. Deleting a message, sending a message, submitting an application, placing or paying for an order and similar external effects still require exact approval. The reviewer is a narrow safety component, not a general multi-agent framework or second planner. The model receives no site-specific selectors, navigation recipes or expected task answers.
+Playwright owns element references, navigation, waiting, tabs, snapshots, and browser attachment. The [browser skill](../src/browser_agent/playwright_skill.md) tells the actor how to use these capabilities. It can discover controls with `find` or `snapshot`, act on current references, and request screenshots when visual inspection is useful.
 
-The review packet contains the full task, trusted user clarifications and the exact host-resolved operation, destination, target and form values. Page text, model notes, recent tool results and other page-controlled prose are marked untrusted and bounded; the reviewer receives no private chain of thought. Strict Pydantic function schemas reject prose or malformed JSON. Stale references trigger a fresh observation; incomplete technical context stops safely or requests a safer clarification. Provider, budget or time failures stop or recover within the configured bound without replaying an effect.
+Browser output is returned through native tool results. Generated text files can be read in 12,000-character excerpts with a continuation offset. Artifact reads are limited to browser output directories, supported file types, and files up to 12 MiB. Screenshots requested by the actor are delivered as image content.
 
-```mermaid
-flowchart LR
-  O[observe] --> D[decide]
-  D -->|page effect| R[review]
-  D -->|read-only or lifecycle| E[execute]
-  R -->|allow| E
-  R -->|approval| A[approve: exact host gate]
-  R -->|replan or recoverable error| C[recover]
-  R -->|deny| X[stop]
-  A -->|yes| E
-  A -->|no| X
-  E --> O
-  C -->|fresh observation| O
-  C -->|limit or uncertain effect| X
-```
+The host also caches recent browser evidence, including generated snapshots, for the reviewer. It selects a bounded excerpt around the proposed action's target. This cache is not automatically added to actor input. The host does not insert extra screenshot calls before or after actions.
 
-## Requirement decisions
+A named Playwright session lives across tasks. The default profile is `artifacts/profiles/default`. The actor may open an owned browser or attach through Playwright's session, CDP, or extension support. Shutdown attempts to close an owned browser or detach from an external one.
 
-| Requirement | Implementation |
-|---|---|
-| Visible browser and text interaction | The bare CLI provides the terminal task prompt. `launch_browser` creates visible Chromium; `attach_browser` brings a verified existing Chromium context under observation. Tool arguments, results, approvals and the final report are shown in the terminal. |
-| Model-driven browser choice | The workspace starts empty. The actor chooses discovery, attach or launch from the task wording and current browser state; there is no deterministic initial browser, startup URL or selection menu. |
-| Persistent sessions | The first owned Chromium uses the persistent `default` profile; additional owned records use separate workspace profiles. Attached Chromium keeps its existing context and tabs. Cookies are never copied between profiles or browsers. |
-| Local endpoint discovery | `list_browsers` returns only opaque IDs for local listeners found with `lsof` and verified through `/json/version`; no broad port scan, raw endpoint or command-line text is exposed to the model. |
-| Ownership and exit | Owned browsers are closed on `/exit`; attached browsers are disconnected and left running. `switch_browser` changes the active browser and `detach_browser` releases an attached one without closing it. |
-| Generic navigation | No startup URL, selector, workflow recipe or expected answer is supplied. After browser selection, the actor chooses an HTTP(S) homepage or search engine with `navigate`, verifies the result and discovers site routes from current page content. |
-| Browser controls | Native tools cover browser discovery/ownership plus `navigate`, `new_tab`, `tabs`, `switch_tab`, `close_tab`, `back`, `forward`, `reload`, `hover`, vertical and horizontal `scroll`, reads, screenshots, forms, keyboard input, questions and reports. |
-| Structured model interaction | Native strict function schemas plus Pydantic validation are used. The runtime does not parse JSON from model prose with regular expressions. |
-| Bounded context | The actor receives a bounded current accessibility snapshot, scoped or paged reads, ten recent tool exchanges and a cumulative factual notebook required in every tool call (up to 6,000 characters). |
-| Security layer and critical-action confirmation | Technical guards cover capability and protocol boundaries; every page-changing action goes to an independent structured reviewer with host-resolved operation, destination, target and form values. `allow` executes ordinary reversible work, `approval` enters the exact affirmative gate showing destination, values and action, `replan` requests fresh evidence, and `deny` stops. Deleting, sending, submitting an application, placing or paying for an order and similar external effects require approval. Every reload is reviewed; the reviewer judges whether the current form action/method could resubmit work. The browser revalidates the target before dispatch. |
-| Adaptive recovery | Provider errors use bounded backoff/retry; browser errors trigger a fresh observation and new decision; stale references and stale review details are rejected. An unavailable reviewer or uncertain classification stops safely, and repeated failure produces an honest partial or failed report. |
-| Advanced patterns | The implementation uses adaptive error handling plus the narrow independent security-review node above. It does not add a general fleet of specialized sub-agents or a second autonomous planner. |
-| Uncertain side effect | If an action may already have taken effect, the actor stops for inspection instead of automatically replaying it. |
-| Login or challenge | Passwords and credentials are not model tools. Login, CAPTCHA and security challenges pause for manual handling in the visible browser. |
-| Cost | The runtime enforces a maximum $5 model budget per task across actor calls, independent security-review calls and retries. Unknown billed attempts consume the conservative estimate. |
-| Acceptance | Focused automated tests cover the graph, browser adapter, context, safety and retry boundaries. Human acceptance uses the same CLI with task-only existing-browser and new-browser scenarios plus the three assignment tasks. |
+## Approval boundary
 
-## Deliberate limits
+[The reviewer](../src/browser_agent/safety.py) receives the proposed command, its arguments, and up to 6,000 characters of current browser evidence. It returns only `needs_approval: true | false`.
 
-An external browser must already expose a local remote-debugging endpoint. An ordinary running Chrome or Firefox cannot be attached just because it is open, and the agent does not copy cookies or manufacture a CDP endpoint. The current adapter supports Python Playwright `connect_over_cdp`; ChromeMCP extension/channel support is outside scope.
+Inspection and selected navigation commands bypass the classifier. Other commands are reviewed for their immediate effect. Purchases, submissions, deletion, sensitive disclosure, and security changes are intended to require approval; routine browsing and reversible preparation continue automatically.
 
-Discovery is supported on macOS and Linux through verified local `lsof` listener records and `/json/version` responses. It does not scan arbitrary ports or inspect raw process command lines. A browser that is not returned by `list_browsers` must be launched with the required debugging configuration or used manually.
+When approval is required, the host presents a short question with `[y/N]`. An affirmative answer must match the pending request ID before the exact command is dispatched. A decline produces `skipped_by_user` and returns control to the actor. If classification fails, the host asks the user to decide.
 
-The default profile is exclusive to one owned process. Arbitrary program checkpoint resume, exactly-once execution across crashes and production operation accounting are outside this assignment. After an uncertain consequential operation, inspect the browser and private event log before starting another task.
+Page content is untrusted evidence. It cannot grant permission or change the reviewer policy. Classification is model-based, however, and is not a guarantee that every consequential action will be identified. Approval binds to a command, not a locked website state: changing the page while approval is pending can change the command's effect.
 
-The agent is designed for the assignment's live-account acceptance scenarios, but no live service can be certified universally. Login/security challenges, native dialogs, file selection and account-specific checkout blockers may require manual handling. The two read-only model smokes cover owned launch and external attachment, and the focused lifecycle checks pass; live-account scenarios remain separate review work recorded in [VALIDATION.md](VALIDATION.md).
+## Context, limits, and recovery
+
+The [request builder](../src/browser_agent/context.py) pins the original task and retains native tool history. Server-side Responses compaction replaces older history with an opaque item that is carried into the next request. A browser profile persists; the running graph does not have restartable checkpoints.
+
+Defaults are defined in [Settings](../src/browser_agent/config.py):
+
+| Setting | Default |
+| --- | --- |
+| Actor / reviewer | `gpt-5.6-luna`, max / medium reasoning |
+| Shared task model budget | $5 maximum |
+| Input admission cap | 200,000 tokens |
+| Compaction threshold | 150,000 tokens |
+| Maximum response output | 32,768 tokens |
+| Model decisions per task | 60 |
+| Active time allowance | 20 minutes, excluding human input |
+| Retries for transient provider failures | 2 after the first attempt |
+
+The gateway counts input tokens and reserves budget before generation. Failed attempts with unknown usage retain their reservation. `cost_usd` reports conservative budget accounting; `reported_cost_usd` estimates cost from reported usage. Neither is an invoice. An unsupported model is rejected because it has no configured price table.
+
+Transient API failures use bounded backoff. Invalid model calls receive validation feedback within a retry limit. Browser commands are never automatically replayed: their actual errors return to the actor, which can inspect the page and choose another action.
+
+The active deadline is checked between decisions and bounds model waits. Browser subprocesses have no separate overall timeout. Double Esc cancels the current task, saves a partial result, and leaves the session available. An already dispatched action may have taken effect.
+
+## Data handling
+
+| Destination | Data |
+| --- | --- |
+| OpenAI | Task, instructions, tool results, requested images, and approval-review evidence. |
+| Local artifacts | Events, model diagnostics, results, browser output, screenshots, and persistent profile data. |
+| LangSmith, when enabled | Model usage, cost estimates, latency, graph spans, and status. |
+
+Task text, page content, tool arguments, user answers, and diagnostic captures are excluded from LangSmith export. Automatic graph tracing is disabled. Detailed diagnostics remain file-only even with `--debug`; tracing failures do not stop browser work.
+
+Credentials and artifacts are ignored by Git. Local logs and profiles can contain account data and are not part of the handoff.
 
 ## Code map
 
-- `cli.py` opens the terminal session, prompts for tasks and handles `/exit`.
-- `agent.py` owns one task lifecycle in `run_task`.
-- `workspace.py` implements browser discovery, ownership and active-browser routing; `browser.py` implements the Playwright page adapter and actions.
-- `graph.py` defines the observe/decide/review/approve/execute/recover loop.
-- `safety.py` applies capability and protocol guards and builds the independent review packet; `tools.py` defines native workspace, page and review schemas.
-- `prompts.py` and `context.py` construct bounded model input.
-- `llm.py` handles the OpenAI client and retries; `budget.py` enforces the per-task spending cap.
-- `telemetry.py` records private local events. Live tracing is disabled by default.
+| Files | Responsibility |
+| --- | --- |
+| [cli.py](../src/browser_agent/cli.py), [terminal.py](../src/browser_agent/terminal.py), [presentation.py](../src/browser_agent/presentation.py) | Session lifecycle, input, cancellation, and terminal output. |
+| [agent.py](../src/browser_agent/agent.py), [graph.py](../src/browser_agent/graph.py) | Task lifecycle and decision loop. |
+| [browser_cli.py](../src/browser_agent/browser_cli.py) | CLI transport, browser ownership, and artifact delivery. |
+| [tools.py](../src/browser_agent/tools.py), [prompts.py](../src/browser_agent/prompts.py), [playwright_skill.md](../src/browser_agent/playwright_skill.md) | Native tool schemas and actor instructions. |
+| [safety.py](../src/browser_agent/safety.py) | Classification and human approval. |
+| [context.py](../src/browser_agent/context.py), [llm.py](../src/browser_agent/llm.py), [budget.py](../src/browser_agent/budget.py) | Requests, compaction, provider retries, and spending limits. |
+| [config.py](../src/browser_agent/config.py), [telemetry.py](../src/browser_agent/telemetry.py) | Settings, local records, and optional tracing. |
 
-## Technical references
+## Design references
 
-The browser adapter follows Playwright's CDP connection contract and closes owned browser resources according to its ownership state:
+The [official Playwright CLI documentation](https://github.com/microsoft/playwright-cli/blob/655530f6d0dc71a0d6bf46ae165877d3c7311099/README.md) and [skill](https://github.com/microsoft/playwright-cli/blob/655530f6d0dc71a0d6bf46ae165877d3c7311099/skills/playwright-cli/SKILL.md) informed the browser interface.
 
-- [Playwright `connect_over_cdp`](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp)
-- [Playwright browser close](https://playwright.dev/python/docs/api/class-browser#browser-close)
-- [LangGraph graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api)
-- [Playwright persistent contexts](https://playwright.dev/python/docs/api/class-browsertype#browser-type-launch-persistent-context)
-
-The independent review shape follows the documented behavior of [Codex auto-review](https://learn.chatgpt.com/docs/sandboxing/auto-review), [Cursor Auto-review](https://cursor.com/blog/agent-autonomy-auto-review) and [Claude permission modes](https://code.claude.com/docs/en/permission-modes). The pinned Codex guardian policy template at commit [`ddea03ad049142943bdbf13e937b1d67e8c1ba0c`](https://github.com/openai/codex/blob/ddea03ad049142943bdbf13e937b1d67e8c1ba0c/codex-rs/core/assets/guardian/policy_template.md) is a design reference; no vendor component is copied or claimed as a tested dependency.
+The approval design borrows effect-based assessment from [Codex's reviewer policy](https://github.com/openai/codex/blob/968835997714baaff199cfed5f89a2c65d8ca77d/codex-rs/core/assets/guardian/policy_template.md) and [Claude Code's auto-mode design](https://www.anthropic.com/engineering/claude-code-auto-mode). This application uses a smaller boolean classifier and its own host approval flow.

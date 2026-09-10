@@ -1,69 +1,69 @@
-"""Small LangGraph: observe, one actor, bounded review, exact approval, execute.
+"""LangGraph orchestration for one Playwright CLI actor."""
 
-State lives only for this run. The private security review has no browser tools,
-and browser effects are never retried by the executor.
-"""
+from __future__ import annotations
 
 import asyncio
-import base64
+import json
 import time
-from dataclasses import replace
-from pathlib import Path
+from contextlib import nullcontext
 from typing import Any, TypedDict
 from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
-from .browser import BrowserError
+from .browser_cli import BrowserError
 from .budget import BudgetExceeded
-from .context import HISTORY_MESSAGES, ContextOverflow, build_request
-from .llm import ProviderFailure
+from .context import ContextOverflow, build_request
+from .llm import ProviderFailure, extract_compaction
 from .safety import (
-    SecurityReviewError,
-    assess,
+    approval_question,
     parse_security_review,
-    security_review_complete,
+    review_required,
     security_review_request,
 )
+from .telemetry import diagnostic_span
 from .tools import ProtocolError, parse_call, protocol_pair
 
 
 class State(TypedDict, total=False):
-    observation: dict
     history: list
-    clarifications: list
-    notebook: str
+    compaction: dict | None
     steps: int
     failures: int
     feedback: str
     route: str
     call: dict
     metadata: dict
-    assessment: Any
-    read_args: dict
+    approval_fallback: str
+    approval_granted: bool
     pending_result: dict
-    image: str | None
-    error: dict
     result: dict
 
 
-def human_gate(observation):
-    title = str(observation.get("title", "")).lower()
-    text = str(observation.get("text", "")).lower()
-    if any(
-        phrase in title for phrase in ("captcha", "security challenge", "access denied")
-    ) or any(
-        phrase in text
-        for phrase in (
-            "verify you are human",
-            "checking your browser",
-            "complete the security check",
-        )
-    ):
-        return "challenge"
-    if "[password redacted]" in text or "sign in to continue" in text:
-        return "login"
-    return None
+def _model_failure_summary(exc):
+    if isinstance(exc, BudgetExceeded):
+        return "I reached the task's model budget before completing the request."
+    if isinstance(exc, ContextOverflow):
+        return "The task history exceeded the model input limit; start a new task to continue."
+    if isinstance(exc, TimeoutError):
+        return "I did not receive a model decision before the task timeout."
+    return "I could not get a usable model response; the browser remains open."
+
+
+def _browser_error_result(call, exc):
+    if hasattr(exc, "as_dict"):
+        error = exc.as_dict()
+    else:
+        error = {"code": type(exc).__name__, "message": str(exc)}
+    return {
+        "status": "error",
+        "tool": call.get("name"),
+        "error": error,
+        "instruction": (
+            "The browser command was not replayed. Inspect this actual error and current "
+            "browser output before choosing another command."
+        ),
+    }
 
 
 class AgentGraph:
@@ -75,32 +75,39 @@ class AgentGraph:
 
     def compile(self):
         graph = StateGraph(State)
-        for name in ("observe", "decide", "review", "approve", "execute", "recover"):
-            graph.add_node(name, getattr(self, name))
-        graph.add_edge(START, "observe")
-        for name in ("observe", "decide", "review", "approve", "execute", "recover"):
+        for name in ("decide", "review", "approve", "execute", "record"):
+            graph.add_node(name, self.traced_node(name))
+        graph.add_edge(START, "decide")
+        routes = {"decide", "review", "approve", "execute", "record"}
+        for name in routes:
             graph.add_conditional_edges(
                 name,
                 lambda state: state["route"],
-                {
-                    key: key
-                    for key in (
-                        "observe",
-                        "decide",
-                        "review",
-                        "approve",
-                        "execute",
-                        "recover",
-                    )
-                }
-                | {"end": END},
+                {route: route for route in routes} | {"end": END},
             )
         return graph.compile()
 
+    def traced_node(self, name):
+        async def invoke(state):
+            context = (
+                self.emit.span(name, step=state.get("steps", 0))
+                if hasattr(self.emit, "span")
+                else nullcontext()
+            )
+            with context:
+                return await getattr(self, name)(state)
+
+        return invoke
+
     @staticmethod
-    def stop(summary, status="partial", question=None):
-        result = {"status": status, "summary": summary, "remaining": [summary]}
-        if question:
+    def stop(summary, status="partial", question=None, **extra):
+        result = {
+            "status": status,
+            "summary": summary,
+            "remaining": [summary],
+            **extra,
+        }
+        if question is not None:
             result["question"] = question
         return {"route": "end", "result": result}
 
@@ -109,410 +116,256 @@ class AgentGraph:
         if self.responder is None:
             return None
         started = time.monotonic()
-        answer = await self.responder(question)
-        self.deadline += time.monotonic() - started  # Human time is not active runtime.
-        return answer
-
-    async def security_review(self, action, metadata, assessment, state):
-        """Ask the same budgeted gateway for one structured, tool-free review."""
-        request = security_review_request(
-            self.task,
-            action,
-            metadata,
-            assessment,
-            state.get("clarifications", []),
-            state.get("history", []),
-        )
-        remaining = self.deadline - time.monotonic()
-        if remaining <= 0:
-            raise SecurityReviewError(
-                "security_review_timeout", "Security review deadline reached", terminal=True
-            )
         try:
-            response = await asyncio.wait_for(
-                self.gateway.call(request, purpose="security"),
-                timeout=remaining,
-            )
-            return parse_security_review(response)
-        except SecurityReviewError:
-            raise
-        except BudgetExceeded as exc:
-            raise SecurityReviewError(
-                "budget_exceeded",
-                "Security review reached the shared task budget",
-                terminal=True,
-            ) from exc
-        except ContextOverflow as exc:
-            raise SecurityReviewError(
-                "security_review_context_overflow",
-                "Security review context exceeded the shared input limit",
-                terminal=True,
-            ) from exc
-        except (ProviderFailure, TimeoutError) as exc:
-            code = (
-                "security_review_timeout"
-                if isinstance(exc, TimeoutError)
-                else "security_review_failed"
-            )
-            raise SecurityReviewError(
-                code,
-                "Security review could not complete",
-                terminal=isinstance(exc, TimeoutError),
-            ) from exc
-        except Exception as exc:
-            raise SecurityReviewError(
-                "security_review_failed", "Security review failed before dispatch"
-            ) from exc
+            return await self.responder(question)
+        finally:
+            # Human time does not consume the active task deadline.
+            self.deadline += time.monotonic() - started
 
-    async def review(self, state):
-        """Apply the independent review result before any browser dispatch."""
-        metadata, assessment = state["metadata"], state["assessment"]
-        if not security_review_complete(metadata):
-            return {
-                "route": "recover",
-                "error": {
-                    "code": "incomplete_security_review_context",
-                    "message": "Security review context was truncated; choose a fresh target",
-                    "uncertain": False,
-                },
-            }
-        try:
-            review = await self.security_review(
-                {"tool": state["call"]["name"], "args": state["call"]["arguments"]},
-                metadata,
-                assessment,
-                state,
-            )
-        except SecurityReviewError as exc:
-            if exc.terminal:
-                return {
-                    "route": "end",
-                    "result": {
-                        "status": "partial",
-                        "summary": "Security review stopped: " + exc.message,
-                        "remaining": ["Review the browser state before retrying."],
-                        "error": exc.as_dict(),
-                    },
-                }
-            return {"route": "recover", "error": exc.as_dict()}
-        self.emit(
-            "security_review",
-            {
-                "step": state.get("steps", 0),
-                "decision": review["decision"],
-                "reason": review["reason"][:500],
-            },
-        )
-        decision = review["decision"]
-        if decision == "deny":
-            return self.stop(
-                "The independent security review denied this action.",
-                "needs_user",
-                {"kind": "clarification", "question": review["reason"]},
-            )
-        if decision == "replan":
-            return {
-                "route": "recover",
-                "error": {
-                    "code": "security_replan",
-                    "message": review["reason"],
-                    "uncertain": False,
-                },
-            }
-        reviewed = replace(
-            assessment,
-            classification=(
-                "consequential" if decision == "approval" else "ordinary"
-            ),
-            reason=(
-                "Confirm this exact action after independent security review"
-                if decision == "approval"
-                else "Independent security review classified this as ordinary"
-            ),
-            requires_review=False,
-        )
-        return {
-            "route": "approve" if reviewed.requires_approval else "execute",
-            "assessment": reviewed,
-        }
+    @staticmethod
+    def _pending_history(state):
+        history = list(state.get("history", []))
+        pending = state.get("pending_result")
+        call = state.get("call")
+        if pending is not None and call:
+            history.extend(protocol_pair(call, pending))
+        return history
 
-    def append_result(self, state, result):
-        history = [
-            item
-            for item in state.get("history", [])
-            if item.get("call_id") != state["call"]["call_id"]
-        ]
-        history += protocol_pair(state["call"], result)
-        return history[-HISTORY_MESSAGES:]
+    def _evidence(self):
+        evidence = getattr(self.browser, "evidence", "")
+        if isinstance(evidence, (dict, list)):
+            return json.dumps(evidence, ensure_ascii=False)
+        return str(evidence or "")
 
-    async def observe(self, state):
-        try:
-            observation = await self.browser.observe(**state.get("read_args", {}))
-            self.emit("observe", observation)
-            gate = human_gate(observation)
-            if gate:
-                question = {
-                    "kind": gate,
-                    "question": "Complete the login/security check manually in the browser, then reply ready.",
-                }
-                answer = await self.ask(question)
-                if answer is None:
-                    return self.stop(question["question"], "needs_user", question) | {
-                        "observation": observation
-                    }
-                observation = await self.browser.observe()
-                self.emit("observe", observation)
-                if human_gate(observation):
-                    return self.stop(
-                        "The login/security check is still present.",
-                        "needs_user",
-                        question,
-                    ) | {"observation": observation}
-            updates = {"observation": observation, "read_args": {}, "route": "decide"}
-            if state.get("pending_result") is not None:
-                result = state["pending_result"] | {
-                    "observation_id": observation["id"],
-                    "url": observation.get("url"),
-                    "title": observation.get("title"),
-                    "requires_observation": False,
-                    "observed_excerpt": observation.get("text", "")[:1200],
-                    "excerpt_truncated": len(observation.get("text", "")) > 1200,
-                }
-                self.emit(
-                    "tool_result",
-                    {
-                        "tool": state["call"]["name"],
-                        "step": state["steps"],
-                        "result": result,
-                    },
-                )
-                updates.update(
-                    history=self.append_result(state, result),
-                    pending_result=None,
-                    feedback="Action/read result observed; inspect the current page before choosing the next action.",
-                )
-            return updates
-        except BrowserError as exc:
-            error = exc.as_dict()
-            if (state.get("pending_result") or {}).get("status") == "executed":
-                error["uncertain"] = True
-            return {"route": "recover", "error": error, "read_args": {}}
+    def _instructions(self):
+        return str(getattr(self.browser, "instructions", "") or "")
 
     async def decide(self, state):
-        if (
-            state.get("steps", 0) >= self.settings.max_decisions
-            or time.monotonic() >= self.deadline
-        ):
-            return self.stop(
-                "Step or active-time limit reached; remaining work was not completed."
-            )
-        step = state.get("steps", 0) + 1
+        steps = state.get("steps", 0)
+        if steps >= self.settings.max_decisions or time.monotonic() >= self.deadline:
+            return self.stop("I reached the task's step or time limit before completing the request.")
+        step = steps + 1
         self.steps = step
-        request = build_request(
-            self.task,
-            state["observation"],
-            state.get("notebook", ""),
-            state.get("history", []),
-            state.get("image"),
-            state.get("feedback", ""),
-        )
-        try:
-            response = await asyncio.wait_for(
-                self.gateway.call(request),
-                timeout=max(0.1, self.deadline - time.monotonic()),
+        history = self._pending_history(state)
+        pending = state.get("pending_result")
+        if pending is not None:
+            self.emit(
+                "tool_result",
+                {
+                    "tool": state.get("call", {}).get("name"),
+                    "step": steps,
+                    "result": pending,
+                    "user_decision": "approved" if state.get("approval_granted") else None,
+                },
             )
-            call = parse_call(response)
+        try:
+            async with diagnostic_span(self.emit, "actor_request_build", step=step) as diagnostic:
+                request = build_request(
+                    self.task,
+                    self._evidence(),
+                    history,
+                    feedback=state.get("feedback", ""),
+                    instructions=self._instructions(),
+                    compaction=state.get("compaction"),
+                    compact_threshold=self.settings.compact_threshold,
+                )
+                diagnostic["status"] = "ok"
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("task deadline reached")
+            async with diagnostic_span(self.emit, "actor_call", step=step) as diagnostic:
+                response = await asyncio.wait_for(self.gateway.call(request), timeout=remaining)
+                diagnostic["status"] = "returned"
+            async with diagnostic_span(self.emit, "actor_parse", step=step) as diagnostic:
+                call = parse_call(response)
+                diagnostic.update(status="ok", call_id=call.get("call_id"))
         except (BudgetExceeded, ContextOverflow, ProviderFailure, TimeoutError) as exc:
-            return self.stop(
-                str(exc) or "Model call exceeded the active-time limit."
-            ) | {"steps": step}
+            return self.stop(_model_failure_summary(exc)) | {"steps": step}
         except ProtocolError as exc:
             failures = state.get("failures", 0) + 1
+            self.emit(
+                "recovery",
+                {"step": step, "code": "invalid_model_response", "message": str(exc)},
+            )
             if failures > self.settings.max_retries:
-                return self.stop(str(exc)) | {"steps": step}
+                return self.stop("I could not get a valid action from the model.") | {
+                    "steps": step,
+                    "failures": failures,
+                }
             return {
                 "route": "decide",
                 "steps": step,
                 "failures": failures,
                 "feedback": str(exc),
-                "image": None,
+                "history": history,
+                "pending_result": None,
             }
-        tool, args = call["name"], call["arguments"]
-        self.emit(
-            "tool_proposed",
-            {
-                "step": step,
-                "tool": tool,
-                "arguments": args,
-                "notebook": call["notebook"],
-            },
-        )
-        updates = {
+
+        updates: dict[str, Any] = {
             "call": call,
             "steps": step,
-            "image": None,
             "feedback": "",
-            "notebook": call["notebook"],
+            "pending_result": None,
+            "approval_fallback": "",
+            "approval_granted": False,
+            "history": history,
         }
-        current = state | updates
+        compaction = extract_compaction(response)
+        if compaction is not None:
+            updates["compaction"] = compaction
+            updates["history"] = []
+        tool, args = call["name"], call["arguments"]
+        self.emit("tool_proposed", {"step": step, "tool": tool, "arguments": args})
+
         if tool == "finish":
             if args["status"] == "completed" and args["remaining"]:
                 return updates | {
                     "route": "decide",
-                    "feedback": "A completed report cannot contain unmet requested work. Use partial or complete that work.",
+                    "feedback": "A completed report cannot contain unmet requested work; use partial.",
                 }
-            return updates | {
-                "route": "end",
-                "result": args | {"details": call["notebook"]},
-            }
+            return updates | {"route": "end", "result": args}
+
         if tool == "ask_user":
             answer = await self.ask(args)
             if answer is None:
                 return updates | self.stop(args["question"], "needs_user", args)
-            clarifications = list(state.get("clarifications", []))
-            clarifications.append(
-                {
-                    "question": str(args["question"]),
-                    "answer": str(answer),
-                }
-            )
+            result = {"status": "answered", "answer": str(answer)[:6000]}
+            self.emit("tool_result", {"tool": tool, "step": step, "result": result})
             return updates | {
-                "route": "observe",
-                "history": self.append_result(current, {"answer": str(answer)[:6000]}),
-                "clarifications": clarifications[-12:],
-                "failures": 0,
+                "route": "decide",
+                "history": list(updates.get("history", [])) + protocol_pair(call, result),
             }
-        if tool == "read":
+
+        metadata = {
+            "evidence": self._evidence(),
+            "url": getattr(self.browser, "current_url", None) or "",
+        }
+        if review_required(tool, {"args": args}):
             return updates | {
-                "route": "observe",
-                "read_args": args,
-                "pending_result": {"status": "read"},
-            }
-        if tool == "screenshot":
-            try:
-                shot = await self.browser.screenshot()
-                image = (
-                    "data:image/png;base64,"
-                    + base64.b64encode(Path(shot["path"]).read_bytes()).decode()
-                )
-                return updates | {
-                    "route": "decide",
-                    "image": image,
-                    "history": self.append_result(
-                        current,
-                        {
-                            "screenshot": "Current viewport attached to the next request."
-                        },
-                    ),
-                    "failures": 0,
-                }
-            except BrowserError as exc:
-                return updates | {"route": "recover", "error": exc.as_dict()}
-        try:
-            metadata = await self.browser.action_context(
-                tool, args, state["observation"]["id"]
-            )
-            assessment = assess({"tool": tool, "args": args}, metadata)
-            if assessment.forbidden or not assessment.details_complete:
-                question = {"kind": "clarification", "question": assessment.reason}
-                return updates | self.stop(assessment.reason, "needs_user", question)
-            if assessment.requires_review:
-                return updates | {
-                    "route": "review",
-                    "metadata": metadata,
-                    "assessment": assessment,
-                }
-            return updates | {
-                "route": "approve" if assessment.requires_approval else "execute",
+                "route": "review",
                 "metadata": metadata,
-                "assessment": assessment,
             }
-        except BrowserError as exc:
-            return updates | {"route": "recover", "error": exc.as_dict()}
+        return updates | {"route": "execute", "metadata": metadata}
+
+    async def review(self, state):
+        action = {"tool": state["call"]["name"], "args": state["call"]["arguments"]}
+        try:
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("security review deadline reached")
+            async with diagnostic_span(self.emit, "review_request_build", step=state.get("steps", 0)) as diagnostic:
+                request = security_review_request(action, state.get("metadata", {}))
+                diagnostic["status"] = "ok"
+            async with diagnostic_span(self.emit, "reviewer_call", step=state.get("steps", 0)) as diagnostic:
+                response = await asyncio.wait_for(
+                    self.gateway.call(request, purpose="security"), timeout=remaining
+                )
+                diagnostic["status"] = "returned"
+            async with diagnostic_span(self.emit, "reviewer_parse", step=state.get("steps", 0)) as diagnostic:
+                needs_approval = parse_security_review(response)
+                diagnostic.update(status="ok", needs_approval=needs_approval)
+            self.emit("security_review", {"step": state.get("steps", 0), "needs_approval": needs_approval})
+            return {"route": "approve" if needs_approval else "execute"}
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - provider/protocol failures require human fallback
+            fallback = "Automatic safety check unavailable; confirm this action manually."
+            self.emit(
+                "security_review",
+                {
+                    "step": state.get("steps", 0),
+                    "needs_approval": True,
+                    "fallback": fallback,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return {"route": "approve", "approval_fallback": fallback}
 
     async def approve(self, state):
-        call, assessment = state["call"], state["assessment"]
+        action = {"tool": state["call"]["name"], "args": state["call"]["arguments"]}
+        fallback = state.get("approval_fallback", "")
         question = {
             "kind": "approval",
             "request_id": str(uuid4()),
-            "question": assessment.reason,
-            "action": {"tool": call["name"], "args": call["arguments"]},
-            "effect": assessment.effect,
-            "details": assessment.effect,
+            "question": (fallback + " " if fallback else "")
+            + approval_question(action, state.get("metadata", {})),
+            "action": action,
         }
+        if fallback:
+            question["reason"] = fallback
         self.emit("approval_requested", question)
         answer = await self.ask(question)
+        if answer is None:
+            return self.stop(
+                "User approval is required before this browser action.",
+                "needs_user",
+                question,
+                pending_approval=question,
+            )
         approved = (
             isinstance(answer, dict)
             and answer.get("request_id") == question["request_id"]
             and answer.get("approved") is True
         )
-        self.emit(
-            "approval_answer",
-            {"request_id": question["request_id"], "approved": approved},
-        )
+        self.emit("approval_answer", {"request_id": question["request_id"], "approved": approved})
         if not approved:
-            return self.stop(
-                "Exact action approval was not granted; no action was executed.",
-                "needs_user" if answer is None else "partial",
-                question if answer is None else None,
-            )
-        return {"route": "execute"}
+            return {
+                "route": "record",
+                "pending_result": {"status": "skipped_by_user", "tool": action["tool"]},
+                "approval_granted": False,
+            }
+        return {"route": "execute", "approval_granted": True}
 
     async def execute(self, state):
         call = state["call"]
         try:
-            result = await self.browser.execute(
-                call["name"],
-                call["arguments"],
-                state["observation"]["id"],
-                expected_fingerprint=state["metadata"]["fingerprint"],
-            )
-            return {"route": "observe", "pending_result": result, "failures": 0}
+            async with diagnostic_span(
+                self.emit,
+                "browser_execute",
+                step=state.get("steps", 0),
+                tool=call["name"],
+                call_id=call.get("call_id"),
+            ) as diagnostic:
+                result = await self.browser.execute(call["name"], call["arguments"])
+                if not isinstance(result, dict):
+                    result = {"status": "executed", "output": result}
+                diagnostic["status"] = result.get("status", "returned")
+            return {"route": "record", "pending_result": result}
+        except asyncio.CancelledError:
+            raise
         except BrowserError as exc:
-            return {"route": "recover", "error": exc.as_dict()}
+            self.emit(
+                "recovery",
+                {"step": state.get("steps", 0), **_browser_error_result(call, exc)["error"]},
+            )
+            return {"route": "record", "pending_result": _browser_error_result(call, exc)}
 
-    async def recover(self, state):
-        error = state["error"]
-        self.emit("recovery", {"step": state.get("steps", 0), **error})
-        if error.get("uncertain"):
-            return self.stop(
-                "The action may already have taken effect. It will not be repeated; inspect the browser manually.",
-                "needs_user",
-                {
-                    "kind": "clarification",
-                    "question": "Inspect the uncertain action before starting another task.",
-                },
-            )
-        failures = state.get("failures", 0) + 1
-        if failures > self.settings.max_retries or error.get("code") in {
-            "browser_disconnected",
-            "browser_closed",
-            "profile_locked",
-        }:
-            return self.stop(
-                "Browser recovery stopped: "
-                + error.get("message", error.get("code", "unknown error")),
-                "needs_user",
-                {
-                    "kind": "clarification",
-                    "question": "Check the browser and start a fresh task when ready.",
-                },
-            )
-        history = state.get("history", [])
-        if state.get("call"):
-            history = self.append_result(
-                state,
-                {
-                    "error": error,
-                    "instruction": "Observe again and choose a different strategy; no automatic replay.",
-                },
+    async def record(self, state):
+        pending = state.get("pending_result")
+        call = state.get("call")
+        if pending is None or call is None:
+            return {"route": "decide"}
+        self.emit(
+            "tool_result",
+            {
+                "tool": call.get("name"),
+                "step": state.get("steps", 0),
+                "result": pending,
+                "user_decision": "approved" if state.get("approval_granted") else None,
+            },
+        )
+        feedback = (
+            "The host returned the actual browser result. Verify it before choosing the next action."
+        )
+        if isinstance(pending, dict) and pending.get("status") == "error":
+            feedback = (
+                "The browser command returned an actual error. Inspect its reason and current "
+                "browser evidence, then choose a different command; do not replay automatically."
             )
         return {
-            "route": "observe",
-            "failures": failures,
-            "history": history,
+            "route": "decide",
+            "history": self._pending_history(state),
             "pending_result": None,
-            "feedback": "Action failed before confirmed dispatch. Fresh observation follows; reconsider target/strategy. "
-            + error.get("message", ""),
+            "feedback": feedback,
+            "failures": 0,
         }
