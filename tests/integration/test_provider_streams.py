@@ -9,7 +9,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from browser_agent.config import Settings
-from browser_agent.llm import Gateway, ProviderFailure
+from browser_agent.model import ModelClient, ProviderFailure
 
 
 @pytest.mark.parametrize(
@@ -132,11 +132,11 @@ def test_provider_streams_close_before_event_loop_shutdown(outcome):
                     # Cancel while the complete generator chain is at a yield.
                     raise asyncio.CancelledError
 
-        gateway = Gateway(Settings(), client=client, emit=emit)
+        model = ModelClient(Settings(), client=client, emit=emit)
         try:
             for mode in (outcome, outcome, "completed"):
                 first_token.clear()
-                call = asyncio.create_task(gateway.call({"input": mode}))
+                call = asyncio.create_task(model.call({"input": mode}))
                 if mode == "cancel_wait":
                     await asyncio.wait_for(first_token.wait(), 2)
                     # Cancel during a network read, as Ctrl+C/double-Escape do.
@@ -162,7 +162,7 @@ def test_provider_streams_close_before_event_loop_shutdown(outcome):
                 pending = [g.__qualname__ for g in seen if g.ag_frame is not None]
                 assert pending == [], f"Generators left after {mode}: {pending}"
         finally:
-            await gateway.close()
+            await model.close()
             server.close()
             await server.wait_closed()
             await asyncio.wait_for(asyncio.gather(*handlers), 2)

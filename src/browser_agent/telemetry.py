@@ -1,13 +1,17 @@
 """Private local event sink for task runs."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os
 import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager, suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from langsmith import Client, RunTree
@@ -19,13 +23,15 @@ DIAGNOSTIC_INTERVAL_SECONDS = 10.0
 
 
 @asynccontextmanager
-async def diagnostic_span(emit, phase, **context):
+async def diagnostic_span(
+    emit: Callable[[str, dict[str, Any]], None], phase: str, **context: Any
+) -> AsyncIterator[dict[str, Any]]:
     """Record phase progress locally without imposing a deadline on the work."""
     started = time.monotonic()
     phase_id = str(uuid4())
     progress = {}
 
-    def record(state, **extra):
+    def record(state: str, **extra: Any) -> None:
         now = time.monotonic()
         last_event = progress.get("last_event_at_monotonic")
         if isinstance(last_event, (int, float)):
@@ -43,7 +49,7 @@ async def diagnostic_span(emit, phase, **context):
             },
         )
 
-    async def heartbeat():
+    async def heartbeat() -> None:
         previous = time.monotonic()
         while True:
             await asyncio.sleep(DIAGNOSTIC_INTERVAL_SECONDS)
@@ -63,7 +69,9 @@ async def diagnostic_span(emit, phase, **context):
         yield progress
     except BaseException as exc:
         outcome = {
-            "outcome": "cancelled" if isinstance(exc, asyncio.CancelledError) else "error",
+            "outcome": "cancelled"
+            if isinstance(exc, asyncio.CancelledError)
+            else "error",
             "error_type": type(exc).__name__,
             "error_message": str(exc)[:4000],
             "error_code": getattr(exc, "code", None),
@@ -77,22 +85,20 @@ async def diagnostic_span(emit, phase, **context):
 
 
 class Events:
+    """Write private records, render redacted events, and export explicit metrics."""
+
     def __init__(
         self,
         path: Path,
-        console: Console | None = None,
+        console: Console | TerminalUI | None = None,
         *,
         debug: bool = False,
         ui: TerminalUI | None = None,
-    ):
+    ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.file = path.open("a", encoding="utf-8")
         path.chmod(0o600)
-        # Keep accepting the historical ``console`` argument.  A caller can
-        # share a session presenter explicitly; otherwise events get a small
-        # presenter around that Console.  The event payload sent below is
-        # reconstructed from the redacted JSONL string, so UI code never sees
-        # the original private record.
+        # A session can share its presenter. UI events use the redacted record.
         if ui is not None:
             self.ui = ui
             self.console = getattr(ui, "console", console)
@@ -117,7 +123,7 @@ class Events:
             if ("KEY" in k or "TOKEN" in k or "SECRET" in k) and len(v) > 12
         ]
 
-    def __call__(self, event, data):
+    def __call__(self, event: str, data: dict[str, Any]) -> None:
         payload = json.dumps(
             {"time": datetime.now(UTC).isoformat(), "event": event, **data},
             ensure_ascii=False,
@@ -140,10 +146,17 @@ class Events:
         if self.ui is not None:
             self.ui.event(event, record)
 
-    def _trace_error(self, exc):
+    def _trace_error(self, exc: Exception) -> None:
         self("tracing_error", {"error_type": type(exc).__name__})
 
-    def _start_span(self, name, run_type="chain", *, run_id=None, metadata=None):
+    def _start_span(
+        self,
+        name: str,
+        run_type: str = "chain",
+        *,
+        run_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> RunTree | None:
         parent = self.current_span.get() or self.root
         if parent is None:
             return None
@@ -158,7 +171,7 @@ class Events:
         return span
 
     @contextmanager
-    def span(self, name, *, step=0):
+    def span(self, name: str, *, step: int = 0) -> Iterator[None]:
         """Trace a graph node without serializing its browser state or arguments."""
         span = None
         started = time.monotonic()
@@ -192,7 +205,7 @@ class Events:
                 except Exception as exc:  # noqa: BLE001 - export failures must not stop browser work
                     self._trace_error(exc)
 
-    def _trace_event(self, event, data):
+    def _trace_event(self, event: str, data: dict[str, Any]) -> None:
         # Only numeric metrics and host-generated status fields cross this boundary.
         # Never forward task text, page contents, tool arguments, answers or errors.
         if event == "run_started" and self.tracing_enabled:
@@ -301,7 +314,7 @@ class Events:
             }
             self.root.add_event({"name": event, "time": data["time"], "kwargs": safe})
 
-    def close(self):
+    def close(self) -> None:
         if self.ui is not None:
             self.ui.close()
         try:

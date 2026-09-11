@@ -10,6 +10,14 @@ runs `playwright-cli fill e5 Armenia` in the current browser session. Text with
 spaces remains one argument. Each result is the CLI's actual output, not a claim
 that the whole task succeeded.
 
+## Visual-first workflow
+
+Use `screenshot` as the primary view of page state when orienting yourself or resolving
+uncertainty. Use focused DOM inspection to identify controls or read precise text, and choose
+the smallest observation that answers the next question. If text inspection is not advancing,
+switch to visual context. Do not repeatedly request broad snapshots or reread unchanged artifact
+content; reuse the latest useful result and inspect only what changed or what the task requires.
+
 ## Choose the browser
 
 - `list` lists available Playwright sessions.
@@ -36,13 +44,21 @@ Use references from current CLI results. Do not manufacture CSS selectors from
 long labels. If a reference is missing or stale, inspect the current page with
 `find` or `snapshot` and choose an appropriate next action. Do not repeat an
 action whose outcome is uncertain without checking the page first.
+If a click is intercepted, another visible control covers the chosen click point; inspect the
+current visible target or DOM and choose an uncovered target, or use an already observed link
+destination when the intended effect is navigation. Do not force the click.
 
 A scoped snapshot replaces the active reference set. A reference outside that
 scope requires a new full snapshot or `find`; never combine refs from unrelated
-scopes. Snapshot and list responses are previews of controls and page structure,
-not proof of a task outcome. Read focused details or the returned artifact when
-the full content or read/status state matters, then verify the requested outcome
-directly after the relevant action.
+scopes. List rows and labels may summarize controls or content; inspect the
+underlying content when the task depends on it. Read focused details or the
+returned artifact when the full content or read/status state matters, then verify
+the requested outcome directly after the relevant action.
+
+Keep the task's requested set stable across discovery and follow-up work. If the task asks you
+to inspect or classify content, access the underlying content for those same items before calling
+it read; a list row, category, folder, or status is only discovery context. Apply changes only to
+the identified set, and report a partial result when some requested content or effects remain.
 
 The CLI may return a snapshot file path after an action. Use
 `read_browser_artifact` to read a bounded excerpt when its contents are useful;
@@ -50,6 +66,12 @@ continue from `next_offset` only when more content is needed. Use
 `search_browser_artifact` with a literal case-insensitive query to find relevant
 lines in a large snapshot instead of paging through the whole document. Search
 returns bounded excerpts and never refreshes the browser.
+
+Use `eval '(el) => el.innerText' [observed-ref]` for a bounded DOM query; the observed reference
+is optional when the query can answer a page-level question. When a reference is supplied, use
+one observed in the current page. Base targets on observed page content, return only the data
+needed for the next decision, and do not invent CSS selectors from long labels. `eval` is
+reviewed like every other potentially mutating command, even when the query is read-only.
 
 Use `screenshot` when a page is unfamiliar and needs orientation, when a click's
 visual change or ambiguous text needs understanding, when image-only content
@@ -67,6 +89,7 @@ Arguments below are individual strings in `args`:
 | `goto` | URL | Navigate the current tab. |
 | `find` | text, or `--regex` and pattern | Locate matching nodes and references. |
 | `snapshot` | optional reference, optional `--depth=N` | Read accessibility structure. |
+| `eval` | JavaScript function, optional observed reference | Return only focused DOM data needed for the next decision. |
 | `click` / `dblclick` | reference, optional button | Click the observed target. |
 | `fill` | reference, text | Replace an input's contents. |
 | `type` | text | Type into the focused editable control. |
@@ -92,10 +115,10 @@ Arguments below are individual strings in `args`:
 checks the immediate effect of the entire command. Submit the intended command
 normally; the host handles any required user approval before executing it.
 
-This application exposes browser interaction commands only. General shell,
-arbitrary JavaScript, cookie export, network mocking and process-wide session
-deletion are outside this tool's interface. Use `ask_user` for required manual
-login or other blocking user input, and `finish` to report the observed outcome.
+This application exposes browser interaction commands only. Unbounded code, general shell,
+cookie export, network mocking and process-wide session deletion are outside this tool's
+interface. `eval` is limited to the focused DOM query described above. Use `ask_user` for
+required manual login or other blocking user input, and `finish` to report the observed outcome.
 
 ## Source
 

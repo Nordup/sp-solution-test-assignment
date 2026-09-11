@@ -63,6 +63,7 @@ LangSmith tracing is optional. Enable it in `.env.local` to export metrics and s
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 uv run pytest -q
 ```
 

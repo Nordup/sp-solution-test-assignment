@@ -1,10 +1,7 @@
-"""Compact, human-readable terminal rendering for browser-agent events.
+"""Render concise terminal turns from redacted task events.
 
-The event stream is private and already redacted by :mod:`telemetry`.  The
-terminal shows the submitted task, one short line for each requested browser
-command, questions, meaningful skips/errors, and the final report.  Successful
-command output is deliberately kept out of the public transcript; it remains
-available in the event log and debug stream.
+Show actions, questions, failures, and the final report. Keep successful browser
+payloads in the private event log.
 """
 
 from __future__ import annotations
@@ -176,7 +173,7 @@ def _model_failure(code: Any) -> bool:
 class TerminalUI:
     """Render compact progress, action outcomes, questions, and reports."""
 
-    def __init__(self, console: Console | None = None, *, debug: bool = False):
+    def __init__(self, console: Console | None = None, *, debug: bool = False) -> None:
         self.console = console or Console()
         self.debug = debug
         self._status: Status | None = None
@@ -287,9 +284,7 @@ class TerminalUI:
             query = _short(args.get("query", ""), 96) or "artifact"
             return self._progress(f"  → search · {query}")
 
-        # The graph currently exposes only the official CLI command and the
-        # artifact reader.  Keep an unknown proposal short for diagnostics
-        # without rendering its full argument object.
+        # Unknown proposals get a short label without their private arguments.
         return self._progress(f"  → {_short(tool, 44)}")
 
     def _debug_event(self, event: str, record: Mapping[str, Any]) -> None:
@@ -317,7 +312,10 @@ class TerminalUI:
         )
 
     def _approval_prompt(self, question: Mapping[str, Any]) -> str:
-        return _clean(question.get("question", "")).strip() or "Confirm this browser action?"
+        return (
+            _clean(question.get("question", "")).strip()
+            or "Confirm this browser action?"
+        )
 
     def question(self, question: Mapping[str, Any] | str) -> None:
         self._stop_status()
@@ -333,7 +331,10 @@ class TerminalUI:
         if kind == "approval":
             self._start_assistant()
             self.console.print(
-                Padding(Text(self._approval_prompt(question), style="bold yellow"), (0, 0, 0, 2))
+                Padding(
+                    Text(self._approval_prompt(question), style="bold yellow"),
+                    (0, 0, 0, 2),
+                )
             )
             return
         prompt = question.get("question") or "Please provide the missing information."
@@ -344,7 +345,9 @@ class TerminalUI:
                 prompt += "\nComplete it in the visible browser, then reply ready."
         self._start_assistant()
         self._print(
-            "  Manual step needed:" if kind in {"login", "challenge"} else "  Input needed:",
+            "  Manual step needed:"
+            if kind in {"login", "challenge"}
+            else "  Input needed:",
             style="bold yellow",
         )
         self.console.print(Padding(Text(_clean(prompt)), (0, 0, 0, 4)))
@@ -360,7 +363,11 @@ class TerminalUI:
         self._print(f"  ↳ {prefix}: {reason}", style="bold red")
 
     def _show_retry(self, record: Mapping[str, Any]) -> None:
-        attempt = _one_line(record.get("attempt")) if record.get("attempt") is not None else "next"
+        attempt = (
+            _one_line(record.get("attempt"))
+            if record.get("attempt") is not None
+            else "next"
+        )
         purpose = _one_line(record.get("purpose", "model"))
         label = "safety check" if purpose == "security" else "model"
         self._start_assistant()
@@ -382,90 +389,45 @@ class TerminalUI:
             self._show_failure(reason, kind=kind)
 
     def event(self, event: str, redacted_record: Mapping[str, Any] | None) -> None:
-        """Render one already-redacted event."""
-
+        """Render one redacted event; emit optional debug details once."""
         record = redacted_record if isinstance(redacted_record, Mapping) else {}
-        if event == "run_started":
-            self._last_error = None
-            self._last_question = None
-            self._start_assistant()
-            self._debug_event(event, record)
-            return
-        if event == "node_started":
-            node = _one_line(record.get("node", ""))
-            if node in _NODE_STATUS:
-                self._start_status(_NODE_STATUS[node])
-            self._debug_event(event, record)
-            return
-        if event == "node_finished":
-            self._stop_status()
-            self._debug_event(event, record)
-            return
-        if event in {"waiting", "approval_requested"}:
-            self._stop_status()
-            self._debug_event(event, record)
-            return
-        if event == "observe":
-            # Observation records contain metadata only.  Do not render page
-            # content or maintain stale page state here.
-            self._debug_event(event, record)
-            return
-        if event == "tool_proposed":
-            tool = _one_line(record.get("tool", ""))
-            if tool in {"finish", "ask_user"}:
-                return
-            self._last_error = None
-            self._start_assistant()
-            self.assistant(record.get("message"))
-            self._print("  " + self._tool_row(record).lstrip())
-            self._debug_event(event, record)
-            return
-        if event == "tool_result":
-            self._show_tool_result(record)
-            self._debug_event(event, record)
-            return
-        if event == "recovery":
-            code = record.get("code", "")
-            self._show_failure(
-                record.get("message") or code,
-                kind="model" if _model_failure(code) else "browser",
-            )
-            self._debug_event(event, record)
-            return
-        if event == "run_error":
-            if record.get("message") or record.get("reason") or record.get("error"):
-                error = record.get("error")
-                code = error.get("code", "") if isinstance(error, Mapping) else ""
+        match event:
+            case "run_started":
+                self._last_error = None
+                self._last_question = None
+                self._start_assistant()
+            case "node_started":
+                node = _one_line(record.get("node", ""))
+                if node in _NODE_STATUS:
+                    self._start_status(_NODE_STATUS[node])
+            case "node_finished" | "waiting" | "approval_requested" | "run_cancelled":
+                self._stop_status()
+            case "tool_proposed":
+                if _one_line(record.get("tool", "")) in {"finish", "ask_user"}:
+                    return
+                self._last_error = None
+                self._start_assistant()
+                self.assistant(record.get("message"))
+                self._print("  " + self._tool_row(record).lstrip())
+            case "tool_result":
+                self._show_tool_result(record)
+            case "recovery":
+                code = record.get("code", "")
                 self._show_failure(
-                    record.get("message") or record.get("reason") or error,
+                    record.get("message") or code,
                     kind="model" if _model_failure(code) else "browser",
                 )
-            self._debug_event(event, record)
-            return
-        if event == "run_cancelled":
-            self._stop_status()
-            self._debug_event(event, record)
-            return
-        if event == "provider_retry":
-            self._show_retry(record)
-            self._debug_event(event, record)
-            return
-        if event == "model_error":
-            # The retry event is the public progress signal; keep per-attempt
-            # provider details private so one failure is not printed twice.
-            self._debug_event(event, record)
-            return
-        if event in {
-            "model_admitted",
-            "model_first_token",
-            "model_usage",
-            "security_review",
-            "approval_answer",
-            "tracing_error",
-            "result",
-        }:
-            self._debug_event(event, record)
-            return
+            case "run_error":
+                error = record.get("error")
+                reason = record.get("message") or record.get("reason") or error
+                if reason:
+                    code = error.get("code", "") if isinstance(error, Mapping) else ""
+                    self._show_failure(
+                        reason, kind="model" if _model_failure(code) else "browser"
+                    )
+            case "provider_retry":
+                self._show_retry(record)
+        # Provider diagnostics and successful payloads have no normal UI row.
         self._debug_event(event, record)
 
     def result(self, result: Mapping[str, Any] | None) -> None:

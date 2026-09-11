@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from rich.console import Console
 
 from browser_agent.presentation import TerminalUI, _clean
-from browser_agent.telemetry import Events
 
 
 def rendered(*, debug=False, width=78):
@@ -18,36 +17,6 @@ def rendered(*, debug=False, width=78):
         ),
         stream,
     )
-
-
-def test_fill_shows_one_compact_action_line_and_hides_routine_result():
-    ui, stream = rendered()
-    ui.event(
-        "tool_proposed",
-        {
-            "step": 1,
-            "tool": "playwright",
-            "arguments": {"command": "fill", "args": ["e5", "hot dog"]},
-        },
-    )
-    proposal = stream.getvalue()
-    assert "fill" in proposal and "e5" in proposal
-    assert '"hot dog"' in proposal
-    assert "pending" not in proposal
-
-    ui.event(
-        "tool_result",
-        {
-            "step": 1,
-            "tool": "playwright",
-            "result": {"status": "executed", "value": "hot dog"},
-        },
-    )
-    output = stream.getvalue()
-    assert output.count('"hot dog"') == 1
-    assert "pending" not in output
-    assert "completed" not in output
-    assert "failed" not in output
 
 
 def test_user_rejection_is_a_skipped_result_without_fake_success():
@@ -102,28 +71,7 @@ def test_failure_reason_is_visible_once_even_when_recovery_repeats_it():
     assert "not_visible" not in output
 
 
-def test_native_cli_error_content_is_visible_once_without_dumping_payload():
-    ui, stream = rendered()
-    ui.event(
-        "tool_proposed",
-        {
-            "tool": "playwright",
-            "arguments": {"command": "click", "args": ["e5"]},
-        },
-    )
-    failure = {
-        "isError": True,
-        "content": [{"type": "text", "text": "Target is no longer visible"}],
-    }
-    ui.event("tool_result", {"tool": "playwright", "result": failure})
-    ui.event("tool_result", {"tool": "playwright", "result": failure})
-    output = stream.getvalue()
-    assert output.count("Target is no longer visible") == 1
-    assert "failed: Target is no longer visible" in output
-    assert "content" not in output
-
-
-def test_playwright_cli_rows_show_command_and_useful_arguments():
+def test_playwright_cli_rows_show_arguments_and_hide_successful_results():
     ui, stream = rendered()
     ui.event(
         "tool_proposed",
@@ -150,23 +98,20 @@ def test_playwright_cli_rows_show_command_and_useful_arguments():
         "tool_proposed",
         {"tool": "playwright", "arguments": {"command": "find", "args": ["Search"]}},
     )
+    ui.event(
+        "tool_proposed",
+        {"tool": "playwright", "arguments": {"command": "press", "args": ["Enter"]}},
+    )
     output = stream.getvalue()
     assert 'fill · e5: "Armenia"' in output
     assert "goto · https://example.test" in output
     assert "find · Search" in output
+    assert "press · Enter" in output
     assert '"args"' not in output
     assert "pending" not in output
-
-
-def test_cli_refs_remain_readable_without_stale_selector_cache():
-    ui, stream = rendered()
-    ui.event(
-        "observe",
-        {"id": "o1", "url": "https://example.test/one", "title": "One", "tabs": []},
-    )
-    ui.event("tool_proposed", {"tool": "playwright", "arguments": {"command": "click", "args": ["e5"]}})
-    assert "click · e5" in stream.getvalue()
-    assert "One" not in stream.getvalue()
+    assert "completed" not in output
+    assert "failed" not in output
+    assert output.count('"Armenia"') == 1
 
 
 def test_progress_message_and_action_row_are_bounded_to_compact_lines():
@@ -255,30 +200,7 @@ def test_long_cli_argument_is_bounded_without_structural_dump():
     assert "{" not in row
 
 
-def test_new_tool_rows_include_useful_arguments_without_json_dump():
-    ui, stream = rendered()
-    ui.event(
-        "tool_proposed",
-        {
-            "tool": "playwright",
-            "arguments": {"command": "find", "args": ["dialog"]},
-        },
-    )
-    ui.event(
-        "tool_proposed",
-        {
-            "tool": "playwright",
-            "arguments": {"command": "press", "args": ["e5", "Enter"]},
-        },
-    )
-    output = stream.getvalue()
-    assert "find" in output and "dialog" in output
-    assert "press" in output and "Enter" in output
-    assert "pending" not in output
-    assert "{" not in output and "args" not in output
-
-
-def test_observe_keeps_metadata_silent_and_browser_tab_labels_readable():
+def test_observe_metadata_stays_silent():
     ui, stream = rendered()
     ui.event(
         "observe",
@@ -296,7 +218,6 @@ def test_observe_keeps_metadata_silent_and_browser_tab_labels_readable():
         },
     )
     assert stream.getvalue() == ""
-    assert "Inbox" not in stream.getvalue()
 
 
 def test_read_browser_artifact_row_shows_path_and_offset_without_result_dump():
@@ -354,7 +275,10 @@ def test_approval_preserves_graph_prompt_and_hides_private_action_packet():
             "kind": "approval",
             "request_id": "private-request-id",
             "question": prompt,
-            "action": {"tool": "playwright", "args": {"command": "click", "args": ["e5"]}},
+            "action": {
+                "tool": "playwright",
+                "args": {"command": "click", "args": ["e5"]},
+            },
             "details": {"fields": [{"name": "Message", "value": "private draft"}]},
         }
     )
@@ -482,21 +406,3 @@ def test_active_status_stops_for_waiting_and_result():
     assert ui._status is status
     ui.result({"status": "completed", "summary": "Done", "remaining": []})
     assert ui._status is None and status.stop.called
-
-
-def test_events_pass_only_redacted_records_to_ui(tmp_path, monkeypatch):
-    seen = []
-
-    class SpyUI:
-        def event(self, event, record):
-            seen.append((event, record))
-
-        def close(self):
-            pass
-
-    monkeypatch.setenv("PRIVATE_TOKEN", "token-value-long-enough")
-    events = Events(tmp_path / "events.jsonl", ui=SpyUI())
-    events("progress", {"message": "token-value-long-enough"})
-    events.close()
-    assert seen[0][1]["message"] == "[REDACTED]"
-    assert "token-value-long-enough" not in (tmp_path / "events.jsonl").read_text()

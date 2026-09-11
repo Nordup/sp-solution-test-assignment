@@ -58,6 +58,7 @@ Run the automated suite even if API access is unavailable. Record missing model 
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 uv run pytest -q
 ```
 
@@ -65,14 +66,14 @@ These tests mock the model and tracing services. Browser integration tests use a
 
 | ID | Check and expected behavior | Existing coverage |
 | --- | --- | --- |
-| C01 | Malformed or invalid native tool arguments are rejected before dispatch. Incomplete responses preserve previous results. Tool calls use JSON decoding and schema validation. | [test_protocol_provider.py](../tests/test_protocol_provider.py) |
-| C02 | The task survives native compaction. Opaque compaction state and subsequent tool results remain correctly paired. Input above the configured cap is rejected before generation. | [test_protocol_provider.py](../tests/test_protocol_provider.py), [test_agent.py](../tests/test_agent.py) |
-| C03 | Browser evidence is bounded. Screenshots reach the model as images. Large artifacts can be read explicitly; a screenshot does not erase the reviewer's page evidence. | [test_browser_cli.py](../tests/test_browser_cli.py), [test_agent.py](../tests/test_agent.py), [test_safety.py](../tests/test_safety.py) |
-| C04 | Review returns only an approval boolean. Pure inspection bypasses review. Approved commands execute once; decline skips the command and lets the actor continue. Reviewer failure falls back to human approval. | [test_agent.py](../tests/test_agent.py), [test_safety.py](../tests/test_safety.py), [test_navigation_safety.py](../tests/test_navigation_safety.py) |
-| C05 | Transient provider errors retry within the configured bound; exhaustion stops. Browser errors are returned to the actor once without an automatic replay. | [test_protocol_provider.py](../tests/test_protocol_provider.py), [test_agent.py](../tests/test_agent.py) |
-| C06 | Budget admission happens before generation. Reviewer calls use the shared client at medium reasoning. Unknown failed-attempt costs remain charged; retries do not reset the budget. | [test_protocol_provider.py](../tests/test_protocol_provider.py) |
-| C07 | Tracing exports metrics and status without private task/page content. Export failure does not stop the task. Diagnostics stay in private files. | [test_protocol_provider.py](../tests/test_protocol_provider.py), [test_telemetry.py](../tests/test_telemetry.py) |
-| C08 | Approval answers, double-Esc cancellation, terminal restoration, and compact output follow the documented interaction. | [test_cli.py](../tests/test_cli.py), [test_terminal.py](../tests/test_terminal.py), [test_presentation.py](../tests/test_presentation.py) |
+| C01 | Malformed or invalid native tool arguments are rejected before dispatch. Incomplete responses preserve previous results. Tool calls use JSON decoding and schema validation. | [Tool protocol](../tests/unit/test_protocol.py) |
+| C02 | The task survives native compaction. Opaque compaction state and subsequent tool results remain correctly paired. Input above the configured cap is rejected before generation. | [Context](../tests/unit/test_context.py), [model admission](../tests/unit/test_model_client.py), [agent loop](../tests/integration/test_agent.py) |
+| C03 | Browser evidence is bounded. Screenshots reach the model as images. Large artifacts can be read explicitly; a screenshot does not erase the reviewer's page evidence. | [Artifacts](../tests/unit/test_browser_artifacts.py), [evidence](../tests/unit/test_browser_evidence.py), [agent loop](../tests/integration/test_agent.py) |
+| C04 | Review returns only an approval boolean. Pure inspection bypasses review. Approved commands execute once; decline skips the command and lets the actor continue. Reviewer failure falls back to human approval. | [Agent loop](../tests/integration/test_agent.py), [approval boundary](../tests/unit/test_safety.py) |
+| C05 | Transient provider errors retry within the configured bound; exhaustion stops. Browser errors are returned to the actor once without an automatic replay. | [Model retries](../tests/unit/test_model_client.py), [browser process](../tests/unit/test_browser_process.py), [agent loop](../tests/integration/test_agent.py) |
+| C06 | Budget admission happens before generation. Reviewer calls use the shared client at medium reasoning. Unknown failed-attempt costs remain charged; retries do not reset the budget. | [Model admission](../tests/unit/test_model_client.py), [pricing](../tests/unit/test_pricing.py) |
+| C07 | Tracing exports metrics and status without private task/page content. Export failure does not stop the task. Diagnostics stay in private files. | [Model diagnostics](../tests/unit/test_model_stream.py), [telemetry](../tests/unit/test_telemetry.py) |
+| C08 | Approval answers, double-Esc cancellation, terminal restoration, and compact output follow the documented interaction. | [CLI](../tests/unit/test_cli.py), [terminal input](../tests/unit/test_terminal.py), [presentation](../tests/unit/test_presentation.py) |
 
 Mocked approval tests verify dispatch behavior. Evaluate the live reviewer's decisions in stages 4, 6, and 8. Read the current limitations in [Architecture](architecture.md) before interpreting the results.
 

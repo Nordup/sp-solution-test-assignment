@@ -1,15 +1,19 @@
 """Start a visible browser and accept tasks in the terminal."""
 
+from __future__ import annotations
+
 import asyncio
+from collections.abc import Awaitable, Callable
 from functools import partial
+from typing import Any
 
 import typer
 from rich.console import Console
 
 from .agent import run_task
-from .browser_cli import BrowserError, PlaywrightCLI
+from .browser import BrowserError, PlaywrightCLI
 from .config import Settings
-from .llm import ProviderFailure
+from .model import ProviderFailure
 from .presentation import TerminalUI
 from .terminal import Terminal
 
@@ -17,7 +21,13 @@ app = typer.Typer(add_completion=False)
 console = Console()
 
 
-async def human(question, *, read, ui=None):
+async def respond_to_question(
+    question: dict[str, Any],
+    *,
+    read: Callable[..., Awaitable[str]],
+    ui: TerminalUI | None = None,
+) -> dict[str, Any] | str | None:
+    """Read an answer and bind approval to the pending request."""
     if ui is not None:
         ui.question(question)
     if question["kind"] == "approval":
@@ -41,7 +51,8 @@ async def human(question, *, read, ui=None):
     return None if answer.strip() in {"/stop", "/pause"} else answer
 
 
-async def session(settings, *, debug=False):
+async def run_session(settings: Settings, *, debug: bool = False) -> None:
+    """Reuse one browser between tasks and release session resources on exit."""
     settings.prepare()
     if not settings.api_key.get_secret_value():
         raise ValueError("Set OPENAI_API_KEY in .env.local before starting.")
@@ -49,9 +60,7 @@ async def session(settings, *, debug=False):
     ui = TerminalUI(console, debug=debug)
     terminal = Terminal()
     try:
-        # The official CLI keeps an interactive session in its own process.
-        # Start and close it in this same owning task; individual model runs
-        # only reset the private evidence cache and reuse the visible profile.
+        # The session owns browser startup and shutdown; tasks reuse its profile.
         await browser.start()
         ui.welcome()
         while True:
@@ -69,7 +78,7 @@ async def session(settings, *, debug=False):
                     settings,
                     task,
                     browser,
-                    responder=partial(human, read=terminal.read, ui=ui),
+                    responder=partial(respond_to_question, read=terminal.read, ui=ui),
                     console=console,
                     raise_on_cancel=True,
                     debug=debug,
@@ -96,11 +105,11 @@ def main(
         "--debug",
         help="Show selected diagnostic events while keeping full artifacts private.",
     ),
-):
+) -> None:
     """Open the browser workspace and enter tasks. No startup browser is chosen."""
     try:
         settings = Settings.load()
-        asyncio.run(session(settings, debug=debug))
+        asyncio.run(run_session(settings, debug=debug))
     except (KeyboardInterrupt, EOFError, asyncio.CancelledError):
         pass
     except (BrowserError, OSError, ProviderFailure, RuntimeError, ValueError) as exc:

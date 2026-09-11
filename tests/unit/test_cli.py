@@ -37,14 +37,22 @@ async def test_human_question_and_reply_share_the_expected_turn_hooks():
         calls.append(("read", message, kwargs))
         return "The work account"
 
-    answer = await cli.human(
-        {"kind": "clarification", "request_id": "clarify-1", "question": "Which account?"},
+    answer = await cli.respond_to_question(
+        {
+            "kind": "clarification",
+            "request_id": "clarify-1",
+            "question": "Which account?",
+        },
         read=read,
         ui=UI(),
     )
     assert answer == "The work account"
     assert calls[0][0] == "question"
-    assert calls[1] == ("read", "Reply, or /stop to end this task: ", {"erase_when_done": True})
+    assert calls[1] == (
+        "read",
+        "Reply, or /stop to end this task: ",
+        {"erase_when_done": True},
+    )
     assert calls[2] == ("user", "The work account")
 
 
@@ -67,12 +75,15 @@ async def test_human_approval_accepts_standard_answers(answer, approved):
         seen.append(("read", message, kwargs))
         return answer
 
-    response = await cli.human(
+    response = await cli.respond_to_question(
         {
             "kind": "approval",
             "request_id": "approval-1",
             "question": "Send this message?",
-            "action": {"tool": "playwright", "args": {"command": "click", "args": ["e5"]}},
+            "action": {
+                "tool": "playwright",
+                "args": {"command": "click", "args": ["e5"]},
+            },
         },
         read=read,
         ui=UI(),
@@ -82,7 +93,9 @@ async def test_human_approval_accepts_standard_answers(answer, approved):
 
 
 @pytest.mark.asyncio
-async def test_session_starts_one_browser_and_reuses_it_until_exit(monkeypatch, tmp_path):
+async def test_session_starts_one_browser_and_reuses_it_until_exit(
+    monkeypatch, tmp_path
+):
     browser = _Browser()
     tasks = iter(["first task", "second task", "/exit"])
     calls = []
@@ -95,7 +108,7 @@ async def test_session_starts_one_browser_and_reuses_it_until_exit(monkeypatch, 
         return {"status": "completed", "summary": task, "remaining": []}
 
     monkeypatch.setattr(cli, "run_task", fake_run_task)
-    await cli.session(Settings(artifact_dir=tmp_path, api_key="test-key"))
+    await cli.run_session(Settings(artifact_dir=tmp_path, api_key="test-key"))
 
     assert browser.starts == 1 and browser.close_calls == 1
     assert [call[1] for call in calls] == ["first task", "second task"]
@@ -110,12 +123,16 @@ def test_cli_accepts_bare_command_and_rejects_removed_options(monkeypatch):
     async def fake_session(settings, *, debug=False):
         seen.append((settings, debug))
 
-    monkeypatch.setattr(cli, "session", fake_session)
+    monkeypatch.setattr(cli, "run_session", fake_session)
     result = runner.invoke(cli.app, [])
     assert result.exit_code == 0 and len(seen) == 1 and seen[0][1] is False
     debug_result = runner.invoke(cli.app, ["--debug"])
     assert debug_result.exit_code == 0 and seen[-1][1] is True
-    for args in (["run", "task"], ["--url", "https://example.test"], ["--profile", "personal"]):
+    for args in (
+        ["run", "task"],
+        ["--url", "https://example.test"],
+        ["--profile", "personal"],
+    ):
         assert runner.invoke(cli.app, args).exit_code != 0
 
 
@@ -126,7 +143,7 @@ def test_main_keeps_startup_errors_human_facing_and_debug_adds_class(monkeypatch
     async def missing_key(_settings, *, debug=False):
         raise ValueError("Set OPENAI_API_KEY in .env.local before starting.")
 
-    monkeypatch.setattr(cli, "session", missing_key)
+    monkeypatch.setattr(cli, "run_session", missing_key)
     regular = runner.invoke(cli.app, [])
     assert regular.exit_code == 1 and "Set OPENAI_API_KEY" in regular.stdout
     assert "Session stopped" not in regular.stdout
@@ -145,5 +162,5 @@ async def test_session_closes_browser_when_task_is_cancelled(monkeypatch, tmp_pa
 
     monkeypatch.setattr(cli, "run_task", cancelled)
     with pytest.raises(asyncio.CancelledError):
-        await cli.session(Settings(artifact_dir=tmp_path, api_key="test-key"))
+        await cli.run_session(Settings(artifact_dir=tmp_path, api_key="test-key"))
     assert browser.starts == 1 and browser.close_calls == 1
