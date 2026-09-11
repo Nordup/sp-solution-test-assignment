@@ -5,13 +5,13 @@
 1. [Assignment](docs/assignment.md): the preserved employer specification, including all three task pages and reference screenshots.
 2. [Evaluation criteria](docs/evaluation-criteria.md): the preserved HR clarifications.
 3. [Architecture](docs/architecture.md): how the current implementation works and where its limits are.
-4. [Acceptance tests](docs/acceptance-tests.md): the ordered checks required before handoff. [Testing](docs/testing.md) records the available evidence.
+4. [Acceptance tests](docs/acceptance-tests.md): the ordered checks required before handoff. [Acceptance results](docs/final-review.md#acceptance-results) records each check's status and verification; [Testing](docs/testing.md) explains the automated suite.
 
 Use the assignment and HR criteria as the source of truth for requirements. Read their local contents before making implementation or scope decisions. External links identify the original sources. Architecture notes describe the current implementation; test results establish only the behavior exercised.
 
 ## Keep the scope clear
 
-Preserve the Russian source wording, nested task text, and reference images. Keep the detailed acceptance runbook when cleaning documentation. Update commands and evidence as the implementation changes; do not remove an unmet requirement to make the project appear complete.
+Preserve the Russian source wording, nested task text, and reference images. Keep both the detailed acceptance runbook and the per-check results in the final review when cleaning documentation; the requirements summary does not replace the evaluation record. Update commands and evidence as the implementation changes; do not remove an unmet requirement to make the project appear complete.
 
 Keep the browser actor general. Acceptance steps are instructions for the human tester, not workflows to inject into the runtime prompt. Do not add site-specific routes, selectors, or task recipes to production code.
 

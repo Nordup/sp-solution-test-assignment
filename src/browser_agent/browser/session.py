@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from typing import Any
 from uuid import uuid4
 
 from ..config import Settings
-from .artifacts import ArtifactStore
+from .artifacts import MAX_ARTIFACT_BYTES, ArtifactStore
 from .commands import (
     ACTION_COMMANDS,
     COMMANDS,
@@ -73,6 +74,7 @@ class PlaywrightCLI:
         )
         self._evidence = EvidenceCache(self._artifacts)
         self._running = False
+        self._connected = False
         self._connection: _Connection | None = None
         self._lock = asyncio.Lock()
 
@@ -118,12 +120,18 @@ class PlaywrightCLI:
     def instructions(self) -> str:
         path = Path(__file__).parent.parent / "playwright_skill.md"
         try:
-            return path.read_text(encoding="utf-8")[:MAX_EVIDENCE_CHARS]
+            instructions = path.read_text(encoding="utf-8")[:MAX_EVIDENCE_CHARS]
         except OSError:
-            return (
+            instructions = (
                 "Use the playwright tool with one official Playwright CLI command at a time. "
                 "Use snapshot or find before acting and read_browser_artifact for explicit files."
             )
+        state = (
+            "A browser connection was established; inspect its current page."
+            if self._connected
+            else "No browser is connected. Use open or attach before page commands."
+        )
+        return f"{instructions}\n\nCurrent host session: {self.session}. {state}"
 
     @staticmethod
     def is_read_only(command: str) -> bool:
@@ -145,6 +153,7 @@ class PlaywrightCLI:
                 pass
             self._artifacts.prepare_session()
             self._connection = None
+            self._connected = False
             self._running = True
 
     async def close(self) -> None:
@@ -162,6 +171,7 @@ class PlaywrightCLI:
                         pass
             finally:
                 self._connection = None
+                self._connected = False
                 self._running = False
 
     async def prepare_task(self) -> None:
@@ -169,6 +179,34 @@ class PlaywrightCLI:
 
         async with self._lock:
             self._evidence.clear()
+
+    async def approval_state(self) -> str:
+        """Fingerprint the observable page and tabs without adding model context."""
+
+        async with self._lock:
+            self._ensure_started()
+            if not self._connected:
+                return "disconnected"
+            tabs = await self._invoke_cli("tab-list", [])
+            observed_at = time.time_ns()
+            snapshot = await self._invoke_cli("snapshot", [])
+            if not isinstance(snapshot.get("snapshot"), list):
+                raise BrowserError(
+                    "approval_state_unavailable",
+                    "Could not verify the page state for this approval. "
+                    "No action was dispatched; inspect the browser before continuing.",
+                )
+            encoded = json.dumps(
+                {"tabs": tabs, "page": snapshot}, sort_keys=True, ensure_ascii=False
+            ).encode("utf-8")
+            if len(encoded) > MAX_ARTIFACT_BYTES:
+                raise BrowserError(
+                    "approval_state_unavailable",
+                    "The page state is too large to verify for approval. "
+                    "No action was dispatched.",
+                )
+            self._evidence.update("snapshot", snapshot, fresh_after_ns=observed_at)
+            return hashlib.sha256(encoded).hexdigest()
 
     async def execute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
         """Execute one model-facing browser tool call."""
@@ -211,9 +249,12 @@ class PlaywrightCLI:
         cli_args, screenshot_path = self._prepare_command(command, args)
         async with self._lock:
             self._ensure_started()
-            self._record_dispatch(command)
             dispatched_at_ns = time.time_ns()
-            payload = await self._invoke_cli(command, cli_args)
+            if command == "open":
+                payload = await self._open_browser(args, cli_args)
+            else:
+                self._record_dispatch(command)
+                payload = await self._invoke_cli(command, cli_args)
             self._evidence.update(
                 command,
                 payload,
@@ -232,6 +273,51 @@ class PlaywrightCLI:
             if screenshot_path is not None:
                 result["content"] = self._artifacts.screenshot_content(screenshot_path)
             return result
+
+    async def _open_browser(
+        self, args: list[str], cli_args: list[str]
+    ) -> dict[str, Any]:
+        """Reuse the profile's owner instead of launching Chrome into its lock."""
+
+        listing = await self._invoke_cli("list", [])
+        browser_channel = self.settings.browser_channel
+        urls: list[str] = []
+        arguments = iter(args)
+        for argument in arguments:
+            if argument == "--browser":
+                browser_channel = next(arguments, None)
+            elif argument.startswith("--browser="):
+                browser_channel = argument.partition("=")[2]
+            else:
+                urls.append(argument)
+
+        for candidate in listing.get("browsers", []):
+            if (
+                not isinstance(candidate, dict)
+                or not isinstance(candidate.get("name"), str)
+                or not candidate["name"]
+                or candidate["name"].startswith("-")
+                or candidate["name"] == self.session
+                or candidate.get("status") != "open"
+                or candidate.get("compatible") is not True
+                or candidate.get("attached") is not False
+                or candidate.get("persistent") is not True
+                or candidate.get("headed") != self.settings.browser_headed
+                or not isinstance(candidate.get("userDataDir"), str)
+                or Path(candidate["userDataDir"]).resolve() != self.profile
+                or (browser_channel and candidate.get("browserType") != browser_channel)
+                or len(urls) > 1
+            ):
+                continue
+            self._record_dispatch("attach")
+            payload = await self._invoke_cli("attach", [candidate["name"]])
+            self._record_success("attach")
+            if urls:
+                payload = await self._invoke_cli("goto", urls)
+            return {**payload, "reused_session": candidate["name"]}
+
+        self._record_dispatch("open")
+        return await self._invoke_cli("open", cli_args)
 
     def _prepare_command(
         self,
@@ -260,12 +346,17 @@ class PlaywrightCLI:
         # Opening or attaching may have taken effect even if its response is lost.
         if command == "open":
             self._connection = _Connection.OWNED
+            self._connected = False
         elif command == "attach":
             self._connection = _Connection.ATTACHED
+            self._connected = False
 
     def _record_success(self, command: str) -> None:
+        if command in {"open", "attach"}:
+            self._connected = True
         if command in {"close", "detach"}:
             self._connection = None
+            self._connected = False
 
     async def _invoke_cli(self, command: str, args: list[str]) -> dict[str, Any]:
         """Run one literal subprocess and decode its native JSON envelope."""
@@ -319,9 +410,37 @@ class PlaywrightCLI:
                 exit_code=process.returncode,
                 stdout_chars=len(stdout_text),
                 stderr_chars=len(stderr_text),
-                status="parse_error",
+                status="error"
+                if process.returncode not in (0, None)
+                else "parse_error",
                 log_paths=log_paths,
             )
+            if process.returncode not in (0, None):
+                if command == "open" and "Browser is already in use for" in stderr_text:
+                    raise BrowserError(
+                        "browser_profile_in_use",
+                        "The configured browser profile is already in use. "
+                        "Use list and attach to its existing session, or close that "
+                        "session before opening this profile with different settings.",
+                    ) from None
+                detail = next(
+                    (
+                        line
+                        for line in reversed(stderr_text.splitlines())
+                        if line.startswith("Error:")
+                    ),
+                    None,
+                )
+                raise BrowserError(
+                    "cli_failed",
+                    _safe_text(
+                        detail
+                        or stderr_text
+                        or stdout_text
+                        or f"exit code {process.returncode}"
+                    ),
+                    uncertain=not is_read_only(command),
+                ) from None
             raise
 
         if not isinstance(parsed, dict):

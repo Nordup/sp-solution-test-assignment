@@ -37,12 +37,14 @@ The terminal shows commands, questions, and the final result. Page snapshots and
 
 | Input | Effect |
 | --- | --- |
-| `y` or `yes` at an approval prompt | Execute the pending action once. |
+| `y` or `yes` at an approval prompt | Execute the pending action once if the observed page and tabs are unchanged. |
 | Enter, `n`, or `no` at an approval prompt | Skip that action and continue. |
 | Esc twice within half a second | Stop the current task and return to `Task:`. |
 | `/exit` at `Task:`, or Ctrl+C | Exit the session. |
 
 The double-Esc shortcut requires an interactive terminal. Stopping a task cannot undo an action already sent to the browser. On exit, the application closes its owned browser or detaches from an external browser.
+
+Approval is discarded if the page changes while you answer. Native browser dialogs require manual handling. If an approved action returns an uncertain result, the agent stops so you can check its effect. See [Architecture](docs/architecture.md#approval-boundary) for details. In `TERM=dumb`, use `/stop` at human prompts or Ctrl+C.
 
 ## Configuration and results
 
@@ -67,12 +69,13 @@ uv run ruff format --check .
 uv run pytest -q
 ```
 
-The [testing guide](docs/testing.md) records current results and known gaps. Before submission, follow the [final acceptance runbook](docs/acceptance-tests.md): setup, automated checks, browser behavior, the three assignment tasks, failure cases, and the final repository/video review. Local tests do not establish that the live-account workflows are complete.
+The [final review](docs/final-review.md) maps the assignment to implemented features and demonstrated outcomes. The [testing guide](docs/testing.md) explains automated coverage. Follow the [acceptance runbook](docs/acceptance-tests.md) and track each check in [Acceptance results](docs/final-review.md#acceptance-results).
 
 ## Assignment and documentation
 
 The [preserved assignment](docs/assignment.md) and [HR evaluation criteria](docs/evaluation-criteria.md) are the source of truth for requirements and implementation decisions. They contain the Russian source text, all three nested task descriptions, and local reference screenshots. Reading them does not require the original website. [AGENTS.md](AGENTS.md) gives coding agents the required reading order.
 
+- [Final review](docs/final-review.md): requirements, example tasks, engineering checks, and the full acceptance results table.
 - [Architecture](docs/architecture.md): agent loop, browser tools, approvals, context, and failure handling.
-- [Testing](docs/testing.md): automated coverage and recorded verification results.
-- [Acceptance tests](docs/acceptance-tests.md): ordered steps, expected outcomes, and evidence to collect before handoff.
+- [Testing](docs/testing.md): automated checks and coverage.
+- [Acceptance tests](docs/acceptance-tests.md): complete manual verification procedure.

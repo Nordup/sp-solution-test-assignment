@@ -31,6 +31,9 @@ class FakeBrowser:
         self.prepared += 1
         self.evidence = ""
 
+    async def approval_state(self):
+        return self.evidence
+
     async def execute(self, tool, args):
         self.executed.append((tool, dict(args)))
         if self.error:

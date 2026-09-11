@@ -119,10 +119,10 @@ class AgentGraph:
         graph = StateGraph(AgentState)
         for node, destinations in (
             (self.decide, ("decide", "review", "execute", END)),
-            (self.review, ("approve", "execute")),
+            (self.review, ("approve", "execute", "record", END)),
             (self.approve, ("execute", "record", END)),
             (self.execute, ("record",)),
-            (self.record, ("decide",)),
+            (self.record, ("decide", END)),
         ):
             graph.add_node(node.__name__, self._traced(node), destinations=destinations)
         graph.add_edge(START, "decide")
@@ -236,6 +236,29 @@ class AgentGraph:
 
     async def review(self, state: AgentState) -> Transition:
         action = state["action"]
+        # Native dialog text is absent from the pinned CLI's JSON output. The
+        # user must read and handle that browser-level surface directly.
+        if action.call["arguments"].get("command") == "dialog-accept":
+            question = {
+                "kind": "challenge",
+                "question": "The browser has a native dialog whose text I cannot "
+                "verify. Read it and accept or cancel it directly in the visible "
+                "browser, then reply ready. I will inspect the outcome afterward.",
+            }
+            answer = await self._ask_user(question)
+            if answer is None:
+                return _stop(question["question"], "needs_user", question=question)
+            return Command(
+                goto="record",
+                update={
+                    "pending_result": {
+                        "status": "manual_step",
+                        "answer": str(answer)[:6000],
+                        "instruction": "The host did not accept the dialog. Inspect "
+                        "fresh browser state to verify the user's action and its outcome.",
+                    }
+                },
+            )
         try:
             async with diagnostic_span(
                 self.emit, "review_request_build", step=self.steps
@@ -276,6 +299,10 @@ class AgentGraph:
 
     async def approve(self, state: AgentState) -> Transition:
         action = state["action"]
+        try:
+            before = await self.browser.approval_state()
+        except BrowserError as error:
+            return self._approval_error(error)
         question = {
             "kind": "approval",
             "request_id": str(uuid4()),
@@ -311,6 +338,19 @@ class AgentGraph:
             {"request_id": question["request_id"], "approved": approved},
         )
         if approved:
+            try:
+                after = await self.browser.approval_state()
+            except BrowserError as error:
+                return self._approval_error(error)
+            if after != before:
+                return self._approval_error(
+                    BrowserError(
+                        "approval_state_changed",
+                        "The page or selected tab changed while approval was pending. "
+                        "This approval was discarded and no action was dispatched. "
+                        "Inspect the current page and propose the action again for a new approval.",
+                    )
+                )
             return Command(
                 goto="execute", update={"action": replace(action, approved=True)}
             )
@@ -322,6 +362,13 @@ class AgentGraph:
                     "tool": action.call["name"],
                 }
             },
+        )
+
+    @staticmethod
+    def _approval_error(error: BrowserError) -> Transition:
+        return Command(
+            goto="record",
+            update={"pending_result": {"status": "error", "error": error.as_dict()}},
         )
 
     async def execute(self, state: AgentState) -> Transition:
@@ -359,14 +406,25 @@ class AgentGraph:
                 "user_decision": "approved" if action.approved else None,
             },
         )
-        return Command(
-            goto="decide",
-            update={
-                "history": state["history"] + tool_result_items(action.call, result),
-                "feedback": "",
-                "failures": 0,
-            },
-        )
+        updates: AgentState = {
+            "history": state["history"] + tool_result_items(action.call, result),
+            "feedback": "",
+            "failures": 0,
+        }
+        error = result.get("error")
+        if (
+            action.approved
+            and isinstance(error, dict)
+            and error.get("uncertain") is True
+        ):
+            return _stop(
+                "The approved action returned an uncertain result and may already "
+                "have taken effect. I stopped to avoid repeating it. Inspect the "
+                "page or activity history before starting another task.",
+                updates=updates,
+                pending_action=action.proposal,
+            )
+        return Command(goto="decide", update=updates)
 
     async def _model_response(
         self, request: dict[str, Any], *, purpose: Literal["actor", "security"]

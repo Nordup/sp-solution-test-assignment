@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime
 from typing import Any
 
 from .prompts import ACTOR
@@ -23,6 +24,7 @@ def build_request(
     tools: list[ResponseItem] | None = None,
     compaction: ResponseItem | None = None,
     compact_threshold: int = 150_000,
+    local_now: datetime | None = None,
 ) -> dict[str, Any]:
     """Pin the task beside opaque history; browser observations stay in tool results."""
     messages = [compaction] if compaction is not None else []
@@ -34,8 +36,16 @@ def build_request(
     )
     if feedback := feedback.strip():
         messages.append({"role": "user", "content": f"Host feedback:\n{feedback}"})
+    local_now = local_now or datetime.now().astimezone()
+    date_context = (
+        f"Current host-local date: {local_now:%Y-%m-%d} (UTC{local_now:%z}). "
+        "Resolve relative dates against this date. Verify that time-bound requests "
+        "match the observed dates; request clarification when they do not."
+    )
     return {
-        "instructions": "\n\n".join(part for part in (ACTOR, instructions) if part),
+        "instructions": "\n\n".join(
+            part for part in (ACTOR, date_context, instructions) if part
+        ),
         "input": messages,
         "tools": tool_specs() if tools is None else list(tools),
         "tool_choice": "required",

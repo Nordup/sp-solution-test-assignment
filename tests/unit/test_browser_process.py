@@ -67,7 +67,7 @@ async def test_cli_start_only_prepares_and_child_task_can_execute_and_close(
     )
     assert result["status"] == "executed"
     await asyncio.create_task(browser.close())
-    assert len(calls) == 2 and calls[-1][0][4] == "close"
+    assert [argv[4] for argv, _ in calls] == ["list", "open", "close"]
 
 
 def test_cli_help_argv_and_host_flag_boundaries():
@@ -99,6 +99,137 @@ async def test_cli_malformed_json_is_an_uncertain_transport_error(
     assert result["status"] == "error"
     assert result["error"]["code"] == "cli_parse_error"
     assert result["error"]["uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_cli_startup_failure_reports_stderr_instead_of_json_error(
+    monkeypatch, tmp_path
+):
+    process = _FakeProcess(
+        stdout=b"",
+        stderr=b"/private/cli/session.js:170\nthrow new Error(...)\n"
+        b"Error: Daemon process exited with code 1\n"
+        b"Error: Browser executable is missing\n    at launch (session.js:170)",
+    )
+    process.returncode = 1
+
+    async def create(*argv, **_kwargs):
+        if argv[4] == "list":
+            return _FakeProcess(stdout=b'{"browsers": []}')
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    browser = PlaywrightCLI(_settings(tmp_path))
+    await browser.start()
+    result = await browser.execute("playwright", {"command": "open", "args": []})
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "cli_failed"
+    assert result["error"]["message"] == "Error: Browser executable is missing"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mismatch",
+    [
+        {"userDataDir": "/some/other/profile"},
+        {"compatible": False},
+        {"status": "closed"},
+        {"attached": True},
+        {"persistent": False},
+        {"headed": True},
+        {"browserType": "firefox"},
+    ],
+)
+async def test_cli_open_never_reuses_a_mismatched_session(
+    monkeypatch, tmp_path, mismatch
+):
+    browser = PlaywrightCLI(_settings(tmp_path))
+    candidate = {
+        "name": "existing",
+        "userDataDir": str(browser.profile),
+        "compatible": True,
+        "status": "open",
+        "attached": False,
+        "persistent": True,
+        "headed": False,
+        "browserType": "chrome",
+        **mismatch,
+    }
+    calls = []
+
+    async def invoke(command, args):
+        calls.append(command)
+        return {"browsers": [candidate]} if command == "list" else {}
+
+    monkeypatch.setattr(browser, "_invoke_cli", invoke)
+    await browser.start()
+    result = await browser.execute(
+        "playwright", {"command": "open", "args": ["--browser", "chrome"]}
+    )
+    assert result["status"] == "executed"
+    assert browser.ownership == "owned"
+    await browser.close()
+    assert calls == ["list", "open", "close"]
+
+
+@pytest.mark.asyncio
+async def test_cli_reuse_navigation_failure_keeps_attachment_for_cleanup(
+    monkeypatch, tmp_path
+):
+    browser = PlaywrightCLI(_settings(tmp_path))
+    calls = []
+
+    async def invoke(command, args):
+        calls.append(command)
+        if command == "list":
+            return {
+                "browsers": [
+                    {
+                        "name": "existing",
+                        "userDataDir": str(browser.profile),
+                        "compatible": True,
+                        "status": "open",
+                        "attached": False,
+                        "persistent": True,
+                        "headed": False,
+                    }
+                ]
+            }
+        if command == "goto":
+            raise BrowserError("cli_error", "Navigation failed", uncertain=True)
+        return {}
+
+    monkeypatch.setattr(browser, "_invoke_cli", invoke)
+    await browser.start()
+    result = await browser.execute(
+        "playwright", {"command": "open", "args": ["https://example.invalid"]}
+    )
+    assert result["status"] == "error"
+    assert browser.attached
+    await browser.close()
+    assert calls == ["list", "attach", "goto", "detach"]
+
+
+@pytest.mark.asyncio
+async def test_cli_profile_lock_race_returns_actionable_error(monkeypatch, tmp_path):
+    browser = PlaywrightCLI(_settings(tmp_path))
+
+    async def create(*argv, **_kwargs):
+        if argv[4] == "list":
+            return _FakeProcess(stdout=b'{"browsers": []}')
+        process = _FakeProcess(
+            stdout=b"",
+            stderr=b"Error: Browser is already in use for /private/profile, use --isolated",
+        )
+        process.returncode = 1
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    await browser.start()
+    result = await browser.execute("playwright", {"command": "open", "args": []})
+    assert result["error"]["code"] == "browser_profile_in_use"
+    assert "list and attach" in result["error"]["message"]
+    assert result["error"]["uncertain"] is False
 
 
 @pytest.mark.asyncio

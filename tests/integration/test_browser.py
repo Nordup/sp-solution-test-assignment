@@ -51,6 +51,8 @@ def fixture_url():
 
 @pytest_asyncio.fixture
 async def browser(tmp_path, fixture_url):
+    # Keep discovery inside this fixture instead of scanning the user's sessions.
+    (tmp_path / ".playwright").mkdir()
     settings = Settings(artifact_dir=tmp_path, browser_headed=False)
     session = PlaywrightCLI(settings, session_name=f"test-{uuid4().hex}")
     await session.start()
@@ -196,3 +198,39 @@ async def test_cli_evidence_is_bounded_and_prepare_task_does_not_navigate(browse
     assert browser.evidence and len(browser.evidence) <= 1_000_000
     await browser.prepare_task()
     assert browser.evidence == ""
+
+
+@pytest.mark.asyncio
+async def test_cli_open_reuses_busy_profile_and_detaches_without_closing_owner(
+    browser, fixture_url
+):
+    second = PlaywrightCLI(browser.settings, session_name=f"test-{uuid4().hex}")
+    await second.start()
+    try:
+        opened = await second.execute("playwright", {"command": "open", "args": []})
+        assert opened["status"] == "executed", opened
+        assert opened["output"]["reused_session"] == browser.session
+        assert second.attached
+        # Reuse preserves the current page when open has no URL.
+        snapshot = await second.execute(
+            "playwright", {"command": "snapshot", "args": []}
+        )
+        assert _item(snapshot["output"], "Country form")
+        shot = await second.execute("playwright", {"command": "screenshot", "args": []})
+        assert shot["status"] == "executed"
+        # An explicit open URL still navigates, including on repeated open.
+        navigated = await second.execute(
+            "playwright", {"command": "open", "args": [fixture_url + "?reused=1"]}
+        )
+        assert navigated["status"] == "executed", navigated
+        location = await second.execute(
+            "playwright", {"command": "eval", "args": ["() => location.href"]}
+        )
+        assert "?reused=1" in json.dumps(location)
+    finally:
+        await second.close()
+    still_open = await browser.execute(
+        "playwright", {"command": "snapshot", "args": []}
+    )
+    assert still_open["status"] == "executed", still_open
+    assert _item(still_open["output"], "Country form")

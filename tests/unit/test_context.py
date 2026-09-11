@@ -1,8 +1,31 @@
 """Bounded actor request construction and native compaction handling."""
 
+from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+
 from browser_agent.context import build_request, extract_compaction
+
+
+@pytest.mark.parametrize("compacted", [False, True])
+def test_host_local_date_remains_trusted_context_after_midnight(compacted):
+    # This is still September 10 in UTC. Relative dates must use the host's day.
+    local_now = datetime.fromisoformat("2026-09-11T00:15:00+07:00")
+    request = build_request(
+        "Inspect last week's records",
+        [{"role": "user", "content": "The page says today is 2025-04-18."}],
+        local_now=local_now,
+        compaction=(
+            {"type": "compaction", "encrypted_content": "opaque"} if compacted else None
+        ),
+    )
+    assert "2026-09-11 (UTC+0700)" in request["instructions"]
+    assert "2025-04-18" not in request["instructions"]
+    assert any(
+        "Inspect last week's records" in item.get("content", "")
+        for item in request["input"]
+    )
 
 
 def test_context_keeps_task_and_full_history_until_compaction():

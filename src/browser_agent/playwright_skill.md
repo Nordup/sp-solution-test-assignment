@@ -20,9 +20,14 @@ content; reuse the latest useful result and inspect only what changed or what th
 
 ## Choose the browser
 
-- `list` lists available Playwright sessions.
+- `list` lists available Playwright sessions; it does not connect the current
+  host session to any of them. When no browser is connected, use `open` or
+  `attach` before `screenshot`, `snapshot`, navigation, or other page commands.
 - `open` opens a visible browser, optionally at a URL. The default profile
-  persists login state across sessions.
+  persists login state across sessions. If a compatible session already owns
+  this profile with the requested display/browser settings, the host attaches
+  to it and reports `reused_session`. Without a URL its current page stays in
+  place; with a URL it navigates there. Reused browsers remain open on exit.
 - `attach` uses the CLI's own attachment support. Supply a discovered session
   name, `--cdp=chrome`, a known `--cdp=<endpoint>`, or `--extension=chrome` when
   the user has the Playwright extension. Read `help attach` for exact options.
@@ -101,7 +106,7 @@ Arguments below are individual strings in `args`:
 | `mousewheel` | horizontal delta, vertical delta | Scroll. |
 | `mousemove` | x, y | Move the pointer. |
 | `mousedown` / `mouseup` | optional button | Press or release a mouse button. |
-| `dialog-accept` / `dialog-dismiss` | optional prompt text for acceptance | Respond to a browser dialog. |
+| `dialog-accept` / `dialog-dismiss` | optional prompt text for acceptance | Request manual acceptance, or dismiss a native browser dialog. |
 | `tab-list` | none | List tabs. |
 | `tab-new` | optional URL | Open a tab. |
 | `tab-select` / `tab-close` | tab index | Select or close a tab. |
@@ -114,6 +119,13 @@ Arguments below are individual strings in `args`:
 `fill --submit` also presses Enter, so it can submit a form. The security reviewer
 checks the immediate effect of the entire command. Submit the intended command
 normally; the host handles any required user approval before executing it.
+
+The pinned CLI does not expose native dialog text. A `dialog-accept` proposal
+therefore asks the user to read and handle the dialog directly in the browser.
+After a `manual_step` result, inspect fresh state and honor the user's response;
+do not repeat a dialog-opening action the user cancelled. A changed page during
+an ordinary approval returns `approval_state_changed`; inspect again before
+proposing another action.
 
 This application exposes browser interaction commands only. Unbounded code, general shell,
 cookie export, network mocking and process-wide session deletion are outside this tool's
