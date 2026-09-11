@@ -1,4 +1,4 @@
-"""Lifecycle and subprocess transport for one Playwright CLI session."""
+"""Playwright CLI session lifecycle and subprocess transport."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import re
 import signal
 import time
 from collections.abc import Callable
+from enum import Enum
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -41,8 +42,13 @@ _MAX_PRIVATE_LOG_BYTES = 100_000
 Emit = Callable[[str, Any], None]
 
 
+class _Connection(Enum):
+    OWNED = "owned"
+    ATTACHED = "attached"
+
+
 class PlaywrightCLI:
-    """One persistent browser session backed by the official Playwright CLI."""
+    """Manage one reusable session backed by the official Playwright CLI."""
 
     COMMANDS = COMMANDS
     ACTION_COMMANDS = ACTION_COMMANDS
@@ -57,21 +63,18 @@ class PlaywrightCLI:
         self.settings = settings
         self.emit = emit
         self.session = session_name or f"browser-{uuid4().hex[:12]}"
+
         root = settings.artifact_dir.resolve()
-        self.profile = (
-            settings.browser_profile_dir or root / "profiles" / "default"
-        ).resolve()
+        profile = settings.browser_profile_dir or root / "profiles" / "default"
+        self.profile = profile.resolve()
         self._artifacts = ArtifactStore(
             session_root=root / "browser" / self.session,
             evidence_root=root / "evidence",
         )
         self._evidence = EvidenceCache(self._artifacts)
-        self._started = False
-        self._closed = True
-        self._browser_open = False
-        self._attached = False
+        self._running = False
+        self._connection: _Connection | None = None
         self._lock = asyncio.Lock()
-        self.ownership = "attached" if self._cdp_endpoint else "owned"
 
     @property
     def artifact_dir(self) -> Path:
@@ -91,11 +94,21 @@ class PlaywrightCLI:
 
     @property
     def is_open(self) -> bool:
-        return self._started and not self._closed
+        return self._running
 
     @property
     def attached(self) -> bool:
-        return self._attached
+        return self._connection is _Connection.ATTACHED
+
+    @property
+    def ownership(self) -> str:
+        if self._connection is not None:
+            return self._connection.value
+        return (
+            _Connection.ATTACHED.value
+            if self._cdp_endpoint
+            else _Connection.OWNED.value
+        )
 
     @property
     def evidence(self) -> str:
@@ -117,42 +130,45 @@ class PlaywrightCLI:
         return is_read_only(command)
 
     async def start(self) -> None:
-        """Prepare private storage without launching or attaching a browser."""
+        """Prepare private storage without opening or attaching a browser."""
 
         async with self._lock:
-            if self._started and not self._closed:
+            if self._running:
                 raise BrowserError(
-                    "already_started",
-                    "The Playwright CLI session is already running",
+                    "already_started", "The Playwright CLI session is already running"
                 )
             self.settings.prepare()
             self.profile.mkdir(parents=True, exist_ok=True, mode=0o700)
-            self.profile.chmod(0o700)
+            try:
+                self.profile.chmod(0o700)
+            except OSError:
+                pass
             self._artifacts.prepare_session()
-            self._started = True
-            self._closed = False
-            self._browser_open = False
+            self._connection = None
+            self._running = True
 
     async def close(self) -> None:
-        """Best-effort teardown of only the browser session this object owns."""
+        """Best-effort teardown without closing an attached external browser."""
 
         async with self._lock:
-            if not self._started or self._closed:
+            if not self._running:
                 return
-            if self._browser_open:
-                command = "detach" if self._attached else "close"
-                try:
-                    await self._invoke_cli(command, [])
-                except BrowserError:
-                    pass
-            self._closed = True
-            self._started = False
-            self._browser_open = False
+            try:
+                if self._connection is not None:
+                    command = "detach" if self.attached else "close"
+                    try:
+                        await self._invoke_cli(command, [])
+                    except BrowserError:
+                        pass
+            finally:
+                self._connection = None
+                self._running = False
 
     async def prepare_task(self) -> None:
-        """Clear prior task evidence without reading or navigating the browser."""
+        """Clear prior task evidence without changing the browser page."""
 
-        self._evidence.clear()
+        async with self._lock:
+            self._evidence.clear()
 
     async def execute(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
         """Execute one model-facing browser tool call."""
@@ -162,48 +178,13 @@ class PlaywrightCLI:
             self._ensure_started()
             if not isinstance(args, dict):
                 raise BrowserError(
-                    "invalid_arguments",
-                    "Browser command arguments must be an object",
+                    "invalid_arguments", "Browser command arguments must be an object"
                 )
             if tool == "playwright":
                 command, cli_args = validate_invocation(
-                    args.get("command"),
-                    args.get("args", []),
+                    args.get("command"), args.get("args", [])
                 )
-                cli_args, screenshot_path = self._prepare_command(command, cli_args)
-                async with self._lock:
-                    if command in {"open", "attach"}:
-                        self._browser_open = True
-                        self._attached = command == "attach"
-                    dispatched_at_ns = time.time_ns()
-                    payload = await self._invoke_cli(command, cli_args)
-                    self._evidence.update(
-                        command,
-                        payload,
-                        fresh_after_ns=dispatched_at_ns,
-                    )
-                    actor_payload = self._artifacts.compact_for_actor(command, payload)
-                    actor_payload = _with_snapshot_scope(
-                        command, cli_args, actor_payload
-                    )
-                    if command in {"open", "attach"}:
-                        self._browser_open = True
-                        self._attached = command == "attach"
-                    elif command in {"close", "detach"}:
-                        self._browser_open = False
-
-                result: dict[str, Any] = {
-                    "status": "executed",
-                    "tool": tool,
-                    "command": command,
-                    "output": actor_payload,
-                }
-                if screenshot_path is not None:
-                    result["content"] = self._artifacts.screenshot_content(
-                        screenshot_path
-                    )
-                return result
-
+                return await self._execute_playwright(command, cli_args)
             if tool == "read_browser_artifact":
                 async with self._lock:
                     return self._artifacts.read(args)
@@ -215,36 +196,79 @@ class PlaywrightCLI:
                 "Only playwright, read_browser_artifact, and search_browser_artifact are available",
             )
         except BrowserError as exc:
-            return {
+            result: dict[str, Any] = {
                 "status": "error",
                 "tool": tool,
-                **({"command": command} if command else {}),
                 "error": exc.as_dict(),
             }
+            if command is not None:
+                result["command"] = command
+            return result
+
+    async def _execute_playwright(
+        self, command: str, args: list[str]
+    ) -> dict[str, Any]:
+        cli_args, screenshot_path = self._prepare_command(command, args)
+        async with self._lock:
+            self._ensure_started()
+            self._record_dispatch(command)
+            dispatched_at_ns = time.time_ns()
+            payload = await self._invoke_cli(command, cli_args)
+            self._evidence.update(
+                command,
+                payload,
+                fresh_after_ns=dispatched_at_ns,
+            )
+            actor_payload = self._artifacts.compact_for_actor(command, payload)
+            actor_payload = _with_snapshot_scope(command, cli_args, actor_payload)
+            self._record_success(command)
+
+            result: dict[str, Any] = {
+                "status": "executed",
+                "tool": "playwright",
+                "command": command,
+                "output": actor_payload,
+            }
+            if screenshot_path is not None:
+                result["content"] = self._artifacts.screenshot_content(screenshot_path)
+            return result
 
     def _prepare_command(
         self,
         command: str,
         args: list[str],
     ) -> tuple[list[str], Path | None]:
-        screenshot_path: Path | None = None
         if command == "open":
-            args = with_open_defaults(
-                args,
-                profile=self.profile,
-                headed=self.settings.browser_headed,
-                browser_channel=self.settings.browser_channel,
+            return (
+                with_open_defaults(
+                    args,
+                    profile=self.profile,
+                    headed=self.settings.browser_headed,
+                    browser_channel=self.settings.browser_channel,
+                ),
+                None,
             )
+        if command == "attach":
+            return with_attach_defaults(args, self._cdp_endpoint), None
+        if command == "snapshot":
+            return self._artifacts.rewrite_snapshot_args(args), None
+        if command == "screenshot":
+            return self._artifacts.prepare_screenshot(args)
+        return args, None
+
+    def _record_dispatch(self, command: str) -> None:
+        # Opening or attaching may have taken effect even if its response is lost.
+        if command == "open":
+            self._connection = _Connection.OWNED
         elif command == "attach":
-            args = with_attach_defaults(args, self._cdp_endpoint)
-        elif command == "snapshot":
-            args = self._artifacts.rewrite_snapshot_args(args)
-        elif command == "screenshot":
-            args, screenshot_path = self._artifacts.prepare_screenshot(args)
-        return args, screenshot_path
+            self._connection = _Connection.ATTACHED
+
+    def _record_success(self, command: str) -> None:
+        if command in {"close", "detach"}:
+            self._connection = None
 
     async def _invoke_cli(self, command: str, args: list[str]) -> dict[str, Any]:
-        """Run one literal CLI subprocess and decode its JSON envelope."""
+        """Run one literal subprocess and decode its native JSON envelope."""
 
         self._artifacts.prepare_session()
         argv = build_argv(
@@ -265,8 +289,7 @@ class PlaywrightCLI:
             )
         except OSError as exc:
             raise BrowserError(
-                "cli_unavailable",
-                "Could not start the Playwright CLI",
+                "cli_unavailable", "Could not start the Playwright CLI"
             ) from exc
 
         communication = asyncio.create_task(process.communicate())
@@ -276,12 +299,12 @@ class PlaywrightCLI:
             stdout, stderr = await self._reap_cancelled_process(process, communication)
             log_paths = self._log_process_output(command, stdout, stderr)
             self._emit_diagnostic(
-                command,
-                process.returncode,
-                len(stdout),
-                len(stderr),
-                "cancelled",
-                log_paths,
+                command=command,
+                exit_code=process.returncode,
+                stdout_chars=len(stdout),
+                stderr_chars=len(stderr),
+                status="cancelled",
+                log_paths=log_paths,
             )
             raise
 
@@ -292,12 +315,12 @@ class PlaywrightCLI:
             parsed = _decode_json(stdout_text, command)
         except BrowserError:
             self._emit_diagnostic(
-                command,
-                process.returncode,
-                len(stdout_text),
-                len(stderr_text),
-                "parse_error",
-                log_paths,
+                command=command,
+                exit_code=process.returncode,
+                stdout_chars=len(stdout_text),
+                stderr_chars=len(stderr_text),
+                status="parse_error",
+                log_paths=log_paths,
             )
             raise
 
@@ -309,13 +332,16 @@ class PlaywrightCLI:
         )
         cli_error = parsed.get("isError") is True or nested_error
         self._emit_diagnostic(
-            command,
-            process.returncode,
-            len(stdout_text),
-            len(stderr_text),
-            "error" if cli_error else "ok",
-            log_paths,
+            command=command,
+            exit_code=process.returncode,
+            stdout_chars=len(stdout_text),
+            stderr_chars=len(stderr_text),
+            status=(
+                "error" if cli_error or process.returncode not in (0, None) else "ok"
+            ),
+            log_paths=log_paths,
         )
+
         if cli_error:
             detail = parsed.get("error")
             if not detail and nested_error:
@@ -345,6 +371,7 @@ class PlaywrightCLI:
             process.send_signal(signal.SIGTERM)
         except ProcessLookupError:
             pass
+
         try:
             await asyncio.wait_for(process.wait(), timeout=1)
         except (TimeoutError, ProcessLookupError):
@@ -352,6 +379,11 @@ class PlaywrightCLI:
                 process.kill()
             except ProcessLookupError:
                 pass
+            try:
+                await asyncio.wait_for(process.wait(), timeout=1)
+            except (TimeoutError, ProcessLookupError):
+                pass
+
         try:
             return await asyncio.shield(communication)
         except (asyncio.CancelledError, ProcessLookupError):
@@ -365,20 +397,22 @@ class PlaywrightCLI:
     ) -> dict[str, str]:
         """Keep bounded raw streams private for transport diagnostics."""
 
-        stem = re.sub(r"[^a-zA-Z0-9_.-]", "_", command)[:40] + "-" + uuid4().hex[:8]
+        safe_command = re.sub(r"[^a-zA-Z0-9_.-]", "_", command)[:40]
+        stem = f"{safe_command}-{uuid4().hex[:8]}"
         paths: dict[str, str] = {}
-        for suffix, data in (("stdout", stdout), ("stderr", stderr)):
-            path = self.browser_session_dir / f"{stem}-{suffix}.log"
+        for stream, data in (("stdout", stdout), ("stderr", stderr)):
+            path = self.browser_session_dir / f"{stem}-{stream}.log"
             try:
                 path.write_bytes(data[-_MAX_PRIVATE_LOG_BYTES:])
                 path.chmod(0o600)
-                paths[suffix] = str(path)
             except OSError:
                 continue
+            paths[stream] = str(path)
         return paths
 
     def _emit_diagnostic(
         self,
+        *,
         command: str,
         exit_code: int | None,
         stdout_chars: int,
@@ -388,6 +422,7 @@ class PlaywrightCLI:
     ) -> None:
         if self.emit is None:
             return
+        paths = log_paths or {}
         self.emit(
             "diagnostic",
             {
@@ -397,16 +432,15 @@ class PlaywrightCLI:
                 "stdout_chars": stdout_chars,
                 "stderr_chars": stderr_chars,
                 "status": status,
-                "stdout_path": (log_paths or {}).get("stdout"),
-                "stderr_path": (log_paths or {}).get("stderr"),
+                "stdout_path": paths.get("stdout"),
+                "stderr_path": paths.get("stderr"),
             },
         )
 
     def _ensure_started(self) -> None:
-        if not self.is_open:
+        if not self._running:
             raise BrowserError(
-                "browser_not_started",
-                "The Playwright CLI session is not open",
+                "browser_not_started", "The Playwright CLI session is not open"
             )
 
     @property
@@ -418,8 +452,8 @@ class PlaywrightCLI:
 
 
 def _decode_json(text: str, command: str) -> Any:
-    text = text.strip()
-    if not text:
+    stripped = text.strip()
+    if not stripped:
         if command == "help":
             return {"result": ""}
         raise BrowserError(
@@ -428,10 +462,10 @@ def _decode_json(text: str, command: str) -> Any:
             uncertain=True,
         )
     try:
-        return json.loads(text)
+        return json.loads(stripped)
     except json.JSONDecodeError:
         if command == "help":
-            return {"result": text[:_MAX_OUTPUT_CHARS]}
+            return {"result": stripped[:_MAX_OUTPUT_CHARS]}
         raise BrowserError(
             "cli_parse_error",
             "The Playwright CLI returned invalid JSON",
@@ -440,18 +474,19 @@ def _decode_json(text: str, command: str) -> Any:
 
 
 def _safe_subprocess_env() -> dict[str, str]:
-    env = {
+    environment = {
         key: value
         for key, value in os.environ.items()
         if not any(part in key.upper() for part in _SENSITIVE_ENV_PARTS)
     }
-    env.pop("OPENAI_API_KEY", None)
-    env.pop("AGENT_BROWSER_CDP_ENDPOINT", None)
-    return env
+    environment.pop("OPENAI_API_KEY", None)
+    environment.pop("AGENT_BROWSER_CDP_ENDPOINT", None)
+    return environment
 
 
-def _safe_text(value: Any, limit: int = 1000) -> str:
-    return " ".join(str(value or "").split())[:limit]
+def _safe_text(value: Any, limit: int = 1_000) -> str:
+    text = "" if value is None else str(value)
+    return " ".join(text.split())[:limit]
 
 
 def _with_snapshot_scope(
@@ -462,9 +497,9 @@ def _with_snapshot_scope(
     if command != "snapshot":
         return payload
     target = snapshot_scope_target(args)
-    if not target:
+    if target is None:
         return payload
-    scoped = dict(payload)
+    scoped = payload.copy()
     scoped["scope_hint"] = {
         "target": target,
         "warning": (

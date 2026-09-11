@@ -1,4 +1,4 @@
-"""Command policy and argument construction for the Playwright CLI."""
+"""Allowlisted Playwright CLI commands and literal argument construction."""
 
 from __future__ import annotations
 
@@ -80,87 +80,88 @@ READ_ONLY_COMMANDS = frozenset(
 )
 ACTION_COMMANDS = frozenset(COMMANDS - READ_ONLY_COMMANDS)
 
-_HOST_FLAGS = (
-    "--config",
-    "--session",
-    "--profile",
-    "--executable-path",
-    "--headed",
-    "--persistent",
-    "--output-dir",
-    "--allowed-hosts",
-    "--allowed-origins",
-    "--blocked-origins",
-    "--proxy",
-    "--device",
-    "--mobile",
+_HOST_FLAGS = frozenset(
+    {
+        "--config",
+        "--session",
+        "--profile",
+        "--executable-path",
+        "--headed",
+        "--persistent",
+        "--output-dir",
+        "--allowed-hosts",
+        "--allowed-origins",
+        "--blocked-origins",
+        "--proxy",
+        "--device",
+        "--mobile",
+    }
 )
 _COMMAND_FLAGS = {
+    "attach": frozenset({"--cdp", "--extension"}),
+    "open": frozenset({"--browser"}),
     "fill": frozenset({"--submit"}),
     "find": frozenset({"--regex"}),
     "snapshot": frozenset({"--depth", "--filename"}),
     "screenshot": frozenset({"--hires"}),
 }
+_FLAGS_REQUIRING_VALUE = frozenset(
+    {"--browser", "--cdp", "--depth", "--filename", "--regex"}
+)
+_NEGATIVE_NUMBER = re.compile(r"-\d+(?:\.\d+)?\Z")
 
 
 def is_read_only(command: str) -> bool:
-    """Return whether a supported command only inspects browser state."""
+    """Return whether a supported command is guaranteed to avoid page changes."""
 
     return isinstance(command, str) and command in READ_ONLY_COMMANDS
 
 
 def validate_invocation(command: object, raw_args: object) -> tuple[str, list[str]]:
-    """Validate the model-controlled portion of one CLI invocation."""
+    """Validate and copy the model-controlled portion of one CLI invocation."""
 
     if not isinstance(command, str) or command not in COMMANDS:
         raise BrowserError(
             "unsupported_command", "That Playwright CLI command is not available"
         )
-    if not isinstance(raw_args, list) or any(
-        not isinstance(value, str) for value in raw_args
+    if not isinstance(raw_args, list) or not all(
+        isinstance(argument, str) for argument in raw_args
     ):
         raise BrowserError(
             "invalid_arguments", "Playwright CLI args must be a list of strings"
         )
     if len(raw_args) > 32 or any(
-        len(value) > 8000 or "\x00" in value for value in raw_args
+        len(argument) > 8_000 or "\x00" in argument for argument in raw_args
     ):
         raise BrowserError("invalid_arguments", "Playwright CLI args are too long")
-    args = list(raw_args)
+
+    args = raw_args.copy()
     _validate_flags(command, args)
     return command, args
 
 
 def _validate_flags(command: str, args: list[str]) -> None:
-    allowed = _COMMAND_FLAGS.get(command, frozenset())
-    for index, value in enumerate(args):
-        if not value.startswith("-") or re.fullmatch(r"-\d+(?:\.\d+)?", value):
+    allowed_flags = _COMMAND_FLAGS.get(command, frozenset())
+    for index, argument in enumerate(args):
+        if not argument.startswith("-") or _NEGATIVE_NUMBER.fullmatch(argument):
             continue
-        if command == "attach" and (
-            value in {"--cdp", "--extension"}
-            or value.startswith(("--cdp=", "--extension="))
-        ):
-            continue
-        if command == "open" and (
-            value == "--browser" or value.startswith("--browser=")
-        ):
-            continue
-        if any(value == flag or value.startswith(flag + "=") for flag in _HOST_FLAGS):
+
+        flag, separator, inline_value = argument.partition("=")
+        if flag in _HOST_FLAGS:
             raise BrowserError(
                 "forbidden_argument",
                 "Host and session flags are controlled by the browser agent",
             )
-        if value not in allowed and not any(
-            value.startswith(flag + "=") for flag in allowed
-        ):
+        if flag not in allowed_flags:
             raise BrowserError(
                 "forbidden_argument",
                 f"The {command} command does not accept that flag",
             )
-        if value in {"--regex", "--depth"} and index + 1 >= len(args):
-            raise BrowserError(
-                "invalid_arguments", f"The {value} flag requires a value"
-            )
+        if flag not in _FLAGS_REQUIRING_VALUE:
+            continue
+        has_value = bool(inline_value) if separator else index + 1 < len(args)
+        if not has_value:
+            raise BrowserError("invalid_arguments", f"The {flag} flag requires a value")
 
 
 def build_argv(
@@ -170,19 +171,17 @@ def build_argv(
     command: str,
     args: list[str],
 ) -> list[str]:
-    """Build a literal subprocess argument array without invoking a shell."""
+    """Build the exact subprocess argv; no value is interpreted by a shell."""
 
-    argv = (
-        [executable, "--yes", package]
-        if Path(executable).name == "npx"
-        else [executable]
-    )
+    argv = [executable]
+    if Path(executable).name == "npx":
+        argv.extend(("--yes", package))
     argv.append(f"-s={session}")
     if command == "help":
         argv.append("--help")
-        argv.extend(args)
     else:
-        argv.extend((command, *args))
+        argv.append(command)
+    argv.extend(args)
     argv.append("--json")
     return argv
 
@@ -196,42 +195,47 @@ def with_open_defaults(
 ) -> list[str]:
     """Add host-owned persistence and display settings to an open command."""
 
-    rewritten = list(args)
-    if not _has_flag(rewritten, "--persistent"):
-        rewritten.append("--persistent")
-    if not _has_flag(rewritten, "--profile"):
-        rewritten.append(f"--profile={profile}")
-    if headed and not _has_flag(rewritten, "--headed"):
-        rewritten.append("--headed")
-    if browser_channel and not _has_flag(rewritten, "--browser"):
-        rewritten.append(f"--browser={browser_channel}")
+    rewritten = args.copy()
+    _append_flag(rewritten, "--persistent")
+    _append_flag(rewritten, "--profile", str(profile))
+    if headed:
+        _append_flag(rewritten, "--headed")
+    if browser_channel:
+        _append_flag(rewritten, "--browser", browser_channel)
     return rewritten
 
 
 def with_attach_defaults(args: list[str], cdp_endpoint: str | None) -> list[str]:
     """Add the configured CDP endpoint when the model did not supply one."""
 
-    rewritten = list(args)
-    if cdp_endpoint and not _has_flag(rewritten, "--cdp"):
-        rewritten.append(f"--cdp={cdp_endpoint}")
+    rewritten = args.copy()
+    if cdp_endpoint:
+        _append_flag(rewritten, "--cdp", cdp_endpoint)
     return rewritten
 
 
 def snapshot_scope_target(args: list[str]) -> str | None:
     """Return the first positional target of a scoped snapshot command."""
 
-    skip_next = False
-    for value in args:
-        if skip_next:
-            skip_next = False
+    skip_value = False
+    for argument in args:
+        if skip_value:
+            skip_value = False
             continue
-        if value in {"--depth", "--filename"}:
-            skip_next = True
+        flag, separator, _value = argument.partition("=")
+        if flag in {"--depth", "--filename"}:
+            skip_value = not separator
             continue
-        if not value.startswith("--"):
-            return value
+        if not argument.startswith("--"):
+            return argument
     return None
 
 
+def _append_flag(args: list[str], flag: str, value: str | None = None) -> None:
+    if _has_flag(args, flag):
+        return
+    args.append(flag if value is None else f"{flag}={value}")
+
+
 def _has_flag(args: list[str], flag: str) -> bool:
-    return any(value == flag or value.startswith(flag + "=") for value in args)
+    return any(argument == flag or argument.startswith(f"{flag}=") for argument in args)

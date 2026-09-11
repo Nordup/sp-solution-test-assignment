@@ -20,7 +20,9 @@ flowchart LR
     D -->|Finish| F[Report outcome]
 ```
 
-The graph has five nodes: `decide`, `review`, `approve`, `execute`, and `record`. Each model decision produces one native function call. Pydantic validates its arguments before dispatch; model prose is not parsed into actions.
+The graph has five nodes: `decide`, `review`, `approve`, `execute`, and `record`. Each node returns a LangGraph `Command` containing its state update and next destination. A pending action holds the native call, reviewer evidence, and approval decision together. The `record` node appends each browser result to history once.
+
+Each model decision produces one native function call. Pydantic validates its arguments before dispatch; model prose is not parsed into actions.
 
 The actor has five tools:
 
@@ -32,7 +34,7 @@ The actor has five tools:
 | `ask_user(question, kind)` | Request missing information or manual login/security help. |
 | `finish(status, summary, remaining)` | Report the observed outcome. |
 
-A new task starts with its own history and budget while reusing the browser session. The actor chooses its starting page and workflow from the request.
+A new task starts with its own history and budget while reusing the browser session. The actor chooses its starting page and workflow from the request. Task cleanup closes the model client and event log and restores the browser's event sink. Session cleanup separately owns the browser and terminal.
 
 ## Browser integration
 
@@ -114,4 +116,4 @@ The [official Playwright CLI documentation](https://github.com/microsoft/playwri
 
 The approval design borrows effect-based assessment from [Codex's reviewer policy](https://github.com/openai/codex/blob/968835997714baaff199cfed5f89a2c65d8ca77d/codex-rs/core/assets/guardian/policy_template.md) and [Claude Code's auto-mode design](https://www.anthropic.com/engineering/claude-code-auto-mode). This application uses a smaller boolean classifier and its own host approval flow.
 
-Code organization follows [LangGraph's state and node guidance](https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph) and [ReAct example](https://github.com/langchain-ai/react-agent): keep graph transitions explicit and dependencies separate. Naming and formatting follow [PEP 8](https://peps.python.org/pep-0008/). Test layout and imports follow [pytest's integration guidance](https://docs.pytest.org/en/stable/explanation/goodpractices.html). These references inform the structure; the runtime retains the project's native Responses and Playwright CLI interfaces.
+Code organization follows [LangGraph's state and node guidance](https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph) and [ReAct example](https://github.com/langchain-ai/react-agent): keep graph transitions explicit and dependencies separate. Routing uses the [documented `Command` interface](https://docs.langchain.com/oss/python/langgraph/graph-api#command), which keeps state updates and destinations together. Naming and formatting follow [PEP 8](https://peps.python.org/pep-0008/). Test layout and imports follow [pytest's integration guidance](https://docs.pytest.org/en/stable/explanation/goodpractices.html). These references inform the structure; the runtime retains the project's native Responses and Playwright CLI interfaces.

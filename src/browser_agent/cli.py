@@ -1,9 +1,9 @@
-"""Start a visible browser and accept tasks in the terminal."""
+"""Interactive entry point for a reusable visible-browser session."""
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from functools import partial
 from typing import Any
 
@@ -20,6 +20,26 @@ from .terminal import Terminal
 app = typer.Typer(add_completion=False)
 console = Console()
 
+_APPROVAL_DECISIONS = {
+    "y": True,
+    "yes": True,
+    "n": False,
+    "no": False,
+    "": False,
+    "/stop": False,
+    "/pause": False,
+}
+_TASK_STOP_COMMANDS = frozenset({"/stop", "/pause"})
+_MISSING_KEY_MESSAGE = "Set OPENAI_API_KEY in .env.local before starting."
+_CANCELLED_RESULT = {
+    "status": "partial",
+    "summary": (
+        "Task stopped. The browser remains open. An action already sent to the "
+        "browser may have taken effect; inspect it before retrying."
+    ),
+    "remaining": [],
+}
+
 
 async def respond_to_question(
     question: dict[str, Any],
@@ -27,75 +47,114 @@ async def respond_to_question(
     read: Callable[..., Awaitable[str]],
     ui: TerminalUI | None = None,
 ) -> dict[str, Any] | str | None:
-    """Read an answer and bind approval to the pending request."""
+    """Collect one human response, binding approvals to their request ID."""
+
     if ui is not None:
         ui.question(question)
+
     if question["kind"] == "approval":
         prompt = "[y/N]: "
         while True:
             answer = await read(prompt, erase_when_done=True)
             normalized = answer.strip().casefold()
-            if normalized in {"y", "yes", "n", "no", "", "/stop", "/pause"}:
-                if ui is not None:
-                    # Empty input is the default No; make that decision visible
-                    # in the transcript instead of printing a blank user turn.
-                    ui.user(answer if normalized else "No")
-                return {
-                    "request_id": question["request_id"],
-                    "approved": normalized in {"y", "yes"},
-                }
-            prompt = "Please enter y or n [y/N]: "
+            approved = _APPROVAL_DECISIONS.get(normalized)
+            if approved is None:
+                prompt = "Please enter y or n [y/N]: "
+                continue
+            if ui is not None:
+                ui.user(answer if normalized else "No")
+            return {
+                "request_id": question["request_id"],
+                "approved": approved,
+            }
+
     answer = await read("Reply, or /stop to end this task: ", erase_when_done=True)
     if ui is not None:
         ui.user(answer)
-    return None if answer.strip() in {"/stop", "/pause"} else answer
+    return None if answer.strip() in _TASK_STOP_COMMANDS else answer
+
+
+async def _read_task(terminal: Terminal) -> str | None:
+    try:
+        return (await terminal.read("Task: ", erase_when_done=True)).strip()
+    except EOFError:
+        return None
+
+
+async def _run_one_task(
+    settings: Settings,
+    task: str,
+    browser: PlaywrightCLI,
+    terminal: Terminal,
+    ui: TerminalUI,
+    *,
+    debug: bool,
+) -> Mapping[str, Any]:
+    result = await terminal.run(
+        run_task(
+            settings,
+            task,
+            browser,
+            responder=partial(respond_to_question, read=terminal.read, ui=ui),
+            console=console,
+            raise_on_cancel=True,
+            debug=debug,
+            ui=ui,
+        )
+    )
+    return _CANCELLED_RESULT if result is None else result
 
 
 async def run_session(settings: Settings, *, debug: bool = False) -> None:
-    """Reuse one browser between tasks and release session resources on exit."""
-    settings.prepare()
+    """Reuse one browser across tasks and always release session-owned resources."""
+
     if not settings.api_key.get_secret_value():
-        raise ValueError("Set OPENAI_API_KEY in .env.local before starting.")
+        raise ValueError(_MISSING_KEY_MESSAGE)
+    settings.prepare()
+
     browser = PlaywrightCLI(settings)
-    ui = TerminalUI(console, debug=debug)
     terminal = Terminal()
+    ui = TerminalUI(console, debug=debug)
     try:
-        # The session owns browser startup and shutdown; tasks reuse its profile.
         await browser.start()
         ui.welcome()
-        while True:
-            try:
-                task = (await terminal.read("Task: ", erase_when_done=True)).strip()
-            except EOFError:
-                break
+        while (task := await _read_task(terminal)) is not None:
             if task == "/exit":
                 break
             if not task:
                 continue
             ui.user(task)
-            result = await terminal.run(
-                run_task(
+            ui.result(
+                await _run_one_task(
                     settings,
                     task,
                     browser,
-                    responder=partial(respond_to_question, read=terminal.read, ui=ui),
-                    console=console,
-                    raise_on_cancel=True,
+                    terminal,
+                    ui,
                     debug=debug,
-                    ui=ui,
                 )
             )
-            if result is None:
-                result = {
-                    "status": "partial",
-                    "summary": "Task stopped. The browser remains open. An action already sent to the browser may have taken effect; inspect it before retrying.",
-                    "remaining": [],
-                }
-            ui.result(result)
     finally:
-        ui.close()
-        terminal.close()
-        await browser.close()
+        try:
+            ui.close()
+        finally:
+            try:
+                terminal.close()
+            finally:
+                await browser.close()
+
+
+def _print_startup_error(exc: Exception, *, debug: bool) -> None:
+    missing_key = isinstance(exc, ValueError) and "OPENAI_API_KEY" in str(exc)
+    if missing_key:
+        console.print(_MISSING_KEY_MESSAGE, markup=False)
+    elif not debug:
+        console.print(
+            "Could not start the browser agent session. Check configuration and browser availability.",
+            markup=False,
+        )
+    if debug:
+        console.print(f"Session stopped ({type(exc).__name__}).", markup=False)
 
 
 @app.command()
@@ -103,27 +162,15 @@ def main(
     debug: bool = typer.Option(
         False,
         "--debug",
-        help="Show selected diagnostic events while keeping full artifacts private.",
+        help="Show safe lifecycle diagnostics; detailed artifacts remain private.",
     ),
 ) -> None:
-    """Open the browser workspace and enter tasks. No startup browser is chosen."""
+    """Open the browser workspace and accept terminal tasks until session exit."""
+
     try:
-        settings = Settings.load()
-        asyncio.run(run_session(settings, debug=debug))
+        asyncio.run(run_session(Settings.load(), debug=debug))
     except (KeyboardInterrupt, EOFError, asyncio.CancelledError):
-        pass
+        return
     except (BrowserError, OSError, ProviderFailure, RuntimeError, ValueError) as exc:
-        if isinstance(exc, ValueError) and "OPENAI_API_KEY" in str(exc):
-            console.print(
-                "Set OPENAI_API_KEY in .env.local before starting.", markup=False
-            )
-            if debug:
-                console.print(f"Session stopped ({type(exc).__name__}).", markup=False)
-        elif debug:
-            console.print(f"Session stopped ({type(exc).__name__}).", markup=False)
-        else:
-            console.print(
-                "Could not start the browser agent session. Check configuration and browser availability.",
-                markup=False,
-            )
+        _print_startup_error(exc, debug=debug)
         raise typer.Exit(1) from None

@@ -1,20 +1,18 @@
-"""Errors returned across the browser tool boundary."""
+"""Typed errors returned across the browser tool boundary."""
 
 from __future__ import annotations
 
-from typing import Any
-
 
 class BrowserError(Exception):
-    """A browser failure safe to expose to the model."""
+    """A browser failure whose message is safe to return to the actor."""
 
     def __init__(self, code: str, message: str, uncertain: bool = False) -> None:
         super().__init__(message)
-        self.code = str(code)
-        self.message = str(message)
-        self.uncertain = bool(uncertain)
+        self.code = code
+        self.message = message
+        self.uncertain = uncertain
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, str | bool]:
         return {
             "code": self.code,
             "message": self.message,

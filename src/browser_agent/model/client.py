@@ -1,9 +1,10 @@
-"""Native Responses client with bounded retries and shared task accounting."""
+"""Native Responses client with explicit retries and per-task accounting."""
 
 import asyncio
 import math
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
@@ -13,17 +14,23 @@ from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 from ..config import Settings
 from ..context import ContextOverflow
 from ..telemetry import diagnostic_span
-from .budget import MICRO_USD_PER_USD, Budget
+from .budget import Budget, Reservation
 from .diagnostics import (
+    StreamCapture,
     bounded_error_fields,
-    new_stream_progress,
-    record_stream_event,
     response_details,
     visible_response_capture,
 )
 from .errors import ProviderFailure
-from .pricing import PRICES, UsageMetadata, reservation_rates, usage_metadata
-from .stream import close_async_iterator, diagnostic_stream_context
+from .pricing import (
+    PRICES,
+    AggregateUsage,
+    PricedUsage,
+    UsageTotals,
+    conservative_cost_microusd,
+    price_usage,
+)
+from .stream import response_stream_events
 
 Purpose = Literal["actor", "security"]
 Emit = Callable[[str, dict[str, Any]], None]
@@ -34,10 +41,97 @@ _TERMINAL_EVENTS = {
     "response.incomplete",
     "response.failed",
 }
+_RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
 
 
 def _discard_event(_event: str, _data: dict[str, Any]) -> None:
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _RequestPlan:
+    """Provider payload and stable identity for one logical model call."""
+
+    request_id: str
+    purpose: Purpose
+    effort: str
+    payload: dict[str, Any]
+
+    @classmethod
+    def build(
+        cls,
+        request: Mapping[str, Any],
+        *,
+        purpose: Purpose,
+        model: str,
+        actor_effort: str,
+    ) -> "_RequestPlan":
+        effort = "medium" if purpose == "security" else actor_effort
+        payload = {**request, "model": model, "reasoning": {"effort": effort}}
+        if purpose == "security":
+            payload.pop("context_management", None)
+        return cls(str(uuid4()), purpose, effort, payload)
+
+    def count_payload(self) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in self.payload.items()
+            if key != "context_management"
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _GenerationAttempt:
+    """Identity, timing, and budget state for one dispatched generation."""
+
+    request_id: str
+    call_id: str
+    purpose: Purpose
+    model: str
+    effort: str
+    number: int
+    reservation: Reservation
+    started_at: float
+
+    @classmethod
+    def start(
+        cls,
+        plan: _RequestPlan,
+        *,
+        model: str,
+        number: int,
+        reservation: Reservation,
+    ) -> "_GenerationAttempt":
+        return cls(
+            request_id=plan.request_id,
+            call_id=str(uuid4()),
+            purpose=plan.purpose,
+            model=model,
+            effort=plan.effort,
+            number=number,
+            reservation=reservation,
+            started_at=time.monotonic(),
+        )
+
+    def event_fields(self) -> dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "call_id": self.call_id,
+            "purpose": self.purpose,
+            "model": self.model,
+            "effort": self.effort,
+            "attempt": self.number,
+        }
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time.monotonic() - self.started_at
+
+
+@dataclass(frozen=True, slots=True)
+class _StreamResult:
+    response: Any
+    first_visible_seconds: float | None
 
 
 class ModelClient:
@@ -64,125 +158,91 @@ class ModelClient:
         self.emit = emit or _discard_event
         self.sleep = sleep
         self.budget = Budget(settings.budget_usd)
-        self.usage: dict[str, Any] = {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "calls": 0,
-            "input_token_details": {"cache_read": 0, "cache_creation": 0},
-            "output_token_details": {"reasoning": 0},
-        }
-        self.reported_cost_usd = 0.0
+        self._usage = UsageTotals()
         self.attempts = 0
 
     @property
     def cost_usd(self) -> float:
         return self.budget.cost_usd
 
+    @property
+    def reported_cost_usd(self) -> float:
+        return self._usage.reported_cost_usd
+
+    @property
+    def usage(self) -> AggregateUsage:
+        return self._usage.metadata()
+
     async def call(
         self,
         request: Mapping[str, Any],
         purpose: Purpose = "actor",
     ) -> Any:
-        """Count, reserve, stream, and account for one model response."""
+        """Count once, then dispatch and account for a bounded set of attempts."""
 
-        request_id = str(uuid4())
-        provider_request, effort = self._prepare_request(request, purpose)
-        input_tokens = await self._count_input(
-            provider_request,
+        plan = _RequestPlan.build(
+            request,
             purpose=purpose,
-            request_id=request_id,
+            model=self.settings.model,
+            actor_effort=self.settings.reasoning,
         )
-        reservation = self._reservation(input_tokens)
+        input_tokens = await self._count_input(plan)
+        estimated_microusd = conservative_cost_microusd(
+            self.settings.model,
+            input_tokens,
+            self.settings.max_output_tokens,
+        )
 
-        for attempt in range(self.settings.max_retries + 1):
-            self.budget.reserve(reservation)
+        for attempt_number in range(1, self.settings.max_retries + 2):
+            reservation = self.budget.reserve(estimated_microusd)
             self.attempts += 1
-            context = self._attempt_context(
-                request_id=request_id,
-                purpose=purpose,
-                effort=effort,
-                attempt=attempt,
+            attempt = _GenerationAttempt.start(
+                plan,
+                model=self.settings.model,
+                number=attempt_number,
+                reservation=reservation,
             )
-            started = time.monotonic()
+            context = attempt.event_fields()
             self.emit(
                 "model_admitted",
                 {
                     **context,
                     "input_tokens": input_tokens,
-                    "reserved_microusd": reservation,
+                    "reserved_microusd": reservation.microusd,
                 },
             )
             try:
-                response, first_token = await self._request_response(
-                    provider_request,
-                    context=context,
-                    started=started,
-                )
-                usage = getattr(response, "usage", None)
-                if usage is None:
+                result = await self._generate(plan, attempt)
+                native_usage = getattr(result.response, "usage", None)
+                if native_usage is None:
                     raise ProviderFailure(
                         "Provider omitted usage; conservative reservation retained."
                     )
-                metrics = usage_metadata(usage, self.settings.model)
-            except (APIConnectionError, APIStatusError) as exc:
-                self._emit_model_error(context, started, exc)
-                await self._wait_to_retry(
-                    exc,
-                    attempt,
+                priced_usage = price_usage(native_usage, self.settings.model)
+            except (APIConnectionError, APIStatusError) as error:
+                self._emit_attempt_error(attempt, error)
+                await self._retry_or_raise(
+                    error,
+                    attempt_number,
                     purpose=purpose,
-                    request_id=request_id,
+                    request_id=plan.request_id,
                 )
                 continue
-            except BaseException as exc:
-                self._emit_model_error(context, started, exc)
+            except BaseException as error:
+                self._emit_attempt_error(attempt, error)
                 raise
 
-            self._finalize_response(
-                response,
-                usage,
-                metrics,
-                context=context,
-                reservation=reservation,
-                started=started,
-                first_token=first_token,
-            )
-            return response
+            self._complete_attempt(attempt, result, priced_usage)
+            return result.response
+
         raise ProviderFailure("Retries exhausted.")
 
-    def _prepare_request(
-        self,
-        request: Mapping[str, Any],
-        purpose: Purpose,
-    ) -> tuple[dict[str, Any], str]:
-        effort = "medium" if purpose == "security" else self.settings.reasoning
-        provider_request = dict(
-            request,
-            model=self.settings.model,
-            reasoning={"effort": effort},
-        )
-        if purpose == "security":
-            provider_request.pop("context_management", None)
-        return provider_request, effort
-
-    async def _count_input(
-        self,
-        provider_request: Mapping[str, Any],
-        *,
-        purpose: Purpose,
-        request_id: str,
-    ) -> int:
-        count_request = {
-            key: value
-            for key, value in provider_request.items()
-            if key != "context_management"
-        }
-        count: Any = None
-        for attempt in range(self.settings.max_retries + 1):
+    async def _count_input(self, plan: _RequestPlan) -> int:
+        for attempt_number in range(1, self.settings.max_retries + 2):
             context = {
-                "request_id": request_id,
-                "purpose": purpose,
-                "attempt": attempt + 1,
+                "request_id": plan.request_id,
+                "purpose": plan.purpose,
+                "attempt": attempt_number,
             }
             try:
                 async with diagnostic_span(
@@ -190,102 +250,84 @@ class ModelClient:
                 ) as progress:
                     progress["request_type"] = "responses.input_tokens.count"
                     count = await self.client.responses.input_tokens.count(
-                        **count_request
+                        **plan.count_payload()
                     )
-                    progress["input_tokens"] = getattr(count, "input_tokens", None)
-                break
-            except (APIConnectionError, APIStatusError) as exc:
-                await self._wait_to_retry(
-                    exc,
-                    attempt,
+                    tokens = getattr(count, "input_tokens", None)
+                    progress["input_tokens"] = tokens
+            except (APIConnectionError, APIStatusError) as error:
+                await self._retry_or_raise(
+                    error,
+                    attempt_number,
                     purpose="input_count",
-                    request_id=request_id,
+                    request_id=plan.request_id,
                 )
+                continue
 
-        tokens = count.input_tokens
-        if not isinstance(tokens, int) or tokens < 0:
-            raise ProviderFailure("Provider returned an invalid input count.")
-        if tokens > self.settings.max_input_tokens:
-            raise ContextOverflow(
-                f"Request needs {tokens} input tokens; "
-                f"cap is {self.settings.max_input_tokens}."
-            )
-        return tokens
+            if type(tokens) is not int or tokens < 0:
+                raise ProviderFailure("Provider returned an invalid input count.")
+            if tokens > self.settings.max_input_tokens:
+                raise ContextOverflow(
+                    f"Request needs {tokens} input tokens; "
+                    f"cap is {self.settings.max_input_tokens}."
+                )
+            return tokens
 
-    async def _request_response(
-        self,
-        provider_request: Mapping[str, Any],
-        *,
-        context: Mapping[str, Any],
-        started: float,
-    ) -> tuple[Any, float | None]:
+        raise ProviderFailure("Input count retries exhausted.")
+
+    async def _generate(
+        self, plan: _RequestPlan, attempt: _GenerationAttempt
+    ) -> _StreamResult:
+        context = attempt.event_fields()
         async with diagnostic_span(self.emit, "response_create", **context) as progress:
             progress["request_type"] = "responses.create"
             stream = await self.client.responses.create(
-                **provider_request,
+                **plan.payload,
                 max_output_tokens=self.settings.max_output_tokens,
                 store=False,
                 stream=True,
                 service_tier="default",
             )
             progress["stream_opened"] = True
-        return await self._read_stream(stream, context=context, started=started)
+        return await self._consume_stream(stream, attempt)
 
-    async def _read_stream(
-        self,
-        stream: Any,
-        *,
-        context: Mapping[str, Any],
-        started: float,
-    ) -> tuple[Any, float | None]:
+    async def _consume_stream(
+        self, stream: Any, attempt: _GenerationAttempt
+    ) -> _StreamResult:
         response = None
-        first_token = None
+        first_visible = None
+        context = attempt.event_fields()
+        capture = StreamCapture()
         async with diagnostic_span(self.emit, "stream_read", **context) as progress:
-            progress.update(new_stream_progress())
-            sequence = 0
-            last_event_at = time.monotonic()
-            async with diagnostic_stream_context(stream, self.emit, context):
-                iterator = stream.__aiter__()
-                try:
-                    while True:
-                        try:
-                            event = await anext(iterator)
-                        except StopAsyncIteration:
-                            break
-                        sequence += 1
-                        last_event_at = record_stream_event(
-                            progress,
-                            event,
-                            sequence,
-                            last_event_at,
-                        )
-                        if first_token is None and self._has_visible_delta(event):
-                            first_token = time.monotonic() - started
-                            self.emit(
-                                "model_first_token",
-                                {
-                                    **context,
-                                    "ttft_seconds": first_token,
-                                    "first_token_time": datetime.now(UTC).isoformat(),
-                                },
-                            )
+            progress.update(capture.snapshot())
+            async with response_stream_events(stream, self.emit, context) as iterator:
+                while True:
+                    try:
+                        event = await anext(iterator)
+                    except StopAsyncIteration:
+                        break
 
-                        event_type = getattr(event, "type", None)
-                        if event_type in _TERMINAL_EVENTS:
-                            response = getattr(event, "response", None)
-                            progress.update(response_details(response))
-                            break
-                        if event_type == "error":
-                            progress["stream_error"] = bounded_error_fields(event)
-                            raise ProviderFailure(
-                                "Provider stream reported an error; "
-                                "reservation retained."
-                            )
-                finally:
-                    await close_async_iterator(iterator)
-                    nested = getattr(stream, "_iterator", None)
-                    if nested is not None and nested is not iterator:
-                        await close_async_iterator(nested)
+                    observed = capture.record(event)
+                    progress.update(capture.snapshot())
+                    if first_visible is None and observed.has_visible_delta:
+                        first_visible = attempt.elapsed_seconds
+                        self.emit(
+                            "model_first_token",
+                            {
+                                **context,
+                                "ttft_seconds": first_visible,
+                                "first_token_time": datetime.now(UTC).isoformat(),
+                            },
+                        )
+
+                    if observed.type in _TERMINAL_EVENTS:
+                        response = getattr(event, "response", None)
+                        progress.update(response_details(response))
+                        break
+                    if observed.type == "error":
+                        progress["stream_error"] = bounded_error_fields(event)
+                        raise ProviderFailure(
+                            "Provider stream reported an error; reservation retained."
+                        )
             if response is not None:
                 progress["response_capture"] = visible_response_capture(response)
 
@@ -293,133 +335,82 @@ class ModelClient:
             raise ProviderFailure(
                 "Provider stream ended without a final response; reservation retained."
             )
-        return response, first_token
+        return _StreamResult(response, first_visible)
 
-    @staticmethod
-    def _has_visible_delta(event: Any) -> bool:
-        return (
-            str(getattr(event, "type", "")).endswith(".delta")
-            and isinstance(getattr(event, "delta", None), str)
-            and bool(event.delta)
-        )
-
-    def _reservation(self, input_tokens: int) -> int:
-        input_rate, output_rate = reservation_rates(self.settings.model, input_tokens)
-        return math.ceil(
-            input_tokens * input_rate + self.settings.max_output_tokens * output_rate
-        )
-
-    def _actual_cost(self, usage: Any) -> int:
-        input_rate, output_rate = reservation_rates(
-            self.settings.model, usage.input_tokens
-        )
-        return math.ceil(
-            usage.input_tokens * input_rate + usage.output_tokens * output_rate
-        )
-
-    def _attempt_context(
+    def _complete_attempt(
         self,
-        *,
-        request_id: str,
-        purpose: Purpose,
-        effort: str,
-        attempt: int,
-    ) -> dict[str, Any]:
-        return {
-            "request_id": request_id,
-            "call_id": str(uuid4()),
-            "purpose": purpose,
-            "model": self.settings.model,
-            "effort": effort,
-            "attempt": attempt + 1,
-        }
-
-    def _record_usage(self, usage: Any, metrics: UsageMetadata) -> None:
-        self.usage["input_tokens"] += usage.input_tokens
-        self.usage["output_tokens"] += usage.output_tokens
-        self.usage["total_tokens"] += metrics["total_tokens"]
-        for field in ("input_token_details", "output_token_details"):
-            for key, value in metrics[field].items():
-                self.usage[field][key] += value
-        self.usage["calls"] += 1
-        self.reported_cost_usd += metrics["total_cost"]
-
-    def _finalize_response(
-        self,
-        response: Any,
-        usage: Any,
-        metrics: UsageMetadata,
-        *,
-        context: Mapping[str, Any],
-        reservation: int,
-        started: float,
-        first_token: float | None,
+        attempt: _GenerationAttempt,
+        result: _StreamResult,
+        priced_usage: PricedUsage,
     ) -> None:
-        actual_cost = self._actual_cost(usage)
-        self._record_usage(usage, metrics)
+        metadata = priced_usage.metadata()
+        self._usage.add(priced_usage)
+        response_status = getattr(result.response, "status", "completed")
         self.emit(
             "model_usage",
             {
-                **context,
-                **metrics,
-                "usage_metadata": metrics,
-                "response_id": getattr(response, "id", None),
-                "response_status": getattr(response, "status", "completed"),
-                "latency_seconds": time.monotonic() - started,
-                "ttft_seconds": first_token,
-                "cost_microusd": actual_cost,
-                "cost_usd": (self.budget.spent - reservation + actual_cost)
-                / MICRO_USD_PER_USD,
+                **attempt.event_fields(),
+                **metadata,
+                "usage_metadata": metadata,
+                "response_id": getattr(result.response, "id", None),
+                "response_status": response_status,
+                "latency_seconds": attempt.elapsed_seconds,
+                "ttft_seconds": result.first_visible_seconds,
+                "cost_microusd": priced_usage.conservative_microusd,
+                "cost_usd": self.budget.projected_cost_usd(
+                    attempt.reservation, priced_usage.conservative_microusd
+                ),
             },
         )
-        # Completed usage is observable even when it exceeds the reservation.
-        self.budget.reconcile(reservation, actual_cost)
-        if getattr(response, "status", None) == "failed":
+        # Usage is observable even when settlement crosses the task cap.
+        self.budget.reconcile(attempt.reservation, priced_usage.conservative_microusd)
+        if response_status == "failed":
             raise ProviderFailure("Provider returned a failed response.")
 
-    def _emit_model_error(
-        self,
-        context: Mapping[str, Any],
-        started: float,
-        error: BaseException,
+    def _emit_attempt_error(
+        self, attempt: _GenerationAttempt, error: BaseException
     ) -> None:
-        # Usage is unknown on every failed attempt, so its reservation stays charged.
+        # Failed attempts have unknown usage, so their reservation stays charged.
         self.emit(
             "model_error",
             {
-                **context,
+                **attempt.event_fields(),
                 "error_type": type(error).__name__,
-                "latency_seconds": time.monotonic() - started,
+                "latency_seconds": attempt.elapsed_seconds,
                 "usage_unknown": True,
             },
         )
 
-    async def _wait_to_retry(
+    async def _retry_or_raise(
         self,
         error: APIConnectionError | APIStatusError,
-        attempt: int,
+        attempt_number: int,
         *,
         purpose: str,
-        request_id: str | None = None,
+        request_id: str,
     ) -> None:
-        retryable = isinstance(error, APIConnectionError) or getattr(
-            error, "status_code", 0
-        ) in {408, 409, 429, 500, 502, 503, 504}
-        if not retryable or attempt == self.settings.max_retries:
+        status_code = getattr(error, "status_code", 0)
+        retryable = (
+            isinstance(error, APIConnectionError)
+            or status_code in _RETRYABLE_STATUS_CODES
+        )
+        if not retryable or attempt_number > self.settings.max_retries:
             raise ProviderFailure(
-                f"{purpose} request failed after {attempt + 1} attempt(s): "
+                f"{purpose} request failed after {attempt_number} attempt(s): "
                 f"{type(error).__name__}."
             ) from error
 
-        delay = min(8, 2**attempt)
-        retry_after = getattr(getattr(error, "response", None), "headers", {}).get(
-            "retry-after"
-        )
+        delay = min(8, 2 ** (attempt_number - 1))
+        headers = getattr(getattr(error, "response", None), "headers", None)
+        retry_after = headers.get("retry-after") if headers is not None else None
         if retry_after:
             try:
-                delay = max(delay, float(retry_after))
-            except ValueError:
+                requested_delay = float(retry_after)
+            except (TypeError, ValueError):
                 pass
+            else:
+                if math.isfinite(requested_delay):
+                    delay = max(delay, requested_delay)
         if delay > 30:
             raise ProviderFailure(
                 "Provider requests a long wait; stopped without retry."
@@ -427,11 +418,11 @@ class ModelClient:
         self.emit(
             "provider_retry",
             {
-                "attempt": attempt + 1,
+                "attempt": attempt_number,
                 "purpose": purpose,
                 "delay_seconds": delay,
                 "error_type": type(error).__name__,
-                **({"request_id": request_id} if request_id else {}),
+                "request_id": request_id,
             },
         )
         await self.sleep(delay)
@@ -439,5 +430,6 @@ class ModelClient:
     async def close(self) -> None:
         """Close the underlying provider client when it owns resources."""
 
-        if hasattr(self.client, "close"):
-            await self.client.close()
+        close = getattr(self.client, "close", None)
+        if callable(close):
+            await close()

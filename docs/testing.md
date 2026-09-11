@@ -49,14 +49,18 @@ Checked on macOS on 2026-09-11 against the working tree:
 | `npx -y @playwright/cli@0.1.19 --version` | Pass; reports `0.1.19`. |
 | `uv run ruff check .` | Pass, including import sorting, Python modernization, and common bug checks. |
 | `uv run ruff format --check .` | Pass; all 53 Python files follow the same formatter. |
-| `uv run pytest -q` | 157 passed in 41.19 seconds after the source and test reorganization. One duplicate input-limit test was consolidated; its assertions remain in the parameterized admission test. |
+| `uv run pytest -q` | 157 passed in 35.39 seconds after the implementation rewrite and terminal input fix. The existing test files were unchanged during this pass. |
 | Wheel build and packaged browser skill | Pass; installed into a temporary directory and imported outside the checkout. Every module, CLI help, and the packaged browser skill work. No retired modules, tests, private artifacts, or bytecode caches are packaged. |
 | Live Yandex Mail | Prior live verification: six approved messages moved to Trash; exact message IDs verified, with account notices, receipts, and older conversation messages retained. Completed across an API-interrupted run and an explicit continuation (details below). |
 | Live YandexEda and hh.ru tasks | Not run on the current implementation. |
 
-The live-account and real-model runs below predate the code reorganization; they were not repeated during this cleanup. The refactored working tree passed the local checks above.
+The live-account and real-model runs below predate the implementation rewrite; they were not repeated during this cleanup. The working tree passed the local checks above, including real Chrome on local pages and the installed provider SDK against a local HTTP server.
 
-The Russian assignment, all three task descriptions, evaluation criteria, reference images, runtime prompts, and dependency lockfile were unchanged by the refactor. All 86 local documentation links resolve. External links identify the original sources.
+The rewrite covered the task loop, browser transport and artifacts, model accounting and streams, and terminal input, output, and telemetry. The preserved tests served as the regression contract. Review also checked approval binding, compaction history, cancellation, browser ownership, and artifact bounds. Literal artifact search now returns multiple matches on the same line while retaining its ten-match and 6,000-character output limits.
+
+An intermediate full run caught an intermittent prompt-input failure: a delayed Escape timeout consumed the first character of a reply. The terminal now handles bare Escape immediately and checks double-Escape timing explicitly. The existing prompt, editing, cancellation, and cleanup tests pass with this fix. Additional local probes verified delayed input and arrow/Alt keys between Escape presses.
+
+The Russian assignment, all three task descriptions, evaluation criteria, reference images, runtime prompts, dependency configuration, and lockfile were unchanged by this pass. All 86 local documentation links resolve. External links identify the original sources.
 
 Tool-call cap removal was verified once with 400 mocked browser calls through the compiled LangGraph, completing in 401 decisions. This made no browser or API calls and is not part of the regular test suite.
 

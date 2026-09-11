@@ -5,31 +5,33 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .artifacts import ArtifactStore
+from .artifacts import ArtifactStore, extract_paths
 
 MAX_EVIDENCE_CHARS = 1_000_000
 
 
 class EvidenceCache:
-    """Retain current page evidence without confusing it with tool output."""
+    """Track current page evidence separately from the latest command output."""
 
     def __init__(self, artifacts: ArtifactStore) -> None:
         self._artifacts = artifacts
-        self._evidence = ""
-        self._page_evidence = ""
+        self._text = ""
+        self._page = ""
         self._current_url: str | None = None
 
     @property
     def text(self) -> str:
-        return self._evidence
+        return self._text
 
     @property
     def current_url(self) -> str | None:
         return self._current_url
 
     def clear(self) -> None:
-        self._evidence = ""
-        self._page_evidence = ""
+        """Clear task evidence while retaining the browser's current URL."""
+
+        self._text = ""
+        self._page = ""
 
     def update(
         self,
@@ -38,67 +40,85 @@ class EvidenceCache:
         *,
         fresh_after_ns: int | None = None,
     ) -> None:
-        """Update cached evidence from one successful CLI response."""
+        """Incorporate one successful CLI response into reviewer evidence."""
 
+        result = _response_result(payload)
+        output = _render(result)
         snapshot = self._artifacts.snapshot_text(
             command,
             payload,
             fresh_after_ns=fresh_after_ns,
             limit=MAX_EVIDENCE_CHARS,
         )
-        result = payload.get("result")
-        if result is None and any(
-            key in payload for key in ("snapshot", "url", "title")
-        ):
-            result = {
-                key: payload[key]
-                for key in ("snapshot", "url", "title")
-                if key in payload
-            }
 
-        output = result if isinstance(result, str) else ""
-        if snapshot:
-            output = snapshot
-        elif isinstance(result, (dict, list)):
-            output = json.dumps(result, ensure_ascii=False)
-
-        snapshot_value = payload.get("snapshot")
-        if snapshot_value is None and isinstance(result, dict):
-            snapshot_value = result.get("snapshot")
-        inline_snapshot = snapshot_value is not None and not (
-            isinstance(snapshot_value, dict)
-            and set(snapshot_value).issubset({"file", "path"})
-        )
+        snapshot_value = _snapshot_value(payload, result)
+        has_inline_snapshot = _is_inline_snapshot(snapshot_value)
         if command == "snapshot" and output and snapshot_value is None:
-            inline_snapshot = True
+            has_inline_snapshot = True
 
-        if snapshot or inline_snapshot:
-            self._page_evidence = output[:MAX_EVIDENCE_CHARS]
+        if snapshot:
+            self._page = snapshot[:MAX_EVIDENCE_CHARS]
+        elif has_inline_snapshot:
+            self._page = output[:MAX_EVIDENCE_CHARS]
         elif command == "find" and output:
-            find_excerpt = f"Find result: {output}"
-            if self._page_evidence:
-                self._page_evidence = (self._page_evidence + "\n" + find_excerpt)[
-                    :MAX_EVIDENCE_CHARS
-                ]
-            else:
-                self._page_evidence = find_excerpt[:MAX_EVIDENCE_CHARS]
+            self._append_find_result(output)
 
-        details: list[str] = []
-        self._append_metadata(details, payload)
+        details = self._metadata(payload)
         if isinstance(result, dict):
-            self._append_metadata(details, result)
-        if self._page_evidence:
-            details.append(f"Page evidence: {self._page_evidence}")
-        if output and output != self._page_evidence:
+            details.extend(self._metadata(result))
+        if self._page:
+            details.append(f"Page evidence: {self._page}")
+        if output and output != self._page:
             details.append(f"{command}: {output}")
         if details:
-            self._evidence = "\n".join(details)[:MAX_EVIDENCE_CHARS]
+            self._text = "\n".join(details)[:MAX_EVIDENCE_CHARS]
 
-    def _append_metadata(self, details: list[str], value: dict[str, Any]) -> None:
+    def _append_find_result(self, output: str) -> None:
+        find_result = f"Find result: {output}"
+        if self._page:
+            find_result = f"{self._page}\n{find_result}"
+        self._page = find_result[:MAX_EVIDENCE_CHARS]
+
+    def _metadata(self, value: dict[str, Any]) -> list[str]:
+        details: list[str] = []
         url = value.get("url")
         if isinstance(url, str):
-            self._current_url = url[:2000]
+            self._current_url = url[:2_000]
             details.append(f"URL: {self._current_url}")
         title = value.get("title")
         if isinstance(title, str):
             details.append(f"Title: {title[:500]}")
+        return details
+
+
+def _response_result(payload: dict[str, Any]) -> Any:
+    result = payload.get("result")
+    if result is not None:
+        return result
+    metadata = {
+        key: payload[key] for key in ("snapshot", "url", "title") if key in payload
+    }
+    return metadata or None
+
+
+def _render(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return ""
+
+
+def _snapshot_value(payload: dict[str, Any], result: Any) -> Any:
+    snapshot = payload.get("snapshot")
+    if snapshot is None and isinstance(result, dict):
+        snapshot = result.get("snapshot")
+    return snapshot
+
+
+def _is_inline_snapshot(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, dict) and set(value).issubset({"file", "path"}):
+        return False
+    return not (isinstance(value, str) and extract_paths(value))

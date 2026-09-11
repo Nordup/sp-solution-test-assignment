@@ -1,4 +1,4 @@
-"""Own and close every iterator in an OpenAI response stream."""
+"""Own the complete iterator stack behind an OpenAI response stream."""
 
 import sys
 from collections.abc import AsyncIterator, Callable, Mapping
@@ -11,32 +11,66 @@ from openai import AsyncStream
 from ..telemetry import diagnostic_span
 
 Emit = Callable[[str, dict[str, Any]], None]
+type ExceptionInfo = tuple[
+    type[BaseException] | None,
+    BaseException | None,
+    TracebackType | None,
+]
 
 
 class _OwnedHTTPBody:
-    """Keep the httpcore iterator alive and close it before its connection."""
+    """Close httpcore's iterator before closing its response body."""
 
     def __init__(self, body: Any) -> None:
-        self.body = body
-        self.iterator = body.__aiter__()
+        self._body = body
+        self._iterator = body.__aiter__()
+        self._closed = False
 
     def __aiter__(self) -> Any:
-        return self.iterator
+        return self._iterator
 
     async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         try:
-            await self.iterator.aclose()
+            await _close_iterator(self._iterator)
         finally:
-            await self.body.aclose()
+            await self._body.aclose()
 
 
 @asynccontextmanager
-async def own_stream_iterators(stream: Any) -> AsyncIterator[None]:
-    """Close nested SDK iterators in the request task, including on early exit.
+async def response_stream_events(
+    stream: Any,
+    emit: Emit,
+    context: Mapping[str, Any],
+) -> AsyncIterator[Any]:
+    """Yield one owned event iterator and close every layer on every exit path."""
 
-    OpenAI 3.10 with HTTPX2 2.12 closes sockets but leaves the SSE and httpcore
-    iterators open. This per-response adapter avoids global SDK or transport
-    patches. Local HTTP regression tests cover the pinned dependency stack.
+    await stream.__aenter__()
+    try:
+        async with _owned_sdk_iterators(stream):
+            iterator = stream.__aiter__()
+            try:
+                yield iterator
+            finally:
+                await _close_event_iterators(stream, iterator)
+    except BaseException:
+        exception = sys.exc_info()
+        suppressed = await _close_response(stream, emit, context, exception)
+        if not suppressed:
+            raise
+    else:
+        await _close_response(stream, emit, context, (None, None, None))
+
+
+@asynccontextmanager
+async def _owned_sdk_iterators(stream: Any) -> AsyncIterator[None]:
+    """Own SDK-private iterators omitted by OpenAI 3.10 / HTTPX2 2.12 cleanup.
+
+    This per-response adapter keeps native event decoding and provider error
+    handling intact. It is intentionally limited to the pinned ``AsyncStream``;
+    model doubles and future SDK implementations retain their normal behavior.
     """
 
     if not isinstance(stream, AsyncStream):
@@ -49,48 +83,42 @@ async def own_stream_iterators(stream: Any) -> AsyncIterator[None]:
         transport._httpcore_stream = _OwnedHTTPBody(body)
 
     async with AsyncExitStack() as cleanup:
-        byte_iterator = await cleanup.enter_async_context(
+        response_bytes = await cleanup.enter_async_context(
             aclosing(stream.response.aiter_bytes())
         )
-        events = await cleanup.enter_async_context(
-            aclosing(stream._decoder.aiter_bytes(byte_iterator))
+        decoded_events = await cleanup.enter_async_context(
+            aclosing(stream._decoder.aiter_bytes(response_bytes))
         )
         # AsyncStream resolves this method at first iteration. Supplying the
-        # owned decoder retains native event parsing and provider error handling.
-        stream._iter_events = lambda: events
+        # owned decoder preserves the SDK parser while giving this task custody.
+        stream._iter_events = lambda: decoded_events
         yield
 
 
-async def close_async_iterator(iterator: Any) -> None:
-    """Close a provider iterator before its response and network body."""
+async def _close_event_iterators(stream: Any, iterator: Any) -> None:
+    try:
+        await _close_iterator(iterator)
+    finally:
+        nested = getattr(stream, "_iterator", None)
+        if nested is not None and nested is not iterator:
+            await _close_iterator(nested)
 
+
+async def _close_iterator(iterator: Any) -> None:
     close = getattr(iterator, "aclose", None)
-    if close is not None:
+    if callable(close):
         await close()
 
 
-@asynccontextmanager
-async def diagnostic_stream_context(
+async def _close_response(
     stream: Any,
     emit: Emit,
     context: Mapping[str, Any],
-) -> AsyncIterator[None]:
-    """Close a provider stream while timing its real context exit."""
-
-    await stream.__aenter__()
-    exception: tuple[type[BaseException], BaseException, TracebackType] | None = None
-    try:
-        async with own_stream_iterators(stream):
-            yield
-    except BaseException:  # noqa: BLE001 - pass the exact error to stream __aexit__
-        error_type, error, traceback = sys.exc_info()
-        if error_type is not None and error is not None and traceback is not None:
-            exception = (error_type, error, traceback)
-
+    exception: ExceptionInfo,
+) -> bool:
     async with diagnostic_span(emit, "stream_close", **context) as progress:
         progress["close_attempted"] = True
-        suppressed = await stream.__aexit__(*(exception or (None, None, None)))
+        suppressed = await stream.__aexit__(*exception)
         progress["stream_closed"] = True
         progress["exception_suppressed"] = bool(suppressed)
-    if exception is not None and not suppressed:
-        raise exception[1].with_traceback(exception[2])
+    return bool(suppressed)
